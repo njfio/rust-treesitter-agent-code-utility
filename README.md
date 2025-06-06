@@ -1,6 +1,22 @@
 # Rust Tree-sitter Library
 
-A comprehensive Rust library for processing source code using tree-sitter. This library provides high-level abstractions for parsing, navigating, and querying syntax trees across multiple programming languages.
+A comprehensive Rust library for processing source code using tree-sitter with **AI-powered analysis capabilities**. This library provides high-level abstractions for parsing, navigating, and querying syntax trees across multiple programming languages, enhanced with intelligent code explanations, security scanning, and smart refactoring suggestions.
+
+## Table of Contents
+
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [🧠 AI-Powered Features](#-ai-powered-features)
+  - [AI Code Explanations](#ai-code-explanations)
+  - [Security Vulnerability Scanning](#security-vulnerability-scanning)
+  - [Smart Refactoring Suggestions](#smart-refactoring-suggestions)
+- [🚀 Smart CLI Interface](#-smart-cli-interface)
+- [Supported Languages](#supported-languages)
+- [Advanced Usage](#advanced-usage)
+- [Examples](#examples)
+- [Performance](#performance)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Features
 
@@ -150,6 +166,95 @@ for file_info in &result.files {
         println!("  - {} {} at line {}", symbol.kind, symbol.name, symbol.start_line);
     }
 }
+```
+
+## 🧠 AI-Powered Features
+
+### AI Code Explanations
+
+Get natural language explanations of your codebase:
+
+```bash
+# Generate comprehensive AI explanations
+./target/release/tree-sitter-cli explain ./src --detailed --learning
+
+# Focus on specific files
+./target/release/tree-sitter-cli explain ./src --file src/main.rs
+
+# Get learning recommendations
+./target/release/tree-sitter-cli explain ./src --learning --format markdown
+```
+
+**Example Output:**
+
+```text
+🧠 AI CODE EXPLANATIONS
+Purpose: A comprehensive Rust library for processing source code using tree-sitter
+Architecture: Modular architecture with clear separation of concerns
+Complexity: Very High - Expert developers recommended
+Technologies: Rust, Tree-sitter, CLI, Parsing and AST
+```
+
+### Security Vulnerability Scanning
+
+Comprehensive security analysis with actionable insights:
+
+```bash
+# Full security scan with compliance check
+./target/release/tree-sitter-cli security ./src --compliance
+
+# Focus on high-severity issues
+./target/release/tree-sitter-cli security ./src --min-severity high
+
+# Generate security report
+./target/release/tree-sitter-cli security ./src --format json --output security-report.json
+```
+
+**Example Output:**
+
+```text
+🔍 SECURITY SCAN RESULTS
+Security Score: 85/100
+Total Vulnerabilities: 3
+
+🚨 VULNERABILITIES FOUND
+1. Potential hardcoded secret detected (High severity)
+   Location: config.rs:42
+   Fix: Use environment variables for sensitive data
+
+💡 RECOMMENDATIONS
+- Implement automated security scanning in CI/CD pipeline
+- Review unsafe code blocks for memory safety
+```
+
+### Smart Refactoring Suggestions
+
+Intelligent code improvement recommendations:
+
+```bash
+# Get all refactoring suggestions
+./target/release/tree-sitter-cli refactor ./src
+
+# Focus on quick wins (easy improvements)
+./target/release/tree-sitter-cli refactor ./src --quick-wins
+
+# Show only high-priority improvements
+./target/release/tree-sitter-cli refactor ./src --min-priority high
+```
+
+**Example Output:**
+
+```text
+🎯 REFACTORING ANALYSIS
+Quality Score: 78/100
+Total Opportunities: 8
+Quick Wins: 3
+
+📈 IMPACT SUMMARY
+Maintainability: +65%
+Readability: +70%
+Technical Debt: -40%
+Time Saved: 2.5 hours
 ```
 
 ## 🚀 Smart CLI Interface
@@ -317,6 +422,7 @@ The library is optimized for:
 - **Thread safety**: Safe concurrent usage with separate parser instances
 
 Typical performance characteristics:
+
 - Initial parse: ~2-3x slower than native language parsers
 - Incremental updates: Near real-time performance
 - Memory usage: Proportional to source code size with minimal overhead
@@ -338,8 +444,8 @@ cargo test
 
 This project is licensed under either of
 
-- Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+- Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
 
 at your option.
 
@@ -353,10 +459,30 @@ at your option.
 
 ### 0.1.0 (Initial Release)
 
+#### Core Library Features
+
 - Multi-language parsing support (Rust, JavaScript, Python, C, C++)
 - Incremental parsing capabilities
 - Query system with builder pattern
 - Rust-specific syntax utilities
-- Comprehensive examples and documentation
 - Thread-safe parser management
 - Memory-efficient tree handling
+
+#### AI-Powered Intelligence
+
+- 🧠 **AI Code Explanations**: Natural language descriptions of codebase purpose and architecture
+- 🔍 **Security Vulnerability Scanning**: Comprehensive security analysis with OWASP compliance
+- 🎯 **Smart Refactoring Suggestions**: Automated code improvement recommendations with impact analysis
+
+#### Smart CLI Interface
+
+- Interactive codebase exploration with real-time commands
+- Visual code maps with multiple output formats (JSON, Markdown, Table, Text, ASCII, Unicode, Mermaid)
+- Progress indicators with beautiful colored output
+- Comprehensive analysis and insights generation
+
+#### Documentation & Examples
+
+- Comprehensive examples and documentation
+- CLI usage guides and tutorials
+- Performance benchmarks and optimization tips
