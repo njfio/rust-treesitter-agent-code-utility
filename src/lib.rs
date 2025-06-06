@@ -28,19 +28,25 @@
 //! # }
 //! ```
 
+pub mod ai_analysis;
 pub mod analyzer;
 pub mod error;
 pub mod languages;
 pub mod parser;
 pub mod query;
+pub mod refactoring;
+pub mod security;
 pub mod tree;
 
 // Re-export commonly used types
+pub use ai_analysis::{AIAnalyzer, AIAnalysisResult, AIConfig, CodebaseExplanation, FileExplanation, SymbolExplanation};
 pub use analyzer::{CodebaseAnalyzer, AnalysisConfig, AnalysisResult, FileInfo, Symbol};
 pub use error::{Error, Result};
 pub use languages::Language;
 pub use parser::{Parser, ParseOptions, create_edit};
 pub use query::{Query, QueryCapture, QueryMatch, QueryBuilder};
+pub use refactoring::{RefactoringAnalyzer, RefactoringResult, RefactoringSuggestion, RefactoringConfig};
+pub use security::{SecurityScanner, SecurityScanResult, SecurityVulnerability, SecurityConfig, SecuritySeverity};
 pub use tree::{Node, SyntaxTree, TreeCursor, TreeEdit};
 
 // Re-export tree-sitter types that users might need

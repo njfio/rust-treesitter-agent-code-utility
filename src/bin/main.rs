@@ -184,6 +184,91 @@ enum Commands {
         #[arg(long)]
         collapse_empty: bool,
     },
+
+    /// AI-powered code explanations and insights
+    Explain {
+        /// Directory to analyze
+        #[arg(value_name = "PATH")]
+        path: PathBuf,
+
+        /// Focus on specific file
+        #[arg(short, long)]
+        file: Option<PathBuf>,
+
+        /// Focus on specific symbol
+        #[arg(short, long)]
+        symbol: Option<String>,
+
+        /// Output format (markdown, json, text)
+        #[arg(long, default_value = "markdown")]
+        format: String,
+
+        /// Include detailed explanations
+        #[arg(long)]
+        detailed: bool,
+
+        /// Include learning recommendations
+        #[arg(long)]
+        learning: bool,
+    },
+
+    /// Security vulnerability scanning
+    Security {
+        /// Directory to scan
+        #[arg(value_name = "PATH")]
+        path: PathBuf,
+
+        /// Output format (table, json, markdown)
+        #[arg(short, long, default_value = "table")]
+        format: String,
+
+        /// Minimum severity level (critical, high, medium, low, info)
+        #[arg(long, default_value = "low")]
+        min_severity: String,
+
+        /// Save detailed report to file
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Show only summary
+        #[arg(long)]
+        summary_only: bool,
+
+        /// Include compliance information
+        #[arg(long)]
+        compliance: bool,
+    },
+
+    /// Smart refactoring suggestions
+    Refactor {
+        /// Directory to analyze
+        #[arg(value_name = "PATH")]
+        path: PathBuf,
+
+        /// Focus on specific category (complexity, duplication, naming, performance, architecture)
+        #[arg(short, long)]
+        category: Option<String>,
+
+        /// Output format (table, json, markdown)
+        #[arg(short, long, default_value = "table")]
+        format: String,
+
+        /// Show only quick wins (easy improvements)
+        #[arg(long)]
+        quick_wins: bool,
+
+        /// Show only major improvements
+        #[arg(long)]
+        major_only: bool,
+
+        /// Minimum priority level (critical, high, medium, low)
+        #[arg(long, default_value = "low")]
+        min_priority: String,
+
+        /// Save detailed report to file
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 #[derive(Tabled)]
@@ -261,6 +346,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Map { path, map_type, format, max_depth, show_sizes, show_symbols, languages, collapse_empty } => {
             map_command(path, map_type, format, max_depth, show_sizes, show_symbols, languages, collapse_empty)?;
+        }
+        Commands::Explain { path, file, symbol, format, detailed, learning } => {
+            explain_command(path, file, symbol, format, detailed, learning)?;
+        }
+        Commands::Security { path, format, min_severity, output, summary_only, compliance } => {
+            security_command(path, format, min_severity, output, summary_only, compliance)?;
+        }
+        Commands::Refactor { path, category, format, quick_wins, major_only, min_priority, output } => {
+            refactor_command(path, category, format, quick_wins, major_only, min_priority, output)?;
         }
     }
 
@@ -1995,6 +2089,518 @@ fn generate_tree_map_json(
 
     println!("{}", serde_json::to_string_pretty(&tree_map)?);
     Ok(())
+}
+
+fn explain_command(
+    path: PathBuf,
+    file: Option<PathBuf>,
+    symbol: Option<String>,
+    format: String,
+    detailed: bool,
+    learning: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("{}", "🧠 Generating AI explanations...".bright_blue().bold());
+
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(ProgressStyle::default_spinner()
+        .template("{spinner:.green} {msg}")
+        .unwrap());
+    pb.set_message("Analyzing code...");
+
+    // Analyze the codebase
+    let mut analyzer = CodebaseAnalyzer::new();
+    let result = analyzer.analyze_directory(&path)?;
+
+    pb.set_message("Generating explanations...");
+
+    // Generate AI explanations
+    let ai_config = rust_tree_sitter::AIConfig {
+        detailed_explanations: detailed,
+        include_examples: true,
+        max_explanation_length: if detailed { 1000 } else { 500 },
+        pattern_recognition: true,
+        architectural_insights: true,
+    };
+
+    let ai_analyzer = rust_tree_sitter::AIAnalyzer::with_config(ai_config);
+    let ai_result = ai_analyzer.analyze(&result);
+
+    pb.finish_with_message("Explanations generated!");
+
+    match format.as_str() {
+        "json" => {
+            let json = serde_json::to_string_pretty(&ai_result)?;
+            println!("{}", json);
+        }
+        "text" => {
+            print_explanations_text(&ai_result, file.as_ref(), symbol.as_ref(), learning);
+        }
+        "markdown" | _ => {
+            print_explanations_markdown(&ai_result, file.as_ref(), symbol.as_ref(), learning);
+        }
+    }
+
+    Ok(())
+}
+
+fn security_command(
+    path: PathBuf,
+    format: String,
+    min_severity: String,
+    output: Option<PathBuf>,
+    summary_only: bool,
+    compliance: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("{}", "🔍 Scanning for security vulnerabilities...".bright_red().bold());
+
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(ProgressStyle::default_spinner()
+        .template("{spinner:.green} {msg}")
+        .unwrap());
+    pb.set_message("Analyzing code...");
+
+    // Analyze the codebase
+    let mut analyzer = CodebaseAnalyzer::new();
+    let result = analyzer.analyze_directory(&path)?;
+
+    pb.set_message("Scanning for vulnerabilities...");
+
+    // Parse severity level
+    let min_sev = match min_severity.to_lowercase().as_str() {
+        "critical" => rust_tree_sitter::SecuritySeverity::Critical,
+        "high" => rust_tree_sitter::SecuritySeverity::High,
+        "medium" => rust_tree_sitter::SecuritySeverity::Medium,
+        "low" => rust_tree_sitter::SecuritySeverity::Low,
+        "info" => rust_tree_sitter::SecuritySeverity::Info,
+        _ => rust_tree_sitter::SecuritySeverity::Low,
+    };
+
+    // Configure security scanner
+    let security_config = rust_tree_sitter::SecurityConfig {
+        min_severity: min_sev,
+        ..Default::default()
+    };
+
+    let security_scanner = rust_tree_sitter::SecurityScanner::with_config(security_config);
+    let security_result = security_scanner.scan(&result);
+
+    pb.finish_with_message(format!("Scan complete! Found {} vulnerabilities", security_result.total_vulnerabilities));
+
+    match format.as_str() {
+        "json" => {
+            let json = serde_json::to_string_pretty(&security_result)?;
+            if let Some(output_path) = output {
+                fs::write(&output_path, &json)?;
+                println!("{}", format!("Security report saved to {}", output_path.display()).green());
+            } else {
+                println!("{}", json);
+            }
+        }
+        "markdown" => {
+            print_security_markdown(&security_result, summary_only, compliance);
+            if let Some(output_path) = output {
+                // Save markdown report
+                println!("\n{}", format!("Detailed report would be saved to {}", output_path.display()).green());
+            }
+        }
+        "table" | _ => {
+            print_security_table(&security_result, summary_only, compliance);
+            if let Some(output_path) = output {
+                let json = serde_json::to_string_pretty(&security_result)?;
+                fs::write(&output_path, json)?;
+                println!("\n{}", format!("Detailed JSON report saved to {}", output_path.display()).green());
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn refactor_command(
+    path: PathBuf,
+    category: Option<String>,
+    format: String,
+    quick_wins: bool,
+    major_only: bool,
+    min_priority: String,
+    output: Option<PathBuf>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("{}", "🎯 Analyzing refactoring opportunities...".bright_yellow().bold());
+
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(ProgressStyle::default_spinner()
+        .template("{spinner:.green} {msg}")
+        .unwrap());
+    pb.set_message("Analyzing code...");
+
+    // Analyze the codebase
+    let mut analyzer = CodebaseAnalyzer::new();
+    let result = analyzer.analyze_directory(&path)?;
+
+    pb.set_message("Generating refactoring suggestions...");
+
+    // Configure refactoring analyzer
+    let refactoring_config = rust_tree_sitter::RefactoringConfig::default();
+    let refactoring_analyzer = rust_tree_sitter::RefactoringAnalyzer::with_config(refactoring_config);
+    let refactoring_result = refactoring_analyzer.analyze(&result);
+
+    pb.finish_with_message(format!("Analysis complete! Found {} opportunities", refactoring_result.total_opportunities));
+
+    match format.as_str() {
+        "json" => {
+            let json = serde_json::to_string_pretty(&refactoring_result)?;
+            if let Some(output_path) = output {
+                fs::write(&output_path, &json)?;
+                println!("{}", format!("Refactoring report saved to {}", output_path.display()).green());
+            } else {
+                println!("{}", json);
+            }
+        }
+        "markdown" => {
+            print_refactoring_markdown(&refactoring_result, category.as_ref(), quick_wins, major_only, &min_priority);
+            if let Some(output_path) = output {
+                println!("\n{}", format!("Detailed report would be saved to {}", output_path.display()).green());
+            }
+        }
+        "table" | _ => {
+            print_refactoring_table(&refactoring_result, category.as_ref(), quick_wins, major_only, &min_priority);
+            if let Some(output_path) = output {
+                let json = serde_json::to_string_pretty(&refactoring_result)?;
+                fs::write(&output_path, json)?;
+                println!("\n{}", format!("Detailed JSON report saved to {}", output_path.display()).green());
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// Display functions for new commands
+
+fn print_explanations_markdown(
+    ai_result: &rust_tree_sitter::AIAnalysisResult,
+    _file: Option<&PathBuf>,
+    _symbol: Option<&String>,
+    learning: bool,
+) {
+    println!("# 🧠 AI Code Explanations\n");
+
+    println!("## 📋 Codebase Overview\n");
+    println!("**Purpose**: {}\n", ai_result.codebase_explanation.purpose);
+    println!("**Architecture**: {}\n", ai_result.codebase_explanation.architecture);
+    println!("**Complexity**: {:?}\n", ai_result.codebase_explanation.complexity_level);
+    println!("**Target Audience**: {}\n", ai_result.codebase_explanation.target_audience);
+
+    if !ai_result.codebase_explanation.technologies.is_empty() {
+        println!("**Technologies Used**:");
+        for tech in &ai_result.codebase_explanation.technologies {
+            println!("- {}", tech);
+        }
+        println!();
+    }
+
+    if !ai_result.codebase_explanation.entry_points.is_empty() {
+        println!("**Entry Points**:");
+        for entry in &ai_result.codebase_explanation.entry_points {
+            println!("- `{}`", entry);
+        }
+        println!();
+    }
+
+    println!("## 🏗️ Architectural Insights\n");
+    println!("**Style**: {}\n", ai_result.architectural_insights.style);
+    println!("**Modularity**: {}\n", ai_result.architectural_insights.modularity);
+    println!("**Maintainability**: {}\n", ai_result.architectural_insights.maintainability);
+
+    if !ai_result.architectural_insights.design_patterns.is_empty() {
+        println!("**Design Patterns**:");
+        for pattern in &ai_result.architectural_insights.design_patterns {
+            println!("- {}", pattern);
+        }
+        println!();
+    }
+
+    if !ai_result.file_explanations.is_empty() {
+        println!("## 📁 File Explanations\n");
+        for file_exp in ai_result.file_explanations.iter().take(5) {
+            println!("### {}\n", file_exp.file_path);
+            println!("**Purpose**: {}\n", file_exp.purpose);
+            println!("**Role**: {}\n", file_exp.role);
+
+            if !file_exp.responsibilities.is_empty() {
+                println!("**Responsibilities**:");
+                for resp in &file_exp.responsibilities {
+                    println!("- {}", resp);
+                }
+                println!();
+            }
+        }
+
+        if ai_result.file_explanations.len() > 5 {
+            println!("*... and {} more files*\n", ai_result.file_explanations.len() - 5);
+        }
+    }
+
+    if learning && !ai_result.learning_recommendations.is_empty() {
+        println!("## 📚 Learning Recommendations\n");
+        for (i, rec) in ai_result.learning_recommendations.iter().enumerate() {
+            println!("{}. {}", i + 1, rec);
+        }
+        println!();
+    }
+
+    println!("---");
+    println!("*Generated by AI-powered code analysis*");
+}
+
+fn print_explanations_text(
+    ai_result: &rust_tree_sitter::AIAnalysisResult,
+    _file: Option<&PathBuf>,
+    _symbol: Option<&String>,
+    learning: bool,
+) {
+    println!("{}", "🧠 AI CODE EXPLANATIONS".bright_cyan().bold());
+    println!("{}", "=".repeat(50).bright_cyan());
+
+    println!("\n{}", "📋 OVERVIEW".bright_yellow().bold());
+    println!("Purpose: {}", ai_result.codebase_explanation.purpose.bright_white());
+    println!("Architecture: {}", ai_result.codebase_explanation.architecture.bright_white());
+    println!("Complexity: {:?}", ai_result.codebase_explanation.complexity_level.to_string().bright_yellow());
+
+    println!("\n{}", "🏗️ ARCHITECTURE".bright_yellow().bold());
+    println!("Style: {}", ai_result.architectural_insights.style.bright_white());
+    println!("Maintainability: {}", ai_result.architectural_insights.maintainability.bright_white());
+
+    if learning && !ai_result.learning_recommendations.is_empty() {
+        println!("\n{}", "📚 LEARNING RECOMMENDATIONS".bright_yellow().bold());
+        for (i, rec) in ai_result.learning_recommendations.iter().enumerate() {
+            println!("{}. {}",
+                format!("{}", i + 1).bright_cyan(),
+                rec.bright_white()
+            );
+        }
+    }
+}
+
+fn print_security_table(
+    security_result: &rust_tree_sitter::SecurityScanResult,
+    summary_only: bool,
+    compliance: bool,
+) {
+    println!("\n{}", "🔍 SECURITY SCAN RESULTS".bright_red().bold());
+    println!("{}", "=".repeat(60).bright_red());
+
+    println!("\n{}", "📊 SUMMARY".bright_yellow().bold());
+    println!("Security Score: {}/100",
+        if security_result.security_score >= 80 {
+            security_result.security_score.to_string().bright_green()
+        } else if security_result.security_score >= 60 {
+            security_result.security_score.to_string().bright_yellow()
+        } else {
+            security_result.security_score.to_string().bright_red()
+        }
+    );
+    println!("Total Vulnerabilities: {}",
+        if security_result.total_vulnerabilities == 0 {
+            security_result.total_vulnerabilities.to_string().bright_green()
+        } else {
+            security_result.total_vulnerabilities.to_string().bright_red()
+        }
+    );
+
+    // Show vulnerabilities by severity
+    println!("\n{}", "🚨 BY SEVERITY".bright_yellow().bold());
+    for (severity, count) in &security_result.vulnerabilities_by_severity {
+        let color = match severity {
+            rust_tree_sitter::SecuritySeverity::Critical => "bright_red",
+            rust_tree_sitter::SecuritySeverity::High => "red",
+            rust_tree_sitter::SecuritySeverity::Medium => "yellow",
+            rust_tree_sitter::SecuritySeverity::Low => "blue",
+            rust_tree_sitter::SecuritySeverity::Info => "bright_black",
+        };
+        println!("  {:?}: {}", severity, count.to_string().color(color));
+    }
+
+    if !summary_only && !security_result.vulnerabilities.is_empty() {
+        println!("\n{}", "🔍 VULNERABILITIES FOUND".bright_yellow().bold());
+        for (i, vuln) in security_result.vulnerabilities.iter().enumerate() {
+            println!("\n{} {}",
+                format!("{}.", i + 1).bright_cyan(),
+                vuln.title.bright_white().bold()
+            );
+            println!("   Severity: {:?} | Confidence: {:?}",
+                vuln.severity.to_string().bright_red(),
+                vuln.confidence.to_string().bright_yellow()
+            );
+            println!("   Location: {}:{}",
+                vuln.location.file.bright_blue(),
+                vuln.location.line.to_string().bright_green()
+            );
+            println!("   Description: {}", vuln.description.bright_white());
+            println!("   Fix: {}", vuln.fix_suggestion.bright_green());
+        }
+    }
+
+    if compliance {
+        println!("\n{}", "📋 COMPLIANCE STATUS".bright_yellow().bold());
+        println!("OWASP Top 10: {:?}", security_result.compliance.owasp_top10);
+        println!("Overall Score: {}/100", security_result.compliance.overall_score);
+    }
+
+    if !security_result.recommendations.is_empty() {
+        println!("\n{}", "💡 RECOMMENDATIONS".bright_yellow().bold());
+        for (i, rec) in security_result.recommendations.iter().enumerate() {
+            println!("{}. {} (Priority: {:?})",
+                format!("{}", i + 1).bright_cyan(),
+                rec.recommendation.bright_white(),
+                rec.priority.to_string().bright_yellow()
+            );
+        }
+    }
+}
+
+fn print_security_markdown(
+    security_result: &rust_tree_sitter::SecurityScanResult,
+    summary_only: bool,
+    compliance: bool,
+) {
+    println!("# 🔍 Security Scan Report\n");
+
+    println!("## 📊 Executive Summary\n");
+    println!("- **Security Score**: {}/100", security_result.security_score);
+    println!("- **Total Vulnerabilities**: {}", security_result.total_vulnerabilities);
+
+    println!("\n### Vulnerabilities by Severity\n");
+    for (severity, count) in &security_result.vulnerabilities_by_severity {
+        println!("- **{:?}**: {}", severity, count);
+    }
+
+    if !summary_only && !security_result.vulnerabilities.is_empty() {
+        println!("\n## 🚨 Detailed Findings\n");
+        for (i, vuln) in security_result.vulnerabilities.iter().enumerate() {
+            println!("### {}. {}\n", i + 1, vuln.title);
+            println!("- **Severity**: {:?}", vuln.severity);
+            println!("- **Location**: `{}:{}`", vuln.location.file, vuln.location.line);
+            println!("- **Description**: {}", vuln.description);
+            println!("- **Fix**: {}\n", vuln.fix_suggestion);
+        }
+    }
+
+    if compliance {
+        println!("## 📋 Compliance Status\n");
+        println!("- **OWASP Top 10**: {:?}", security_result.compliance.owasp_top10);
+        println!("- **Overall Score**: {}/100\n", security_result.compliance.overall_score);
+    }
+}
+
+fn print_refactoring_table(
+    refactoring_result: &rust_tree_sitter::RefactoringResult,
+    _category: Option<&String>,
+    quick_wins: bool,
+    major_only: bool,
+    _min_priority: &str,
+) {
+    println!("\n{}", "🎯 REFACTORING ANALYSIS".bright_yellow().bold());
+    println!("{}", "=".repeat(60).bright_yellow());
+
+    println!("\n{}", "📊 SUMMARY".bright_cyan().bold());
+    println!("Quality Score: {}/100",
+        if refactoring_result.quality_score >= 80 {
+            refactoring_result.quality_score.to_string().bright_green()
+        } else if refactoring_result.quality_score >= 60 {
+            refactoring_result.quality_score.to_string().bright_yellow()
+        } else {
+            refactoring_result.quality_score.to_string().bright_red()
+        }
+    );
+    println!("Total Opportunities: {}", refactoring_result.total_opportunities.to_string().bright_blue());
+    println!("Quick Wins: {}", refactoring_result.quick_wins.len().to_string().bright_green());
+    println!("Major Improvements: {}", refactoring_result.major_improvements.len().to_string().bright_cyan());
+
+    let suggestions_to_show = if quick_wins {
+        &refactoring_result.quick_wins
+    } else if major_only {
+        &refactoring_result.major_improvements
+    } else {
+        &refactoring_result.suggestions
+    };
+
+    if !suggestions_to_show.is_empty() {
+        println!("\n{}", "🔧 REFACTORING SUGGESTIONS".bright_cyan().bold());
+        for (i, suggestion) in suggestions_to_show.iter().enumerate() {
+            println!("\n{} {}",
+                format!("{}.", i + 1).bright_cyan(),
+                suggestion.title.bright_white().bold()
+            );
+            println!("   Category: {:?} | Priority: {:?} | Effort: {:?}",
+                suggestion.category.to_string().bright_blue(),
+                suggestion.priority.to_string().bright_yellow(),
+                suggestion.effort.to_string().bright_green()
+            );
+            println!("   Location: {}", suggestion.location.file.bright_blue());
+            println!("   Description: {}", suggestion.description.bright_white());
+
+            if !suggestion.benefits.is_empty() {
+                println!("   Benefits: {}", suggestion.benefits.join(", ").bright_green());
+            }
+        }
+    }
+
+    println!("\n{}", "📈 IMPACT SUMMARY".bright_cyan().bold());
+    println!("Maintainability: +{}%", refactoring_result.impact_summary.maintainability_improvement.to_string().bright_green());
+    println!("Readability: +{}%", refactoring_result.impact_summary.readability_improvement.to_string().bright_green());
+    println!("Technical Debt: -{}%", refactoring_result.impact_summary.technical_debt_reduction.to_string().bright_green());
+    println!("Time Saved: {:.1} hours", refactoring_result.impact_summary.time_saved_hours.to_string().bright_blue());
+}
+
+fn print_refactoring_markdown(
+    refactoring_result: &rust_tree_sitter::RefactoringResult,
+    _category: Option<&String>,
+    quick_wins: bool,
+    major_only: bool,
+    _min_priority: &str,
+) {
+    println!("# 🎯 Refactoring Analysis Report\n");
+
+    println!("## 📊 Summary\n");
+    println!("- **Quality Score**: {}/100", refactoring_result.quality_score);
+    println!("- **Total Opportunities**: {}", refactoring_result.total_opportunities);
+    println!("- **Quick Wins**: {}", refactoring_result.quick_wins.len());
+    println!("- **Major Improvements**: {}", refactoring_result.major_improvements.len());
+
+    let suggestions_to_show = if quick_wins {
+        &refactoring_result.quick_wins
+    } else if major_only {
+        &refactoring_result.major_improvements
+    } else {
+        &refactoring_result.suggestions
+    };
+
+    if !suggestions_to_show.is_empty() {
+        println!("\n## 🔧 Refactoring Suggestions\n");
+        for (i, suggestion) in suggestions_to_show.iter().enumerate() {
+            println!("### {}. {}\n", i + 1, suggestion.title);
+            println!("- **Category**: {:?}", suggestion.category);
+            println!("- **Priority**: {:?}", suggestion.priority);
+            println!("- **Effort**: {:?}", suggestion.effort);
+            println!("- **Location**: `{}`", suggestion.location.file);
+            println!("- **Description**: {}\n", suggestion.description);
+
+            if !suggestion.benefits.is_empty() {
+                println!("**Benefits**:");
+                for benefit in &suggestion.benefits {
+                    println!("- {}", benefit);
+                }
+                println!();
+            }
+        }
+    }
+
+    println!("## 📈 Expected Impact\n");
+    println!("- **Maintainability**: +{}%", refactoring_result.impact_summary.maintainability_improvement);
+    println!("- **Readability**: +{}%", refactoring_result.impact_summary.readability_improvement);
+    println!("- **Technical Debt Reduction**: -{}%", refactoring_result.impact_summary.technical_debt_reduction);
+    println!("- **Estimated Time Saved**: {:.1} hours", refactoring_result.impact_summary.time_saved_hours);
 }
 
 fn format_size(bytes: usize) -> String {
