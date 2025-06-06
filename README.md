@@ -13,6 +13,9 @@ A comprehensive Rust library for processing source code using tree-sitter. This 
 - 🎯 **Language-specific** utilities (starting with Rust)
 - 🤖 **AI-friendly** codebase analysis for code agents
 - 🚀 **Smart CLI interface** with interactive exploration and insights
+- 🧠 **AI-powered explanations** with natural language code descriptions
+- 🔍 **Security vulnerability scanning** with compliance assessment
+- 🎯 **Smart refactoring suggestions** with automated improvements
 
 ## Quick Start
 
@@ -169,6 +172,15 @@ cargo build --release --bin tree-sitter-cli
 # Generate visual code maps
 ./target/release/tree-sitter-cli map ./src --map-type overview --show-sizes --show-symbols
 
+# AI-powered code explanations
+./target/release/tree-sitter-cli explain ./src --detailed --learning
+
+# Security vulnerability scanning
+./target/release/tree-sitter-cli security ./src --compliance
+
+# Smart refactoring suggestions
+./target/release/tree-sitter-cli refactor ./src --quick-wins
+
 # Find symbols with wildcards
 ./target/release/tree-sitter-cli find ./src --name "test*" --public-only
 
@@ -185,6 +197,9 @@ cargo build --release --bin tree-sitter-cli
 - **🔎 Symbol Search**: Find functions, classes, and symbols with wildcard support
 - **🎮 Interactive Mode**: Explore codebases interactively with real-time commands
 - **🗺️ Visual Code Maps**: Generate beautiful project structure visualizations
+- **🧠 AI Explanations**: Natural language code descriptions and insights
+- **🔍 Security Scanning**: Vulnerability detection with compliance assessment
+- **🎯 Smart Refactoring**: Automated improvement suggestions with impact analysis
 - **📋 Multiple Formats**: Output in JSON, Markdown, Table, Text, ASCII, Unicode, and Mermaid
 
 See [CLI_README.md](CLI_README.md) for complete CLI documentation.
