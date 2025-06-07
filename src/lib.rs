@@ -30,23 +30,29 @@
 
 pub mod ai_analysis;
 pub mod analyzer;
+pub mod dependency_analysis;
 pub mod error;
 pub mod languages;
 pub mod parser;
+pub mod performance_analysis;
 pub mod query;
 pub mod refactoring;
 pub mod security;
+pub mod test_coverage;
 pub mod tree;
 
 // Re-export commonly used types
 pub use ai_analysis::{AIAnalyzer, AIAnalysisResult, AIConfig, CodebaseExplanation, FileExplanation, SymbolExplanation};
 pub use analyzer::{CodebaseAnalyzer, AnalysisConfig, AnalysisResult, FileInfo, Symbol};
+pub use dependency_analysis::{DependencyAnalyzer, DependencyAnalysisResult, DependencyConfig, Dependency, PackageManager};
 pub use error::{Error, Result};
 pub use languages::Language;
 pub use parser::{Parser, ParseOptions, create_edit};
+pub use performance_analysis::{PerformanceAnalyzer, PerformanceAnalysisResult, PerformanceConfig, PerformanceHotspot};
 pub use query::{Query, QueryCapture, QueryMatch, QueryBuilder};
 pub use refactoring::{RefactoringAnalyzer, RefactoringResult, RefactoringSuggestion, RefactoringConfig};
 pub use security::{SecurityScanner, SecurityScanResult, SecurityVulnerability, SecurityConfig, SecuritySeverity};
+pub use test_coverage::{TestCoverageAnalyzer, TestCoverageResult, TestCoverageConfig, MissingTest};
 pub use tree::{Node, SyntaxTree, TreeCursor, TreeEdit};
 
 // Re-export tree-sitter types that users might need
@@ -99,9 +105,11 @@ pub fn detect_language_from_extension(extension: &str) -> Option<Language> {
     match extension.to_lowercase().as_str() {
         "rs" => Some(Language::Rust),
         "js" | "mjs" | "jsx" => Some(Language::JavaScript),
+        "ts" | "tsx" | "mts" | "cts" => Some(Language::TypeScript),
         "py" | "pyi" => Some(Language::Python),
         "c" | "h" => Some(Language::C),
         "cpp" | "cxx" | "cc" | "hpp" | "hxx" => Some(Language::Cpp),
+        "go" => Some(Language::Go),
         _ => None,
     }
 }
@@ -122,7 +130,9 @@ mod tests {
     fn test_language_detection() {
         assert_eq!(detect_language_from_extension("rs"), Some(Language::Rust));
         assert_eq!(detect_language_from_extension("js"), Some(Language::JavaScript));
+        assert_eq!(detect_language_from_extension("ts"), Some(Language::TypeScript));
         assert_eq!(detect_language_from_extension("py"), Some(Language::Python));
+        assert_eq!(detect_language_from_extension("go"), Some(Language::Go));
         assert_eq!(detect_language_from_extension("unknown"), None);
     }
 

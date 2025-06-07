@@ -333,7 +333,7 @@ impl CodebaseAnalyzer {
             Language::Rust => {
                 self.extract_rust_symbols(tree, content, &mut symbols)?;
             }
-            Language::JavaScript => {
+            Language::JavaScript | Language::TypeScript => {
                 self.extract_javascript_symbols(tree, content, &mut symbols)?;
             }
             Language::Python => {
@@ -341,6 +341,9 @@ impl CodebaseAnalyzer {
             }
             Language::C | Language::Cpp => {
                 self.extract_c_symbols(tree, content, &mut symbols)?;
+            }
+            Language::Go => {
+                self.extract_go_symbols(tree, content, &mut symbols)?;
             }
         }
 
@@ -524,6 +527,82 @@ impl CodebaseAnalyzer {
                                 end_column: func.end_position().column,
                                 documentation: None,
                                 is_public: true, // C functions are generally public
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Extract Go symbols
+    fn extract_go_symbols(&self, tree: &SyntaxTree, _content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
+        // Extract function declarations
+        let functions = tree.find_nodes_by_kind("function_declaration");
+        for func in functions {
+            if let Some(name_node) = func.child_by_field_name("name") {
+                if let Ok(name) = name_node.text() {
+                    symbols.push(Symbol {
+                        name: name.to_string(),
+                        kind: "function".to_string(),
+                        start_line: func.start_position().row + 1,
+                        start_column: func.start_position().column,
+                        end_line: func.end_position().row + 1,
+                        end_column: func.end_position().column,
+                        documentation: None,
+                        is_public: name.chars().next().unwrap_or('a').is_uppercase(),
+                    });
+                }
+            }
+        }
+
+        // Extract method declarations
+        let methods = tree.find_nodes_by_kind("method_declaration");
+        for method in methods {
+            if let Some(name_node) = method.child_by_field_name("name") {
+                if let Ok(name) = name_node.text() {
+                    symbols.push(Symbol {
+                        name: name.to_string(),
+                        kind: "method".to_string(),
+                        start_line: method.start_position().row + 1,
+                        start_column: method.start_position().column,
+                        end_line: method.end_position().row + 1,
+                        end_column: method.end_position().column,
+                        documentation: None,
+                        is_public: name.chars().next().unwrap_or('a').is_uppercase(),
+                    });
+                }
+            }
+        }
+
+        // Extract type declarations (structs, interfaces)
+        let types = tree.find_nodes_by_kind("type_declaration");
+        for type_decl in types {
+            // Look for type_spec children
+            for child in type_decl.children() {
+                if child.kind() == "type_spec" {
+                    if let Some(name_node) = child.child_by_field_name("name") {
+                        if let Ok(name) = name_node.text() {
+                            let kind = if let Some(type_node) = child.child_by_field_name("type") {
+                                match type_node.kind() {
+                                    "struct_type" => "struct",
+                                    "interface_type" => "interface",
+                                    _ => "type",
+                                }
+                            } else {
+                                "type"
+                            };
+                            symbols.push(Symbol {
+                                name: name.to_string(),
+                                kind: kind.to_string(),
+                                start_line: type_decl.start_position().row + 1,
+                                start_column: type_decl.start_position().column,
+                                end_line: type_decl.end_position().row + 1,
+                                end_column: type_decl.end_position().column,
+                                documentation: None,
+                                is_public: name.chars().next().unwrap_or('a').is_uppercase(),
                             });
                         }
                     }

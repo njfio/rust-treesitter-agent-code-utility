@@ -11,12 +11,16 @@ pub enum Language {
     Rust,
     /// JavaScript programming language
     JavaScript,
+    /// TypeScript programming language
+    TypeScript,
     /// Python programming language
     Python,
     /// C programming language
     C,
     /// C++ programming language
     Cpp,
+    /// Go programming language
+    Go,
 }
 
 impl Language {
@@ -25,9 +29,11 @@ impl Language {
         match self {
             Language::Rust => Ok(tree_sitter_rust::language()),
             Language::JavaScript => Ok(tree_sitter_javascript::language()),
+            Language::TypeScript => Ok(tree_sitter_typescript::language_typescript()),
             Language::Python => Ok(tree_sitter_python::language()),
             Language::C => Ok(tree_sitter_c::language()),
             Language::Cpp => Ok(tree_sitter_cpp::language()),
+            Language::Go => Ok(tree_sitter_go::language()),
         }
     }
 
@@ -36,9 +42,11 @@ impl Language {
         match self {
             Language::Rust => "Rust",
             Language::JavaScript => "JavaScript",
+            Language::TypeScript => "TypeScript",
             Language::Python => "Python",
             Language::C => "C",
             Language::Cpp => "C++",
+            Language::Go => "Go",
         }
     }
 
@@ -47,9 +55,11 @@ impl Language {
         match self {
             Language::Rust => &["rs"],
             Language::JavaScript => &["js", "mjs", "jsx"],
+            Language::TypeScript => &["ts", "tsx", "mts", "cts"],
             Language::Python => &["py", "pyi"],
             Language::C => &["c", "h"],
             Language::Cpp => &["cpp", "cxx", "cc", "hpp", "hxx"],
+            Language::Go => &["go"],
         }
     }
 
@@ -58,9 +68,11 @@ impl Language {
         match self {
             Language::Rust => "0.21.0",
             Language::JavaScript => "0.21.0",
+            Language::TypeScript => "0.21.0",
             Language::Python => "0.21.0",
             Language::C => "0.21.0",
             Language::Cpp => "0.22.0",
+            Language::Go => "0.21.0",
         }
     }
 
@@ -69,9 +81,11 @@ impl Language {
         match self {
             Language::Rust => true,
             Language::JavaScript => true,
+            Language::TypeScript => true,
             Language::Python => true,
             Language::C => true,
             Language::Cpp => true,
+            Language::Go => true,
         }
     }
 
@@ -80,9 +94,11 @@ impl Language {
         match self {
             Language::Rust => Some(tree_sitter_rust::HIGHLIGHTS_QUERY),
             Language::JavaScript => Some(tree_sitter_javascript::HIGHLIGHT_QUERY),
+            Language::TypeScript => Some(tree_sitter_typescript::HIGHLIGHTS_QUERY),
             Language::Python => Some(tree_sitter_python::HIGHLIGHTS_QUERY),
             Language::C => Some(tree_sitter_c::HIGHLIGHT_QUERY),
             Language::Cpp => Some(tree_sitter_cpp::HIGHLIGHT_QUERY),
+            Language::Go => Some(tree_sitter_go::HIGHLIGHTS_QUERY),
         }
     }
 
@@ -91,9 +107,11 @@ impl Language {
         match self {
             Language::Rust => tree_sitter_rust::INJECTIONS_QUERY.into(),
             Language::JavaScript => tree_sitter_javascript::INJECTIONS_QUERY.into(),
+            Language::TypeScript => None, // TypeScript injections query not available
             Language::Python => None, // Python doesn't have injections query
             Language::C => None,      // C doesn't have injections query
             Language::Cpp => None,    // C++ doesn't have injections query
+            Language::Go => None,     // Go doesn't have injections query
         }
     }
 
@@ -102,9 +120,11 @@ impl Language {
         match self {
             Language::Rust => None, // Rust doesn't have locals query in this version
             Language::JavaScript => tree_sitter_javascript::LOCALS_QUERY.into(),
+            Language::TypeScript => None, // TypeScript locals query not available
             Language::Python => None, // Python doesn't have locals query
             Language::C => None,      // C doesn't have locals query
             Language::Cpp => None,    // C++ doesn't have locals query
+            Language::Go => None,     // Go doesn't have locals query
         }
     }
 
@@ -113,9 +133,11 @@ impl Language {
         vec![
             Language::Rust,
             Language::JavaScript,
+            Language::TypeScript,
             Language::Python,
             Language::C,
             Language::Cpp,
+            Language::Go,
         ]
     }
 }
@@ -133,9 +155,11 @@ impl std::str::FromStr for Language {
         match s.to_lowercase().as_str() {
             "rust" | "rs" => Ok(Language::Rust),
             "javascript" | "js" => Ok(Language::JavaScript),
+            "typescript" | "ts" => Ok(Language::TypeScript),
             "python" | "py" => Ok(Language::Python),
             "c" => Ok(Language::C),
             "cpp" | "c++" | "cxx" => Ok(Language::Cpp),
+            "go" => Ok(Language::Go),
             _ => Err(Error::invalid_input(format!("Unknown language: {}", s))),
         }
     }

@@ -100,11 +100,13 @@ impl Query {
         let pattern = match language {
             Language::Rust => "(function_item name: (identifier) @name) @function",
             Language::JavaScript => "(function_declaration name: (identifier) @name) @function",
+            Language::TypeScript => "(function_declaration name: (identifier) @name) @function",
             Language::Python => "(function_definition name: (identifier) @name) @function",
             Language::C => "(function_definition declarator: (function_declarator declarator: (identifier) @name)) @function",
             Language::Cpp => "(function_definition declarator: (function_declarator declarator: (identifier) @name)) @function",
+            Language::Go => "(function_declaration name: (identifier) @name) @function",
         };
-        
+
         Self::new(language, pattern)
     }
 
@@ -113,11 +115,13 @@ impl Query {
         let pattern = match language {
             Language::Rust => "(struct_item name: (type_identifier) @name) @struct",
             Language::JavaScript => "(class_declaration name: (identifier) @name) @class",
+            Language::TypeScript => "(class_declaration name: (type_identifier) @name) @class",
             Language::Python => "(class_definition name: (identifier) @name) @class",
             Language::C => "(struct_specifier name: (type_identifier) @name) @struct",
             Language::Cpp => "[(class_specifier name: (type_identifier) @name) (struct_specifier name: (type_identifier) @name)] @class",
+            Language::Go => "(type_declaration (type_spec name: (type_identifier) @name)) @struct",
         };
-        
+
         Self::new(language, pattern)
     }
 }
