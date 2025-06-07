@@ -43,6 +43,10 @@ pub enum Error {
     /// Internal library error
     #[error("Internal error: {0}")]
     Internal(String),
+
+    /// Anyhow error (for external libraries)
+    #[error("External error: {0}")]
+    Anyhow(#[from] anyhow::Error),
 }
 
 impl Error {

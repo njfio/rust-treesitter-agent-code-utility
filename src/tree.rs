@@ -329,7 +329,6 @@ pub type TreeEdit = InputEdit;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::{Parser, Language};
 
     #[test]

@@ -2219,8 +2219,8 @@ fn security_command(
         ..Default::default()
     };
 
-    let security_scanner = rust_tree_sitter::SecurityScanner::with_config(security_config);
-    let security_result = security_scanner.scan(&result);
+    let security_scanner = rust_tree_sitter::SecurityScanner::with_config(security_config)?;
+    let security_result = security_scanner.analyze(&result)?;
 
     pb.finish_with_message(format!("Scan complete! Found {} vulnerabilities", security_result.total_vulnerabilities));
 
@@ -2535,22 +2535,22 @@ fn print_security_table(
                 vuln.title.bright_white().bold()
             );
             println!("   Severity: {:?} | Confidence: {:?}",
-                vuln.severity.to_string().bright_red(),
-                vuln.confidence.to_string().bright_yellow()
+                format!("{:?}", vuln.severity).bright_red(),
+                format!("{:?}", vuln.confidence).bright_yellow()
             );
             println!("   Location: {}:{}",
-                vuln.location.file.bright_blue(),
-                vuln.location.line.to_string().bright_green()
+                vuln.location.file.display().to_string().bright_blue(),
+                vuln.location.start_line.to_string().bright_green()
             );
             println!("   Description: {}", vuln.description.bright_white());
-            println!("   Fix: {}", vuln.fix_suggestion.bright_green());
+            println!("   Fix: {}", vuln.remediation.summary.bright_green());
         }
     }
 
     if compliance {
         println!("\n{}", "📋 COMPLIANCE STATUS".bright_yellow().bold());
-        println!("OWASP Top 10: {:?}", security_result.compliance.owasp_top10);
-        println!("Overall Score: {}/100", security_result.compliance.overall_score);
+        println!("OWASP Score: {}/100", security_result.compliance.owasp_score);
+        println!("Overall Status: {:?}", security_result.compliance.overall_status);
     }
 
     if !security_result.recommendations.is_empty() {
@@ -2559,7 +2559,7 @@ fn print_security_table(
             println!("{}. {} (Priority: {:?})",
                 format!("{}", i + 1).bright_cyan(),
                 rec.recommendation.bright_white(),
-                rec.priority.to_string().bright_yellow()
+                format!("{:?}", rec.priority).bright_yellow()
             );
         }
     }
@@ -2586,16 +2586,16 @@ fn print_security_markdown(
         for (i, vuln) in security_result.vulnerabilities.iter().enumerate() {
             println!("### {}. {}\n", i + 1, vuln.title);
             println!("- **Severity**: {:?}", vuln.severity);
-            println!("- **Location**: `{}:{}`", vuln.location.file, vuln.location.line);
+            println!("- **Location**: `{}:{}`", vuln.location.file.display(), vuln.location.start_line);
             println!("- **Description**: {}", vuln.description);
-            println!("- **Fix**: {}\n", vuln.fix_suggestion);
+            println!("- **Fix**: {}\n", vuln.remediation.summary);
         }
     }
 
     if compliance {
         println!("## 📋 Compliance Status\n");
-        println!("- **OWASP Top 10**: {:?}", security_result.compliance.owasp_top10);
-        println!("- **Overall Score**: {}/100\n", security_result.compliance.overall_score);
+        println!("- **OWASP Score**: {}/100", security_result.compliance.owasp_score);
+        println!("- **Overall Status**: {:?}\n", security_result.compliance.overall_status);
     }
 }
 

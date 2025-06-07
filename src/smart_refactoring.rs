@@ -7,7 +7,7 @@
 //! - Modernization recommendations (language version upgrades, deprecated API usage)
 //! - Architectural improvements with refactoring roadmaps
 
-use crate::{AnalysisResult, FileInfo, Symbol, Result};
+use crate::{AnalysisResult, Result};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
