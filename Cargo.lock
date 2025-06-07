@@ -522,6 +522,7 @@ dependencies = [
  "clap",
  "colored",
  "indicatif",
+ "regex",
  "serde",
  "serde_json",
  "tabled",

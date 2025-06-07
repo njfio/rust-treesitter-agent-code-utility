@@ -28,6 +28,8 @@
 //! # }
 //! ```
 
+pub mod advanced_ai_analysis;
+pub mod advanced_security;
 pub mod ai_analysis;
 pub mod analyzer;
 pub mod dependency_analysis;
@@ -38,10 +40,13 @@ pub mod performance_analysis;
 pub mod query;
 pub mod refactoring;
 pub mod security;
+pub mod smart_refactoring;
 pub mod test_coverage;
 pub mod tree;
 
 // Re-export commonly used types
+pub use advanced_ai_analysis::{AdvancedAIAnalyzer, AdvancedAIResult, AdvancedAIConfig, SemanticAnalysis, ArchitecturePattern};
+pub use advanced_security::{AdvancedSecurityAnalyzer, AdvancedSecurityResult, AdvancedSecurityConfig, SecurityVulnerability as AdvancedSecurityVulnerability};
 pub use ai_analysis::{AIAnalyzer, AIAnalysisResult, AIConfig, CodebaseExplanation, FileExplanation, SymbolExplanation};
 pub use analyzer::{CodebaseAnalyzer, AnalysisConfig, AnalysisResult, FileInfo, Symbol};
 pub use dependency_analysis::{DependencyAnalyzer, DependencyAnalysisResult, DependencyConfig, Dependency, PackageManager};
@@ -52,6 +57,7 @@ pub use performance_analysis::{PerformanceAnalyzer, PerformanceAnalysisResult, P
 pub use query::{Query, QueryCapture, QueryMatch, QueryBuilder};
 pub use refactoring::{RefactoringAnalyzer, RefactoringResult, RefactoringSuggestion, RefactoringConfig};
 pub use security::{SecurityScanner, SecurityScanResult, SecurityVulnerability, SecurityConfig, SecuritySeverity};
+pub use smart_refactoring::{SmartRefactoringEngine, SmartRefactoringResult, SmartRefactoringConfig, CodeSmellFix};
 pub use test_coverage::{TestCoverageAnalyzer, TestCoverageResult, TestCoverageConfig, MissingTest};
 pub use tree::{Node, SyntaxTree, TreeCursor, TreeEdit};
 
