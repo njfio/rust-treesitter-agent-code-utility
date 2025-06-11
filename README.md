@@ -7,9 +7,12 @@ A **comprehensive, enterprise-grade Rust library** for processing source code us
 ## Table of Contents
 
 - [🚀 Key Features](#-key-features)
+- [Implemented Features](#implemented-features)
+- [Planned and Experimental Features](#planned-and-experimental-features)
 - [🌟 Phase 1 Core Enhancements](#-phase-1-core-enhancements)
 - [✅ Phase B: Security Analysis Implementation](#-phase-b-security-analysis-implementation---completed)
 - [🚀 Phase 2 Advanced Intelligence](#-phase-2-advanced-intelligence---planned)
+- [Feature Status](#feature-status)
 - [Quick Start](#quick-start)
 - [🧠 AI-Powered Features](#-ai-powered-features)
   - [Enhanced Security Analysis](#enhanced-security-analysis-phase-b---implemented)
@@ -52,6 +55,10 @@ A **comprehensive, enterprise-grade Rust library** for processing source code us
 - **Comprehensive Metrics**: Code quality, security, performance, and testing insights
 - **Actionable Recommendations**: Prioritized suggestions with implementation guidance
 - **Context-Aware Analysis**: Understanding of project structure and dependencies
+
+## Implemented Features
+
+The following features are **production-ready** and actively maintained:
 
 ## 🌟 Phase 1 Core Enhancements
 
@@ -135,6 +142,10 @@ A **comprehensive, enterprise-grade Rust library** for processing source code us
 - **✅ API Key Management**: Secure handling of API keys and authentication tokens
 - **✅ Flexible Configuration**: TOML, JSON, and environment variable support
 - **✅ Validation & Defaults**: Comprehensive config validation with sensible defaults
+
+## Planned and Experimental Features
+
+The following features are still under active development and may change:
 
 ## 🚀 Phase 2 Advanced Intelligence - PLANNED
 
@@ -235,6 +246,10 @@ A **comprehensive, enterprise-grade Rust library** for processing source code us
 - **Security Score**: Vulnerability assessment with compliance tracking
 - **Intelligence Score**: Semantic understanding and code quality assessment
 - **Confidence Levels**: AI-powered confidence scoring for all recommendations
+
+## Feature Status
+
+The library's modules have varying levels of stability. Production-ready modules include `parser`, `tree`, `languages`, `analyzer`, and `dependency_analysis`. Modules such as `advanced_ai_analysis`, `smart_refactoring`, and `advanced_security` are **under active development**. See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for the complete progress list.
 
 ## Quick Start
 
