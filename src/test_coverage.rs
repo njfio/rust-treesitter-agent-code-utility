@@ -78,6 +78,8 @@ pub struct TestFileAnalysis {
     pub test_types: Vec<TestType>,
     /// Test quality score
     pub quality_score: u8,
+    /// Length of each test function in lines
+    pub test_function_lengths: Vec<usize>,
     /// Test patterns used
     pub patterns: Vec<TestPattern>,
     /// Issues found in tests
@@ -520,12 +522,17 @@ impl TestCoverageAnalyzer {
         let patterns = self.identify_test_patterns(&test_functions);
         let issues = self.identify_test_issues(file, &test_functions)?;
         let quality_score = self.calculate_test_file_quality_score(file, &test_functions, &issues);
+        let test_function_lengths: Vec<usize> = test_functions
+            .iter()
+            .map(|f| f.end_line.saturating_sub(f.start_line) + 1)
+            .collect();
 
         Ok(TestFileAnalysis {
             file: file.path.clone(),
             test_count,
             test_types,
             quality_score,
+            test_function_lengths,
             patterns,
             issues,
         })
@@ -823,8 +830,16 @@ impl TestCoverageAnalyzer {
             return Ok(TestQualityMetrics::default());
         }
 
-        // Calculate average test length (simplified)
-        let average_test_length = 15.0; // Placeholder
+        // Calculate average test length using parsed test function lengths
+        let total_length: usize = test_file_analyses
+            .iter()
+            .flat_map(|a| a.test_function_lengths.iter())
+            .sum();
+        let average_test_length = if total_tests > 0 {
+            total_length as f64 / total_tests as f64
+        } else {
+            0.0
+        };
 
         // Calculate naming quality
         let well_named_tests = test_file_analyses.iter()
@@ -873,8 +888,24 @@ impl TestCoverageAnalyzer {
 
     /// Analyze test organization
     fn analyze_test_organization(&self, test_file_analyses: &[TestFileAnalysis]) -> Result<TestOrganizationAnalysis> {
-        // Calculate structure quality (simplified)
-        let structure_quality = 75; // Placeholder
+        // Evaluate how many test files are placed in dedicated test directories
+        let organized_files = test_file_analyses
+            .iter()
+            .filter(|a| {
+                a.file
+                    .components()
+                    .any(|c| {
+                        let name = c.as_os_str().to_str().unwrap_or("").to_lowercase();
+                        name == "tests" || name == "test"
+                    })
+            })
+            .count();
+        let structure_quality = if test_file_analyses.is_empty() {
+            0
+        } else {
+            ((organized_files as f64 / test_file_analyses.len() as f64) * 100.0)
+                .round() as u8
+        };
 
         // Calculate naming consistency
         let consistent_naming = test_file_analyses.iter()
