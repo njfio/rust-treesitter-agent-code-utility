@@ -718,7 +718,7 @@ impl SmartRefactoringEngine {
             // Detect long methods
             for symbol in &file.symbols {
                 if symbol.kind == "function" {
-                    let estimated_length = 50; // Simplified - would need actual line counting
+                    let estimated_length = symbol.end_line.saturating_sub(symbol.start_line) + 1;
 
                     if estimated_length > 30 {
                         fixes.push(CodeSmellFix {
