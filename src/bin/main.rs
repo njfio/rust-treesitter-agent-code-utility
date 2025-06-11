@@ -2219,8 +2219,18 @@ fn security_command(
         ..Default::default()
     };
 
-    let security_scanner = rust_tree_sitter::SecurityScanner::with_config(security_config)?;
-    let security_result = security_scanner.analyze(&result)?;
+    let security_scanner = rust_tree_sitter::SecurityScanner::with_config(security_config.clone())?;
+
+    // Change working directory so security scanner can read files
+    let current_dir = std::env::current_dir()?;
+    std::env::set_current_dir(&path)?;
+    let mut security_result = security_scanner.analyze(&result)?;
+    std::env::set_current_dir(current_dir)?;
+
+    // Filter results by severity for output
+    security_result.vulnerabilities.retain(|v| {
+        severity_meets_threshold(&security_config.min_severity, &v.severity)
+    });
 
     pb.finish_with_message(format!("Scan complete! Found {} vulnerabilities", security_result.total_vulnerabilities));
 
@@ -2237,8 +2247,9 @@ fn security_command(
         "markdown" => {
             print_security_markdown(&security_result, summary_only, compliance);
             if let Some(output_path) = output {
-                // Save markdown report
-                println!("\n{}", format!("Detailed report would be saved to {}", output_path.display()).green());
+                let md = render_security_markdown(&security_result, summary_only, compliance);
+                fs::write(&output_path, md)?;
+                println!("\n{}", format!("Markdown report saved to {}", output_path.display()).green());
             }
         }
         "table" | _ => {
@@ -2597,6 +2608,59 @@ fn print_security_markdown(
         println!("- **OWASP Score**: {}/100", security_result.compliance.owasp_score);
         println!("- **Overall Status**: {:?}\n", security_result.compliance.overall_status);
     }
+}
+
+fn render_security_markdown(
+    security_result: &rust_tree_sitter::SecurityScanResult,
+    summary_only: bool,
+    compliance: bool,
+) -> String {
+    use std::fmt::Write;
+    let mut out = String::new();
+    writeln!(out, "# 🔍 Security Scan Report\n").unwrap();
+
+    writeln!(out, "## 📊 Executive Summary\n").unwrap();
+    writeln!(out, "- **Security Score**: {}/100", security_result.security_score).unwrap();
+    writeln!(out, "- **Total Vulnerabilities**: {}", security_result.total_vulnerabilities).unwrap();
+
+    writeln!(out, "\n### Vulnerabilities by Severity\n").unwrap();
+    for (severity, count) in &security_result.vulnerabilities_by_severity {
+        writeln!(out, "- **{:?}**: {}", severity, count).unwrap();
+    }
+
+    if !summary_only && !security_result.vulnerabilities.is_empty() {
+        writeln!(out, "\n## 🚨 Detailed Findings\n").unwrap();
+        for (i, vuln) in security_result.vulnerabilities.iter().enumerate() {
+            writeln!(out, "### {}. {}\n", i + 1, vuln.title).unwrap();
+            writeln!(out, "- **Severity**: {:?}", vuln.severity).unwrap();
+            writeln!(out, "- **Location**: `{}:{}`", vuln.location.file.display(), vuln.location.start_line).unwrap();
+            writeln!(out, "- **Description**: {}", vuln.description).unwrap();
+            writeln!(out, "- **Fix**: {}\n", vuln.remediation.summary).unwrap();
+        }
+    }
+
+    if compliance {
+        writeln!(out, "## 📋 Compliance Status\n").unwrap();
+        writeln!(out, "- **OWASP Score**: {}/100", security_result.compliance.owasp_score).unwrap();
+        writeln!(out, "- **Overall Status**: {:?}\n", security_result.compliance.overall_status).unwrap();
+    }
+
+    out
+}
+
+fn severity_meets_threshold(
+    threshold: &rust_tree_sitter::SecuritySeverity,
+    actual: &rust_tree_sitter::SecuritySeverity,
+) -> bool {
+    use rust_tree_sitter::SecuritySeverity::*;
+    let rank = |s: &rust_tree_sitter::SecuritySeverity| match s {
+        Critical => 5,
+        High => 4,
+        Medium => 3,
+        Low => 2,
+        Info => 1,
+    };
+    rank(actual) >= rank(threshold)
 }
 
 fn print_refactoring_table(
