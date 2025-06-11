@@ -1308,26 +1308,85 @@ impl AdvancedAIAnalyzer {
     }
 
     /// Evaluate design quality
-    fn evaluate_design_quality(&self, _analysis_result: &AnalysisResult) -> DesignQuality {
+    fn evaluate_design_quality(&self, analysis_result: &AnalysisResult) -> DesignQuality {
+        let mut total_functions = 0;
+        let mut public_functions = 0;
+        let mut total_function_lines = 0usize;
+        let mut total_symbols = 0usize;
+        let mut documented_symbols = 0usize;
+        let mut name_counts: HashMap<String, usize> = HashMap::new();
+
+        for file in &analysis_result.files {
+            for symbol in &file.symbols {
+                total_symbols += 1;
+                if symbol.documentation.is_some() {
+                    documented_symbols += 1;
+                }
+                *name_counts.entry(symbol.name.clone()).or_insert(0) += 1;
+
+                if symbol.kind == "function" {
+                    total_functions += 1;
+                    if symbol.is_public {
+                        public_functions += 1;
+                    }
+                    total_function_lines +=
+                        symbol.end_line.saturating_sub(symbol.start_line) + 1;
+                }
+            }
+        }
+
+        let pub_ratio = if total_functions > 0 {
+            public_functions as f64 / total_functions as f64
+        } else {
+            0.0
+        };
+        let duplicate_symbols = name_counts.values().filter(|&&c| c > 1).count();
+        let duplicate_ratio = if total_symbols > 0 {
+            duplicate_symbols as f64 / total_symbols as f64
+        } else {
+            0.0
+        };
+        let avg_function_length = if total_functions > 0 {
+            total_function_lines as f64 / total_functions as f64
+        } else {
+            0.0
+        };
+        let avg_functions_per_file = if !analysis_result.files.is_empty() {
+            total_functions as f64 / analysis_result.files.len() as f64
+        } else {
+            0.0
+        };
+        let doc_ratio = if total_symbols > 0 {
+            documented_symbols as f64 / total_symbols as f64
+        } else {
+            0.0
+        };
+
         DesignQuality {
-            solid_adherence: 7.0,
-            dry_adherence: 6.5,
-            kiss_adherence: 8.0,
-            separation_of_concerns: 7.5,
-            abstraction_quality: 7.0,
+            solid_adherence: ((1.0 - pub_ratio).max(0.0) * 10.0).min(10.0),
+            dry_adherence: ((1.0 - duplicate_ratio).max(0.0) * 10.0).min(10.0),
+            kiss_adherence: ((1.0 - (avg_function_length / 50.0).min(1.0)) * 10.0)
+                .max(0.0)
+                .min(10.0),
+            separation_of_concerns:
+                ((1.0 - (avg_functions_per_file / 20.0).min(1.0)) * 10.0)
+                    .max(0.0)
+                    .min(10.0),
+            abstraction_quality: (doc_ratio * 10.0).max(0.0).min(10.0),
         }
     }
 
     /// Analyze technical debt
     fn analyze_technical_debt(&self, analysis_result: &AnalysisResult) -> TechnicalDebtAnalysis {
         let mut debt_items = Vec::new();
-        let mut debt_by_category = HashMap::new();
+        let mut documentation_debt = 0.0;
 
         // Identify TODO comments as debt
         for file in &analysis_result.files {
             if let Ok(content) = std::fs::read_to_string(&file.path) {
-                for (line_num, line) in content.lines().enumerate() {
+                for line in content.lines() {
                     if line.to_lowercase().contains("todo") || line.to_lowercase().contains("fixme") {
+                        documentation_debt += 0.5;
                         debt_items.push(DebtItem {
                             description: format!("Unresolved TODO/FIXME comment: {}", line.trim()),
                             category: "Documentation".to_string(),
@@ -1341,12 +1400,40 @@ impl AdvancedAIAnalyzer {
             }
         }
 
-        debt_by_category.insert("Documentation".to_string(), debt_items.len() as f64 * 0.5);
-        debt_by_category.insert("Code Quality".to_string(), 5.0);
-        debt_by_category.insert("Architecture".to_string(), 3.0);
+        // Evaluate debt from code smells
+        let smells = self.detect_code_smells(analysis_result);
+        let mut code_quality_debt = 0.0;
+        let mut architecture_debt = 0.0;
+        for smell in &smells {
+            code_quality_debt += 1.0;
+            if smell.name.contains("Large") {
+                architecture_debt += 1.0;
+            }
 
-        let total_debt = debt_by_category.values().sum();
-        let estimated_effort = debt_items.iter().map(|d| d.effort).sum();
+            let severity = match smell.severity {
+                SmellSeverity::Critical => DebtSeverity::Critical,
+                SmellSeverity::High => DebtSeverity::High,
+                SmellSeverity::Medium => DebtSeverity::Medium,
+                SmellSeverity::Low => DebtSeverity::Low,
+            };
+
+            debt_items.push(DebtItem {
+                description: smell.description.clone(),
+                category: "Code Quality".to_string(),
+                severity,
+                location: smell.location.clone(),
+                effort: 1.0,
+                impact: 2.0,
+            });
+        }
+
+        let mut debt_by_category = HashMap::new();
+        debt_by_category.insert("Documentation".to_string(), documentation_debt);
+        debt_by_category.insert("Code Quality".to_string(), code_quality_debt);
+        debt_by_category.insert("Architecture".to_string(), architecture_debt);
+
+        let total_debt: f64 = debt_by_category.values().sum();
+        let estimated_effort: f64 = debt_items.iter().map(|d| d.effort).sum();
 
         TechnicalDebtAnalysis {
             total_debt,
