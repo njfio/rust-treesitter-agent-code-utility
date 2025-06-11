@@ -718,9 +718,15 @@ impl PerformanceAnalyzer {
 
     /// Analyze performance metrics for a single file
     fn analyze_file_performance(&self, file: &FileInfo) -> Result<FilePerformanceMetrics> {
-        let function_count = file.symbols.iter().filter(|s| s.kind == "function").count();
+        let function_lengths: Vec<usize> = file
+            .symbols
+            .iter()
+            .filter(|s| s.kind == "function")
+            .map(|s| s.end_line.saturating_sub(s.start_line) + 1)
+            .collect();
+        let function_count = function_lengths.len();
         let average_function_length = if function_count > 0 {
-            file.lines as f64 / function_count as f64
+            function_lengths.iter().sum::<usize>() as f64 / function_count as f64
         } else {
             0.0
         };
@@ -765,7 +771,7 @@ impl PerformanceAnalyzer {
         // Check for long functions
         for symbol in &file.symbols {
             if symbol.kind == "function" {
-                let function_length = 50; // Simplified - would need actual line counting
+                let function_length = symbol.end_line.saturating_sub(symbol.start_line) + 1;
 
                 if function_length > self.config.max_function_length {
                     hotspots.push(PerformanceHotspot {
