@@ -8,7 +8,7 @@
 //! - Security best practices validation
 //! - CWE (Common Weakness Enumeration) mapping
 
-use crate::{AnalysisResult, FileInfo, Result};
+use crate::{AnalysisResult, FileInfo, Result, Error};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use regex::Regex;
@@ -1387,13 +1387,75 @@ impl AdvancedSecurityAnalyzer {
 impl SecurityPatterns {
     /// Create new security patterns with compiled regex
     fn new() -> Result<Self> {
-        let secrets = HashMap::new();
-        let injections = HashMap::new();
-        let insecure_functions = HashMap::new();
-        let credentials = HashMap::new();
+        // Common secret detection patterns
+        let secret_patterns = vec![
+            ("aws_access_key_id", r"AKIA[0-9A-Z]{16}"),
+            (
+                "aws_secret_key",
+                r"(?i)aws(.{0,20})?(secret|access)[_-]?key[^a-zA-Z0-9]*[A-Za-z0-9/+=]{40}",
+            ),
+            ("github_token", r"ghp_[A-Za-z0-9]{36}"),
+            (
+                "generic_api_key",
+                r#"(?i)(api[_-]?key|apikey)[\s:=\"']{0,6}[A-Za-z0-9_-]{16,}"#,
+            ),
+        ];
 
-        // Note: Simplified implementation without complex regex patterns
-        // In a production system, you would compile proper regex patterns here
+        let mut secrets = HashMap::new();
+        for (name, pattern) in secret_patterns {
+            let regex = Regex::new(pattern)
+                .map_err(|e| Error::invalid_input(format!("invalid regex for {}: {}", name, e)))?;
+            secrets.insert(name.to_string(), regex);
+        }
+
+        // Injection detection patterns
+        let injection_patterns = vec![
+            ("xss_script", r"(?i)<script[^>]*>"),
+            ("sql_union", r"(?i)\bUNION\b\s+SELECT"),
+            ("sql_comment", r"/\*.*\*/"),
+        ];
+        let mut injections = HashMap::new();
+        for (name, pattern) in injection_patterns {
+            let regex = Regex::new(pattern)
+                .map_err(|e| Error::invalid_input(format!("invalid regex for {}: {}", name, e)))?;
+            injections.insert(name.to_string(), regex);
+        }
+
+        // Patterns for insecure function usage
+        let insecure_fn_patterns = vec![
+            ("strcpy", r"\bstrcpy\s*\("),
+            ("sprintf", r"\bsprintf\s*\("),
+            ("gets", r"\bgets\s*\("),
+            ("system", r"\bsystem\s*\("),
+        ];
+        let mut insecure_functions = HashMap::new();
+        for (name, pattern) in insecure_fn_patterns {
+            let regex = Regex::new(pattern)
+                .map_err(|e| Error::invalid_input(format!("invalid regex for {}: {}", name, e)))?;
+            insecure_functions.insert(name.to_string(), regex);
+        }
+
+        // Hardcoded credential patterns
+        let credential_patterns = vec![
+            (
+                "password_assignment",
+                r#"(?i)password\s*[:=]\s*[\"'][^\"']{4,}[\"']"#,
+            ),
+            (
+                "username_assignment",
+                r#"(?i)user(name)?\s*[:=]\s*[\"']?[^\"']+[\"']?"#,
+            ),
+            (
+                "basic_auth_header",
+                r"(?i)Authorization:\s*Basic\s+[A-Za-z0-9+/=]{8,}",
+            ),
+        ];
+        let mut credentials = HashMap::new();
+        for (name, pattern) in credential_patterns {
+            let regex = Regex::new(pattern)
+                .map_err(|e| Error::invalid_input(format!("invalid regex for {}: {}", name, e)))?;
+            credentials.insert(name.to_string(), regex);
+        }
 
         Ok(Self {
             secrets,
