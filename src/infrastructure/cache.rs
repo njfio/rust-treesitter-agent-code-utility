@@ -4,6 +4,7 @@
 //! and computed data with TTL support and automatic cleanup.
 
 use dashmap::DashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use serde::{Serialize, Deserialize};
 use std::time::Duration;
 use std::path::PathBuf;
@@ -20,6 +21,8 @@ pub struct Cache {
     disk_cache_dir: Option<PathBuf>,
     default_ttl: Duration,
     max_memory_entries: usize,
+    total_hits: Arc<AtomicU64>,
+    total_misses: Arc<AtomicU64>,
 }
 
 /// Cache entry with TTL and metadata
@@ -65,6 +68,8 @@ impl Cache {
             disk_cache_dir: config.disk_cache_dir.clone(),
             default_ttl: config.default_ttl,
             max_memory_entries: config.memory_max_entries,
+            total_hits: Arc::new(AtomicU64::new(0)),
+            total_misses: Arc::new(AtomicU64::new(0)),
         };
 
         // Create disk cache directory if needed
@@ -116,6 +121,9 @@ impl Cache {
             self.set_disk_entry(key, &entry).await?;
         }
 
+        // Record a cache miss since the value had to be inserted
+        self.total_misses.fetch_add(1, Ordering::Relaxed);
+
         debug!("Cached entry: {} (size: {} bytes, TTL: {:?})", key, data.len(), ttl);
         Ok(())
     }
@@ -124,20 +132,23 @@ impl Cache {
     pub async fn get<T: for<'de> Deserialize<'de>>(&self, key: &str) -> Result<Option<T>> {
         // Try memory cache first
         if let Some(entry) = self.get_memory_entry(key).await? {
+            self.total_hits.fetch_add(1, Ordering::Relaxed);
             let value: T = serde_json::from_slice(&entry.data)?;
             return Ok(Some(value));
         }
 
         // Try disk cache
         if let Some(entry) = self.get_disk_entry(key).await? {
+            self.total_hits.fetch_add(1, Ordering::Relaxed);
             let value: T = serde_json::from_slice(&entry.data)?;
-            
+
             // Promote to memory cache
             self.set_memory_entry(key, entry).await?;
-            
+
             return Ok(Some(value));
         }
 
+        self.total_misses.fetch_add(1, Ordering::Relaxed);
         Ok(None)
     }
 
@@ -179,10 +190,13 @@ impl Cache {
 
         let (disk_entries, disk_size_bytes) = self.get_disk_stats().await?;
 
-        // Calculate hit rate (simplified - would need proper tracking in production)
-        let total_hits = 100u64; // Placeholder
-        let total_misses = 20u64; // Placeholder
-        let hit_rate = total_hits as f64 / (total_hits + total_misses) as f64;
+        let total_hits = self.total_hits.load(Ordering::Relaxed);
+        let total_misses = self.total_misses.load(Ordering::Relaxed);
+        let hit_rate = if total_hits + total_misses > 0 {
+            total_hits as f64 / (total_hits + total_misses) as f64
+        } else {
+            0.0
+        };
 
         Ok(CacheStats {
             memory_entries,
