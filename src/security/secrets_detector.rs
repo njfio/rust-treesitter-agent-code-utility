@@ -14,6 +14,7 @@ use anyhow::Result;
 pub struct SecretsDetector {
     patterns: Vec<CompiledPattern>,
     entropy_threshold: f64,
+    min_confidence: f64,
     context_analyzer: ContextAnalyzer,
     false_positive_filter: FalsePositiveFilter,
 }
@@ -87,14 +88,25 @@ pub struct FalsePositiveFilter {
 impl SecretsDetector {
     /// Create a new secrets detector
     pub async fn new(database: &DatabaseManager) -> Result<Self> {
+        Self::with_thresholds(database, None, None).await
+    }
+
+    /// Create a new secrets detector with custom thresholds
+    pub async fn with_thresholds(
+        database: &DatabaseManager,
+        entropy_threshold: Option<f64>,
+        min_confidence: Option<f64>,
+    ) -> Result<Self> {
         let patterns = Self::load_patterns_from_database(database).await?;
-        let entropy_threshold = 4.5; // Default entropy threshold
+        let entropy_threshold = entropy_threshold.unwrap_or(4.5);
+        let min_confidence = min_confidence.unwrap_or(0.1);
         let context_analyzer = ContextAnalyzer::new()?;
         let false_positive_filter = FalsePositiveFilter::new()?;
 
         Ok(Self {
             patterns,
             entropy_threshold,
+            min_confidence,
             context_analyzer,
             false_positive_filter,
         })
@@ -133,11 +145,10 @@ impl SecretsDetector {
                     let matched_text = mat.as_str();
                     let entropy = self.calculate_shannon_entropy(matched_text);
 
-                    // Check entropy threshold if specified
-                    if let Some(threshold) = pattern.entropy_threshold {
-                        if entropy < threshold {
-                            continue;
-                        }
+                    // Check entropy threshold if specified, otherwise use global threshold
+                    let threshold = pattern.entropy_threshold.unwrap_or(self.entropy_threshold);
+                    if entropy < threshold {
+                        continue;
                     }
 
                     let secret_type = self.classify_secret_type(&pattern.name);
@@ -261,7 +272,7 @@ impl SecretsDetector {
     }
 
     /// Filter false positives
-    fn filter_false_positives(&self, mut findings: Vec<SecretFinding>, content: &str, file_path: &str) -> Result<Vec<SecretFinding>> {
+    fn filter_false_positives(&self, mut findings: Vec<SecretFinding>, _content: &str, file_path: &str) -> Result<Vec<SecretFinding>> {
         for finding in &mut findings {
             // Check if it's in a test file
             if self.context_analyzer.is_test_file(file_path) {
@@ -287,7 +298,7 @@ impl SecretsDetector {
         }
 
         // Remove findings with very low confidence
-        findings.retain(|f| f.confidence > 0.1);
+        findings.retain(|f| f.confidence > self.min_confidence);
 
         Ok(findings)
     }
