@@ -108,7 +108,7 @@ impl DatabaseManager {
                 description TEXT NOT NULL,
                 published_date TEXT NOT NULL,
                 last_modified TEXT NOT NULL,
-                references TEXT NOT NULL,
+                "references" TEXT NOT NULL,
                 cwe_ids TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -211,8 +211,8 @@ impl DatabaseManager {
     pub async fn store_vulnerability(&self, vuln: &VulnerabilityRecord) -> Result<(), sqlx::Error> {
         sqlx::query(r#"
             INSERT OR REPLACE INTO vulnerabilities 
-            (id, cve_id, package_name, affected_versions, severity, cvss_score, description, 
-             published_date, last_modified, references, cwe_ids, created_at, updated_at)
+            (id, cve_id, package_name, affected_versions, severity, cvss_score, description,
+             published_date, last_modified, "references", cwe_ids, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#)
         .bind(&vuln.id)
