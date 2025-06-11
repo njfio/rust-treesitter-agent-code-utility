@@ -185,6 +185,19 @@ impl EnhancedSecurityScanner {
         })
     }
 
+    /// Create a new scanner with custom configuration
+    pub async fn with_config(
+        database: DatabaseManager,
+        cache: Cache,
+        rate_limiter: MultiServiceRateLimiter,
+        app_config: &AppConfig,
+        config: EnhancedSecurityConfig,
+    ) -> Result<Self> {
+        let mut scanner = Self::new(database, cache, rate_limiter, app_config).await?;
+        scanner.config = config;
+        Ok(scanner)
+    }
+
     /// Perform comprehensive security analysis
     pub async fn analyze(&self, analysis_result: &AnalysisResult) -> Result<EnhancedSecurityResult> {
         info!("Starting enhanced security analysis");
@@ -195,7 +208,8 @@ impl EnhancedSecurityScanner {
 
         // Dependency vulnerability scanning
         if self.config.enable_dependency_scanning && self.config.enable_vulnerability_db {
-            vulnerability_findings.extend(self.scan_dependencies(analysis_result).await?);
+            vulnerability_findings
+                .extend(self.scan_dependencies(analysis_result).await?);
         }
 
         // File-by-file analysis
@@ -205,11 +219,12 @@ impl EnhancedSecurityScanner {
                 continue;
             }
 
-            // Read file content
-            let content = match std::fs::read_to_string(&file.path) {
+            // Read file content using absolute path
+            let full_path = analysis_result.root_path.join(&file.path);
+            let content = match std::fs::read_to_string(&full_path) {
                 Ok(content) => content,
                 Err(e) => {
-                    warn!("Failed to read file {}: {}", file.path.display(), e);
+                    warn!("Failed to read file {}: {}", full_path.display(), e);
                     continue;
                 }
             };
@@ -285,16 +300,20 @@ impl EnhancedSecurityScanner {
 
             match file_name {
                 "Cargo.toml" => {
-                    vulnerabilities.extend(self.scan_cargo_dependencies(&file.path).await?);
+                    let path = analysis_result.root_path.join(&file.path);
+                    vulnerabilities.extend(self.scan_cargo_dependencies(&path).await?);
                 }
                 "package.json" => {
-                    vulnerabilities.extend(self.scan_npm_dependencies(&file.path).await?);
+                    let path = analysis_result.root_path.join(&file.path);
+                    vulnerabilities.extend(self.scan_npm_dependencies(&path).await?);
                 }
                 "requirements.txt" | "Pipfile" => {
-                    vulnerabilities.extend(self.scan_python_dependencies(&file.path).await?);
+                    let path = analysis_result.root_path.join(&file.path);
+                    vulnerabilities.extend(self.scan_python_dependencies(&path).await?);
                 }
                 "go.mod" => {
-                    vulnerabilities.extend(self.scan_go_dependencies(&file.path).await?);
+                    let path = analysis_result.root_path.join(&file.path);
+                    vulnerabilities.extend(self.scan_go_dependencies(&path).await?);
                 }
                 _ => {}
             }
