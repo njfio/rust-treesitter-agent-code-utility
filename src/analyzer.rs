@@ -351,14 +351,16 @@ impl CodebaseAnalyzer {
     }
 
     /// Extract Rust symbols
-    fn extract_rust_symbols(&self, tree: &SyntaxTree, _content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
+    fn extract_rust_symbols(&self, tree: &SyntaxTree, content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
         // Extract functions
         let functions = tree.find_nodes_by_kind("function_item");
         for func in functions {
             if let Some(name_node) = func.child_by_field_name("name") {
                 if let Ok(name) = name_node.text() {
                     let is_public = func.children().iter().any(|child| child.kind() == "visibility_modifier");
-                    
+
+                    let docs = self.extract_rust_doc_comments(content, func.start_position().row);
+
                     symbols.push(Symbol {
                         name: name.to_string(),
                         kind: "function".to_string(),
@@ -366,7 +368,7 @@ impl CodebaseAnalyzer {
                         end_line: func.end_position().row + 1,
                         start_column: func.start_position().column,
                         end_column: func.end_position().column,
-                        documentation: None, // TODO: Extract doc comments
+                        documentation: docs,
                         is_public,
                     });
                 }
@@ -611,6 +613,36 @@ impl CodebaseAnalyzer {
         }
 
         Ok(())
+    }
+
+    /// Extract doc comments preceding a Rust item start line
+    fn extract_rust_doc_comments(&self, content: &str, start_row: usize) -> Option<String> {
+        let lines: Vec<&str> = content.lines().collect();
+        if start_row == 0 {
+            return None;
+        }
+
+        let mut docs = Vec::new();
+        let mut line_idx = start_row as isize - 1;
+        while line_idx >= 0 {
+            let line = lines[line_idx as usize].trim();
+            if line.starts_with("///") {
+                docs.push(line.trim_start_matches("///").trim());
+            } else if line.is_empty() {
+                line_idx -= 1;
+                continue;
+            } else {
+                break;
+            }
+            line_idx -= 1;
+        }
+
+        if docs.is_empty() {
+            None
+        } else {
+            docs.reverse();
+            Some(docs.join("\n"))
+        }
     }
 }
 

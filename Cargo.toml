@@ -26,6 +26,7 @@ indicatif = "0.17"
 serde_json = "1.0"
 tabled = "0.15"
 regex = "1.10"
+sha2 = "0.10"
 
 # Phase A: Infrastructure Dependencies
 tokio = { version = "1.0", features = ["full"] }

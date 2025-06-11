@@ -2,10 +2,11 @@
 // This file contains various code patterns to demonstrate the new capabilities
 
 use std::collections::HashMap;
+use sha2::{Digest, Sha256};
+use std::env;
 
 // Example with potential security vulnerabilities
 pub struct UserService {
-    // Hardcoded API key (security issue)
     api_key: String,
     users: HashMap<String, User>,
 }
@@ -19,9 +20,9 @@ pub struct User {
 
 impl UserService {
     pub fn new() -> Self {
+        let api_key = env::var("API_KEY").unwrap_or_default();
         Self {
-            // This is a security vulnerability - hardcoded secret
-            api_key: "sk_live_1234567890abcdef".to_string(),
+            api_key,
             users: HashMap::new(),
         }
     }
@@ -33,8 +34,7 @@ impl UserService {
         
         match user {
             Some(u) => {
-                // Weak password comparison (security issue)
-                if u.password == password {
+                if u.password == Self::hash_static(password) {
                     // TODO: Add proper logging
                     println!("User authenticated: {}", username);
                     Ok(u.clone())
@@ -43,18 +43,17 @@ impl UserService {
                 }
             }
             None => {
-                // Information disclosure (security issue)
-                Err(format!("User {} not found", username))
+                Err("User not found".to_string())
             }
         }
     }
     
     // Performance issue - inefficient string concatenation
     pub fn generate_user_report(&self) -> String {
-        let mut report = String::new();
+        let mut report = String::with_capacity(self.users.len() * 32);
         for (id, user) in &self.users {
-            // String concatenation in loop (performance issue)
-            report = report + &format!("User {}: {} ({})\n", id, user.name, user.email);
+            use std::fmt::Write;
+            let _ = writeln!(report, "User {}: {} ({})", id, user.name, user.email);
         }
         report
     }
@@ -82,8 +81,8 @@ impl UserService {
     // Potential SQL injection vulnerability
     pub fn find_user_by_query(&self, query: &str) -> Vec<User> {
         // This would be vulnerable if it was actual SQL
-        let sql = format!("SELECT * FROM users WHERE name = '{}'", query);
-        println!("Executing query: {}", sql);
+        let sql = "SELECT * FROM users WHERE name = ?";
+        println!("Executing query: {} with param {}", sql, query);
         
         // Simplified implementation
         self.users.values().cloned().collect()
@@ -91,8 +90,15 @@ impl UserService {
     
     // Weak cryptographic function usage
     pub fn hash_password(&self, password: &str) -> String {
-        // MD5 is cryptographically weak (security issue)
-        format!("md5({})", password)
+        let mut hasher = Sha256::new();
+        hasher.update(password.as_bytes());
+        format!("{:x}", hasher.finalize())
+    }
+
+    fn hash_static(password: &str) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(password.as_bytes());
+        format!("{:x}", hasher.finalize())
     }
 }
 

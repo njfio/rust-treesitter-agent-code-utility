@@ -74,17 +74,57 @@ impl Query {
     }
 
     /// Execute the query and get captures
-    pub fn captures<'a>(&'a self, _tree: &'a SyntaxTree) -> Result<Vec<QueryCapture<'a>>> {
-        // For now, return empty captures to get the library compiling
-        // TODO: Implement proper query captures
-        Ok(Vec::new())
+    pub fn captures<'a>(&'a self, tree: &'a SyntaxTree) -> Result<Vec<QueryCapture<'a>>> {
+        let mut cursor = tree_sitter::QueryCursor::new();
+        let root = tree.root_node();
+        let ts_captures = cursor.captures(&self.inner, root.inner(), tree.source().as_bytes());
+
+        let mut captures = Vec::new();
+        for (m, idx) in ts_captures {
+            let capture = m.captures[idx];
+            captures.push(QueryCapture {
+                node: Node::new(capture.node, tree.source()),
+                index: capture.index,
+                name: self
+                    .inner
+                    .capture_names()
+                    .get(capture.index as usize)
+                    .map(|s| s.to_string()),
+            });
+        }
+
+        Ok(captures)
     }
 
     /// Execute the query on a specific node
-    pub fn matches_in_node<'a>(&'a self, _node: Node<'a>, _source: &'a str) -> Result<Vec<QueryMatch<'a>>> {
-        // For now, return empty matches to get the library compiling
-        // TODO: Implement proper query matching on nodes
-        Ok(Vec::new())
+    pub fn matches_in_node<'a>(&'a self, node: Node<'a>, source: &'a str) -> Result<Vec<QueryMatch<'a>>> {
+        let mut cursor = tree_sitter::QueryCursor::new();
+        let ts_matches: Vec<_> = cursor
+            .matches(&self.inner, node.inner(), source.as_bytes())
+            .collect();
+
+        let mut matches_vec = Vec::new();
+        for ts_match in ts_matches {
+            let mut captures = Vec::new();
+            for capture in ts_match.captures {
+                captures.push(QueryCapture {
+                    node: Node::new(capture.node, source),
+                    index: capture.index,
+                    name: self
+                        .inner
+                        .capture_names()
+                        .get(capture.index as usize)
+                        .map(|s| s.to_string()),
+                });
+            }
+
+            matches_vec.push(QueryMatch {
+                pattern_index: ts_match.pattern_index,
+                captures,
+            });
+        }
+
+        Ok(matches_vec)
     }
 
     /// Create a query for syntax highlighting
