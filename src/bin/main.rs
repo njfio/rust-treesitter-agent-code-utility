@@ -8,7 +8,7 @@ use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
 use rust_tree_sitter::{
     CodebaseAnalyzer, AnalysisConfig, Language,
-    supported_languages
+    supported_languages, build_call_graph, build_module_graph
 };
 use serde::{Serialize, Deserialize};
 use serde_json;
@@ -156,11 +156,11 @@ enum Commands {
         #[arg(value_name = "PATH")]
         path: PathBuf,
 
-        /// Map type (tree, symbols, dependencies, overview)
+        /// Map type (tree, symbols, dependencies, call, modules, overview)
         #[arg(short, long, default_value = "overview")]
         map_type: String,
 
-        /// Output format (ascii, unicode, json, mermaid)
+        /// Output format (ascii, unicode, json, mermaid, dot)
         #[arg(short, long, default_value = "unicode")]
         format: String,
 
@@ -1378,6 +1378,8 @@ fn map_command(
         "tree" => generate_tree_map(&result, &format, max_depth, show_sizes, show_symbols, &language_filter, collapse_empty)?,
         "symbols" => generate_symbol_map(&result, &format, &language_filter)?,
         "dependencies" => generate_dependency_map(&result, &format)?,
+        "call" => generate_call_graph_map(&result, &format)?,
+        "modules" => generate_module_graph_map(&result, &format)?,
         "overview" | _ => generate_overview_map(&result, &format, max_depth, show_sizes, show_symbols, &language_filter, collapse_empty)?,
     }
 
@@ -2126,6 +2128,32 @@ fn generate_tree_map_json(
     });
 
     println!("{}", serde_json::to_string_pretty(&tree_map)?);
+    Ok(())
+}
+
+fn generate_call_graph_map(
+    result: &rust_tree_sitter::AnalysisResult,
+    format: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let graph = build_call_graph(result);
+    match format {
+        "mermaid" => println!("{}", graph.to_mermaid()),
+        "dot" | "graphviz" => println!("{}", graph.to_dot()),
+        _ => println!("{}", graph.to_dot()),
+    }
+    Ok(())
+}
+
+fn generate_module_graph_map(
+    result: &rust_tree_sitter::AnalysisResult,
+    format: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let graph = build_module_graph(result);
+    match format {
+        "mermaid" => println!("{}", graph.to_mermaid()),
+        "dot" | "graphviz" => println!("{}", graph.to_dot()),
+        _ => println!("{}", graph.to_dot()),
+    }
     Ok(())
 }
 
