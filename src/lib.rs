@@ -51,7 +51,7 @@ pub mod code_map;
 pub use advanced_ai_analysis::{AdvancedAIAnalyzer, AdvancedAIResult, AdvancedAIConfig, SemanticAnalysis, ArchitecturePattern};
 pub use advanced_security::{AdvancedSecurityAnalyzer, AdvancedSecurityResult, AdvancedSecurityConfig, SecurityVulnerability as AdvancedSecurityVulnerability};
 pub use ai_analysis::{AIAnalyzer, AIAnalysisResult, AIConfig, CodebaseExplanation, FileExplanation, SymbolExplanation};
-pub use analyzer::{CodebaseAnalyzer, AnalysisConfig, AnalysisResult, FileInfo, Symbol};
+pub use analyzer::{CodebaseAnalyzer, AnalysisConfig, AnalysisDepth, AnalysisResult, FileInfo, Symbol};
 pub use dependency_analysis::{DependencyAnalyzer, DependencyAnalysisResult, DependencyConfig, Dependency, PackageManager};
 pub use error::{Error, Result};
 pub use languages::Language;

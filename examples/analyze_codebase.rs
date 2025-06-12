@@ -3,7 +3,7 @@
 //! This example demonstrates how to analyze an entire codebase and extract
 //! structured information about the code for AI agents to understand.
 
-use rust_tree_sitter::{CodebaseAnalyzer, AnalysisConfig};
+use rust_tree_sitter::{CodebaseAnalyzer, AnalysisConfig, AnalysisDepth};
 use std::env;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -36,6 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         follow_symlinks: false,
         max_depth: Some(10),
         include_hidden: false,
+        depth: AnalysisDepth::Full,
     };
 
     let mut analyzer = CodebaseAnalyzer::with_config(config);

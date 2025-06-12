@@ -43,6 +43,7 @@ A **comprehensive, enterprise-grade Rust library** for processing source code us
 - **Performance Optimization**: Hotspot detection with algorithmic complexity analysis
 - **Test Coverage**: Intelligent coverage estimation and quality assessment
 - **AI-Powered Insights**: Natural language explanations and smart refactoring suggestions
+- **Configurable Analysis Depth**: Choose basic, deep, or full scanning
 
 ### ⚡ High-Performance Architecture
 - **Incremental Parsing**: Efficient updates for real-time analysis
@@ -358,13 +359,14 @@ let new_tree = parser.parse(&source, Some(&tree))?;
 ### Codebase Analysis for AI Agents
 
 ```rust
-use rust_tree_sitter::{CodebaseAnalyzer, AnalysisConfig};
+use rust_tree_sitter::{CodebaseAnalyzer, AnalysisConfig, AnalysisDepth};
 
 // Create analyzer with custom configuration
 let config = AnalysisConfig {
     max_file_size: Some(500 * 1024), // 500KB max
     exclude_dirs: vec!["target".to_string(), "node_modules".to_string()],
     max_depth: Some(10),
+    depth: AnalysisDepth::Full,
     ..Default::default()
 };
 
@@ -385,6 +387,12 @@ for file_info in &result.files {
     }
 }
 ```
+
+**Analysis Depth Levels**
+
+- `Basic` – collect only file metadata without parsing
+- `Deep` – parse files but skip symbol extraction
+- `Full` – full parsing and symbol extraction (default)
 
 ## 🔍 Enhanced Dependency Analysis
 
@@ -709,6 +717,9 @@ cargo build --release --bin tree-sitter-cli
 
 # Interactive exploration
 ./target/release/tree-sitter-cli interactive ./src
+
+# Control analysis depth
+./target/release/tree-sitter-cli analyze ./src --depth basic
 
 # Generate visual code maps
 ./target/release/tree-sitter-cli map ./src --map-type overview --show-sizes --show-symbols

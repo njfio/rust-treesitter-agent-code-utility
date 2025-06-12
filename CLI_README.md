@@ -12,6 +12,7 @@ A powerful command-line interface for intelligent codebase analysis using tree-s
 - **🎮 Interactive Mode**: Explore codebases interactively
 - **🗺️ Visual Code Maps**: Generate beautiful project structure visualizations
 - **📋 Multiple Output Formats**: JSON, Markdown, Table, Text, ASCII, Unicode, and Mermaid
+- **Configurable Analysis Depth**: Choose basic, deep, or full scanning
 
 ## 🚀 Quick Start
 
@@ -48,6 +49,14 @@ tree-sitter-cli map ./src --map-type overview --show-sizes --show-symbols
 tree-sitter-cli interactive ./src
 ```
 
+### Analysis Depth Levels
+
+Use `--depth` with commands like `analyze`, `map`, and `security` to control how much scanning is performed.
+
+- `basic` – gather file metadata only
+- `deep` – parse files but skip symbol extraction
+- `full` – full parsing with symbols (default)
+
 ## 📚 Commands
 
 ### `analyze` - Comprehensive Codebase Analysis
@@ -61,6 +70,7 @@ Options:
   -f, --format <FORMAT>        Output format: table, json, summary [default: table]
   --max-size <SIZE>           Maximum file size in KB [default: 1024]
   --max-depth <DEPTH>         Maximum directory depth [default: 20]
+  --depth <LEVEL>             Analysis depth: basic, deep, full [default: full]
   --include-hidden            Include hidden files and directories
   --exclude-dirs <DIRS>       Exclude directories (comma-separated)
   --include-exts <EXTS>       Include only specific extensions (comma-separated)
@@ -204,6 +214,7 @@ Options:
   --show-symbols              Show symbol counts
   --languages <LANGUAGES>     Include only specific languages
   --collapse-empty            Collapse empty directories
+  --depth <LEVEL>             Analysis depth: basic, deep, full [default: full]
 ```
 
 **Examples:**
