@@ -249,7 +249,7 @@ The following features are still under active development and may change:
 
 ## Feature Status
 
-The library's modules have varying levels of stability. Production-ready modules include `parser`, `tree`, `languages`, `analyzer`, and `dependency_analysis`. Modules such as `advanced_ai_analysis`, `smart_refactoring`, and `advanced_security` are **under active development**. See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for the complete progress list.
+The library's modules have varying levels of stability. Production-ready modules include `parser`, `tree`, `languages`, `analyzer`, and `dependency_analysis`. Modules such as `advanced_ai_analysis` and `smart_refactoring` are **under active development**. See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for the complete progress list.
 
 ## Quick Start
 
@@ -381,9 +381,23 @@ println!("Total symbols: {}", result.files.iter().map(|f| f.symbols.len()).sum::
 for file_info in &result.files {
     println!("📁 {} ({} symbols)", file_info.path.display(), file_info.symbols.len());
     for symbol in &file_info.symbols {
-        println!("  - {} {} at line {}", symbol.kind, symbol.name, symbol.start_line);
+println!("  - {} {} at line {}", symbol.kind, symbol.name, symbol.start_line);
     }
 }
+```
+
+**Limit analysis depth via CLI:**
+
+```bash
+tree-sitter-cli analyze ./src --max-depth 2 --format summary
+```
+
+_Expected output_
+
+```text
+📊 CODEBASE SUMMARY
+Files scanned: 4
+Languages: 1 (Rust)
 ```
 
 ## 🔍 Enhanced Dependency Analysis
@@ -713,10 +727,17 @@ cargo build --release --bin tree-sitter-cli
 # Generate visual code maps
 ./target/release/tree-sitter-cli map ./src --map-type overview --show-sizes --show-symbols
 
+# Example output (unicode format)
+src
+├─ lib.rs (1.2 KB)
+├─ parser.rs (3.4 KB)
+└─ languages/
+   └─ mod.rs (0.8 KB)
+
 # Advanced AI-powered code explanations (Phase 2)
 ./target/release/tree-sitter-cli explain ./src --semantic --patterns --learning
 
-# Enhanced security vulnerability scanning (Phase 2)
+# Enhanced security vulnerability scanning
 ./target/release/tree-sitter-cli security ./src --owasp-top10 --secrets --compliance
 
 # Smart refactoring engine (Phase 2)
@@ -733,6 +754,13 @@ cargo build --release --bin tree-sitter-cli
 
 # Find symbols with wildcards
 ./target/release/tree-sitter-cli find ./src --name "test*" --public-only
+
+# Example output
+```
+MATCHES
+test_utils.rs:5:pub fn test_helper()
+tests/mod.rs:10:pub fn test_main()
+```
 
 # Advanced pattern matching
 ./target/release/tree-sitter-cli query ./src -p "(function_item) @func" -l rust
