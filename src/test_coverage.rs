@@ -702,7 +702,7 @@ impl TestCoverageAnalyzer {
     /// Estimate coverage for a single file
     fn estimate_file_coverage(&self, file: &FileInfo, test_files: &[&FileInfo]) -> Result<FileCoverage> {
         let total_functions = file.symbols.iter()
-            .filter(|s| s.kind == "function" && s.is_public)
+            .filter(|s| s.kind == "function" && s.visibility == "public")
             .count();
 
         // Simple heuristic: look for test functions that might test this file
@@ -763,7 +763,7 @@ impl TestCoverageAnalyzer {
         for file in &analysis_result.files {
             if !self.is_test_file(file) {
                 for symbol in &file.symbols {
-                    if symbol.kind == "function" && symbol.is_public {
+                    if symbol.kind == "function" && symbol.visibility == "public" {
                         // Check if this function has tests
                         let has_test = self.function_has_test(symbol, file, test_files);
 
@@ -774,7 +774,7 @@ impl TestCoverageAnalyzer {
                             missing_tests.push(MissingTest {
                                 function_name: symbol.name.clone(),
                                 file: file.path.clone(),
-                                visibility: if symbol.is_public { FunctionVisibility::Public } else { FunctionVisibility::Private },
+                                visibility: if symbol.visibility == "public" { FunctionVisibility::Public } else { FunctionVisibility::Private },
                                 complexity,
                                 priority,
                                 suggested_tests: vec![TestType::Unit],
@@ -810,7 +810,7 @@ impl TestCoverageAnalyzer {
 
     /// Determine test priority for a function
     fn determine_test_priority(&self, symbol: &crate::Symbol, complexity: &FunctionComplexity) -> TestPriority {
-        if symbol.is_public {
+        if symbol.visibility == "public" {
             match complexity {
                 FunctionComplexity::VeryHigh => TestPriority::Critical,
                 FunctionComplexity::High => TestPriority::High,
@@ -1055,7 +1055,7 @@ impl TestCoverageAnalyzer {
         analysis_result.files.iter()
             .filter(|file| !self.is_test_file(file))
             .flat_map(|file| &file.symbols)
-            .filter(|symbol| symbol.kind == "function" && symbol.is_public)
+            .filter(|symbol| symbol.kind == "function" && symbol.visibility == "public")
             .count()
     }
 

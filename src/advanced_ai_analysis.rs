@@ -1326,7 +1326,7 @@ impl AdvancedAIAnalyzer {
 
                 if symbol.kind == "function" {
                     total_functions += 1;
-                    if symbol.is_public {
+                    if symbol.visibility == "public" {
                         public_functions += 1;
                     }
                     total_function_lines +=
@@ -1667,7 +1667,7 @@ impl AdvancedAIAnalyzer {
 
             // Generate function documentation for public functions
             for symbol in &file.symbols {
-                if symbol.kind == "function" && symbol.is_public {
+                if symbol.kind == "function" && symbol.visibility == "public" {
                     insights.push(DocumentationInsight {
                         insight_type: InsightType::FunctionDoc,
                         target: format!("{}::{}", file.path.display(), symbol.name),

@@ -124,6 +124,17 @@ enum Commands {
         #[arg(long)]
         public_only: bool,
     },
+
+    /// List all symbols grouped by file
+    Symbols {
+        /// Directory to analyze
+        #[arg(value_name = "PATH")]
+        path: PathBuf,
+
+        /// Output format (table or json)
+        #[arg(short, long, default_value = "table")]
+        format: String,
+    },
     
     /// Show supported languages and their capabilities
     Languages,
@@ -370,6 +381,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Find { path, name, symbol_type, language, public_only } => {
             find_command(path, name, symbol_type, language, public_only)?;
         }
+        Commands::Symbols { path, format } => {
+            symbols_command(path, format)?;
+        }
         Commands::Languages => {
             languages_command()?;
         }
@@ -496,7 +510,7 @@ fn print_summary(result: &rust_tree_sitter::AnalysisResult) {
     let total_symbols: usize = result.files.iter().map(|f| f.symbols.len()).sum();
     let public_symbols: usize = result.files.iter()
         .flat_map(|f| &f.symbols)
-        .filter(|s| s.is_public)
+        .filter(|s| s.visibility == "public")
         .count();
     
     println!("\n{}", "🔧 SYMBOLS".bright_cyan().bold());
@@ -533,7 +547,7 @@ fn print_analysis_table(result: &rust_tree_sitter::AnalysisResult, detailed: boo
                     kind: symbol.kind.clone(),
                     file: file.path.display().to_string(),
                     line: symbol.start_line,
-                    visibility: if symbol.is_public { "public".to_string() } else { "private".to_string() },
+                    visibility: symbol.visibility.clone(),
                 })
             })
             .collect();
@@ -760,7 +774,7 @@ fn find_command(
 
         for symbol in &file.symbols {
             // Filter by visibility
-            if public_only && !symbol.is_public {
+            if public_only && symbol.visibility != "public" {
                 continue;
             }
 
@@ -783,7 +797,7 @@ fn find_command(
                 kind: symbol.kind.clone(),
                 file: file.path.display().to_string(),
                 line: symbol.start_line,
-                visibility: if symbol.is_public { "public".to_string() } else { "private".to_string() },
+                visibility: symbol.visibility.clone(),
             });
         }
     }
@@ -802,6 +816,47 @@ fn find_command(
     Ok(())
 }
 
+fn symbols_command(path: PathBuf, format: String) -> Result<(), Box<dyn std::error::Error>> {
+    let mut analyzer = CodebaseAnalyzer::new();
+    let result = analyzer.analyze_directory(&path)?;
+
+    match format.as_str() {
+        "json" => {
+            let mut files = serde_json::Map::new();
+            for file in &result.files {
+                if file.symbols.is_empty() { continue; }
+                let symbols: Vec<_> = file.symbols.iter().map(|s| {
+                    serde_json::json!({
+                        "name": s.name,
+                        "kind": s.kind,
+                        "line": s.start_line,
+                        "visibility": s.visibility,
+                        "documentation": s.documentation,
+                    })
+                }).collect();
+                files.insert(file.path.display().to_string(), serde_json::Value::Array(symbols));
+            }
+            println!("{}", serde_json::to_string_pretty(&serde_json::Value::Object(files))?);
+        }
+        _ => {
+            for file in &result.files {
+                if file.symbols.is_empty() { continue; }
+                println!("\n📄 {}", file.path.display());
+                let rows: Vec<SymbolRow> = file.symbols.iter().map(|s| SymbolRow {
+                    name: s.name.clone(),
+                    kind: s.kind.clone(),
+                    file: file.path.display().to_string(),
+                    line: s.start_line,
+                    visibility: s.visibility.clone(),
+                }).collect();
+                let table = Table::new(rows);
+                println!("{}", table);
+            }
+        }
+    }
+
+    Ok(())
+}
 fn languages_command() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", "🌐 SUPPORTED LANGUAGES".bright_cyan().bold());
     println!("{}", "=".repeat(60).bright_cyan());
@@ -927,7 +982,7 @@ fn interactive_find(result: &rust_tree_sitter::AnalysisResult, pattern: &str) {
     println!("{}", format!("Found {} symbols matching '{}':", found.len(), pattern).bright_green());
     for (file, symbol) in found.iter().take(20) {
         println!("  {} {} in {} (line {})",
-            if symbol.is_public { "pub".bright_green() } else { "prv".bright_yellow() },
+            if symbol.visibility == "public" { "pub".bright_green() } else { "prv".bright_yellow() },
             format!("{} {}", symbol.kind, symbol.name).bright_white(),
             file.path.display().to_string().bright_blue(),
             symbol.start_line.to_string().bright_cyan()
@@ -1061,7 +1116,7 @@ fn generate_insights(result: &rust_tree_sitter::AnalysisResult, _focus: &str) ->
     let total_symbols: usize = result.files.iter().map(|f| f.symbols.len()).sum();
     let public_symbols: usize = result.files.iter()
         .flat_map(|f| &f.symbols)
-        .filter(|s| s.is_public)
+        .filter(|s| s.visibility == "public")
         .count();
 
     let primary_language = result.languages.iter()
@@ -1779,7 +1834,7 @@ fn generate_symbol_map_text(files: &[&rust_tree_sitter::FileInfo]) -> Result<(),
             sorted_symbols.sort_by(|a, b| a.start_line.cmp(&b.start_line));
 
             for symbol in sorted_symbols.iter().take(10) { // Limit to 10 per file
-                let visibility = if symbol.is_public { "pub".bright_green() } else { "prv".bright_yellow() };
+                let visibility = if symbol.visibility == "public" { "pub".bright_green() } else { "prv".bright_yellow() };
                 println!("    {} {} {} (line {})",
                     "•".bright_black(),
                     visibility,
@@ -1920,7 +1975,7 @@ fn create_symbol_summary_json(files: &[&rust_tree_sitter::FileInfo]) -> serde_js
     for file in files {
         for symbol in &file.symbols {
             *symbol_counts.entry(symbol.kind.clone()).or_insert(0) += 1;
-            if symbol.is_public {
+            if symbol.visibility == "public" {
                 *public_counts.entry(symbol.kind.clone()).or_insert(0) += 1;
             }
         }
@@ -1943,7 +1998,8 @@ fn create_symbol_map_json(files: &[&rust_tree_sitter::FileInfo]) -> serde_json::
                 "kind": s.kind,
                 "line": s.start_line,
                 "column": s.start_column,
-                "public": s.is_public
+                "visibility": s.visibility,
+                "documentation": s.documentation
             })
         }).collect();
 

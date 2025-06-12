@@ -87,9 +87,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if !file_info.symbols.is_empty() {
             println!("   Symbols found: {}", file_info.symbols.len());
             for symbol in &file_info.symbols {
-                let visibility = if symbol.is_public { "pub" } else { "priv" };
-                println!("     - {} {} '{}' at line {}", 
-                    visibility, symbol.kind, symbol.name, symbol.start_line);
+                println!("     - {} {} '{}' at line {}",
+                    symbol.visibility, symbol.kind, symbol.name, symbol.start_line);
             }
         }
         println!();
@@ -104,7 +103,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for file_info in &result.files {
         for symbol in &file_info.symbols {
             *symbol_counts.entry(symbol.kind.clone()).or_insert(0) += 1;
-            if symbol.is_public {
+            if symbol.visibility == "public" {
                 public_symbols += 1;
             } else {
                 private_symbols += 1;
