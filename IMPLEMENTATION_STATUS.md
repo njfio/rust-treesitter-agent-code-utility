@@ -42,14 +42,17 @@
 - ⚠️ QueryBuilder has syntax issues (needs fixing)
 - ⚠️ Some advanced query features not fully implemented
 
-### Codebase Analysis (NEW!)
+### Codebase Analysis
 - ✅ Complete folder traversal and analysis
 - ✅ Multi-language file detection and parsing
 - ✅ Symbol extraction (functions, classes, structs, etc.)
 - ✅ Configurable analysis options (file size limits, exclusions, etc.)
+- ✅ Configurable analysis depth options
 - ✅ Structured output for AI agents
 - ✅ Performance metrics and statistics
 - ✅ Error handling and reporting
+- ✅ Visual code map generation
+- ✅ Security scanning with vulnerability and secrets detection
 
 ### Examples and Documentation
 - ✅ Comprehensive README with usage examples
@@ -91,7 +94,7 @@ rust_tree_sitter/
 │       ├── mod.rs       ✅ Language definitions
 │       └── rust.rs      ✅ Rust-specific utilities
 ├── examples/            ✅ Working examples
-├── tests/               ✅ Integration tests (90% passing)
+├── tests/               ✅ Integration tests (100% passing)
 └── README.md           ✅ Comprehensive documentation
 ```
 

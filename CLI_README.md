@@ -88,6 +88,9 @@ tree-sitter-cli analyze ./src --detailed --format json -o analysis.json
 
 # Analyze only Rust files
 tree-sitter-cli analyze ./src --include-exts rs
+
+# Limit directory depth
+tree-sitter-cli analyze ./src --max-depth 2 --format summary
 ```
 
 ### `insights` - AI-Friendly Intelligence Report
@@ -222,6 +225,13 @@ Options:
 # Overview map with sizes and symbols
 tree-sitter-cli map ./src --map-type overview --show-sizes --show-symbols
 
+# Example output
+src
+├─ lib.rs (1.2 KB)
+├─ parser.rs (3.4 KB)
+└─ languages/
+   └─ mod.rs (0.8 KB)
+
 # Clean tree structure
 tree-sitter-cli map ./src --map-type tree --max-depth 3
 
@@ -246,7 +256,7 @@ tree-sitter-cli map ./src --languages rust,javascript
 - **`overview`**: Complete project overview with summary and tree structure
 - **`tree`**: Clean directory tree with file information
 - **`symbols`**: Detailed symbol breakdown by type and file
-- **`dependencies`**: Module and file relationships (basic implementation)
+- **`dependencies`**: Module and file relationships
 
 #### Output Formats
 
@@ -254,6 +264,34 @@ tree-sitter-cli map ./src --languages rust,javascript
 - **`ascii`**: Simple ASCII tree for compatibility
 - **`json`**: Structured data for programmatic use
 - **`mermaid`**: Mermaid diagrams for documentation
+
+### `security` - Vulnerability Scanning
+
+Perform full security analysis with CVE lookup and secrets detection.
+
+```bash
+tree-sitter-cli security <PATH> [OPTIONS]
+
+Options:
+  -f, --format <FORMAT>      Output format: table, json, markdown [default: table]
+  --min-severity <LEVEL>     Minimum severity to report [default: low]
+  --compliance               Include OWASP compliance report
+  -o, --output <FILE>        Save detailed report
+  --summary-only             Show summary only
+```
+
+**Example:**
+
+```bash
+tree-sitter-cli security ./src --summary-only
+```
+
+```text
+🔍 SECURITY REPORT
+Vulnerabilities: 0
+Secrets Detected: 0
+Compliance: 5/5 rules passed
+```
 
 ### `languages` - Supported Languages
 
