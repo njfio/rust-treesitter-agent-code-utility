@@ -14,6 +14,35 @@ use std::path::{Path, PathBuf};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+/// Depth level for analysis
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum AnalysisDepth {
+    /// Only collect basic file metadata without parsing
+    Basic,
+    /// Parse files but skip symbol extraction
+    Deep,
+    /// Full parsing with symbol extraction
+    Full,
+}
+
+impl Default for AnalysisDepth {
+    fn default() -> Self {
+        AnalysisDepth::Full
+    }
+}
+
+impl std::str::FromStr for AnalysisDepth {
+    type Err = ();
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "basic" => Ok(AnalysisDepth::Basic),
+            "deep" => Ok(AnalysisDepth::Deep),
+            "full" | _ => Ok(AnalysisDepth::Full),
+        }
+    }
+}
+
 /// Configuration for codebase analysis
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -32,6 +61,8 @@ pub struct AnalysisConfig {
     pub max_depth: Option<usize>,
     /// Whether to include hidden files/directories
     pub include_hidden: bool,
+    /// How much analysis to perform
+    pub depth: AnalysisDepth,
 }
 
 impl Default for AnalysisConfig {
@@ -52,6 +83,7 @@ impl Default for AnalysisConfig {
             follow_symlinks: false,
             max_depth: Some(20),
             include_hidden: false,
+            depth: AnalysisDepth::Full,
         }
     }
 }
@@ -281,6 +313,21 @@ impl CodebaseAnalyzer {
         let lang_name = language.name().to_string();
         *result.languages.entry(lang_name.clone()).or_insert(0) += 1;
 
+        // Skip parsing if depth is Basic
+        if matches!(self.config.depth, AnalysisDepth::Basic) {
+            let file_info = FileInfo {
+                path: relative_path,
+                language: lang_name,
+                size: file_size,
+                lines: line_count,
+                parsed_successfully: false,
+                parse_errors: Vec::new(),
+                symbols: Vec::new(),
+            };
+            result.files.push(file_info);
+            return Ok(());
+        }
+
         // Parse the file
         let parser = self.get_parser(language)?;
         let mut file_info = FileInfo {
@@ -312,8 +359,10 @@ impl CodebaseAnalyzer {
                     }
                 }
 
-                // Extract symbols
-                file_info.symbols = self.extract_symbols(&tree, &content, language)?;
+                // Extract symbols only for Full depth
+                if matches!(self.config.depth, AnalysisDepth::Full) {
+                    file_info.symbols = self.extract_symbols(&tree, &content, language)?;
+                }
             }
             Err(e) => {
                 file_info.parse_errors.push(e.to_string());

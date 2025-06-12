@@ -46,6 +46,10 @@ enum Commands {
         /// Maximum depth to traverse
         #[arg(long, default_value = "20")]
         max_depth: usize,
+
+        /// Analysis depth: basic, deep, full
+        #[arg(long, default_value = "full")]
+        depth: String,
         
         /// Include hidden files and directories
         #[arg(long)]
@@ -183,6 +187,10 @@ enum Commands {
         /// Collapse empty directories
         #[arg(long)]
         collapse_empty: bool,
+
+        /// Analysis depth: basic, deep, full
+        #[arg(long, default_value = "full")]
+        depth: String,
     },
 
     /// AI-powered code explanations and insights
@@ -237,6 +245,10 @@ enum Commands {
         /// Include compliance information
         #[arg(long)]
         compliance: bool,
+
+        /// Analysis depth: basic, deep, full
+        #[arg(long, default_value = "full")]
+        depth: String,
     },
 
     /// Smart refactoring suggestions
@@ -352,12 +364,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Analyze { 
-            path, format, max_size, max_depth, include_hidden, 
-            exclude_dirs, include_exts, output, detailed 
+        Commands::Analyze {
+            path, format, max_size, max_depth, depth, include_hidden,
+            exclude_dirs, include_exts, output, detailed
         } => {
             analyze_command(
-                path, format, max_size, max_depth, include_hidden,
+                path, format, max_size, max_depth, depth, include_hidden,
                 exclude_dirs, include_exts, output, detailed
             )?;
         }
@@ -379,14 +391,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Insights { path, focus, format } => {
             insights_command(path, focus, format)?;
         }
-        Commands::Map { path, map_type, format, max_depth, show_sizes, show_symbols, languages, collapse_empty } => {
-            map_command(path, map_type, format, max_depth, show_sizes, show_symbols, languages, collapse_empty)?;
+        Commands::Map { path, map_type, format, max_depth, show_sizes, show_symbols, languages, collapse_empty, depth } => {
+            map_command(path, map_type, format, max_depth, show_sizes, show_symbols, languages, collapse_empty, depth)?;
         }
         Commands::Explain { path, file, symbol, format, detailed, learning } => {
             explain_command(path, file, symbol, format, detailed, learning)?;
         }
-        Commands::Security { path, format, min_severity, output, summary_only, compliance } => {
-            security_command(path, format, min_severity, output, summary_only, compliance)?;
+        Commands::Security { path, format, min_severity, output, summary_only, compliance, depth } => {
+            security_command(path, format, min_severity, output, summary_only, compliance, depth)?;
         }
         Commands::Refactor { path, category, format, quick_wins, major_only, min_priority, output } => {
             refactor_command(path, category, format, quick_wins, major_only, min_priority, output)?;
@@ -404,6 +416,7 @@ fn analyze_command(
     format: String,
     max_size: usize,
     max_depth: usize,
+    depth: String,
     include_hidden: bool,
     exclude_dirs: Option<String>,
     include_exts: Option<String>,
@@ -423,6 +436,7 @@ fn analyze_command(
     let mut config = AnalysisConfig::default();
     config.max_file_size = Some(max_size * 1024);
     config.max_depth = Some(max_depth);
+    config.depth = depth.parse().unwrap_or(rust_tree_sitter::AnalysisDepth::Full);
     config.include_hidden = include_hidden;
     
     if let Some(dirs) = exclude_dirs {
@@ -1356,6 +1370,7 @@ fn map_command(
     show_symbols: bool,
     languages: Option<String>,
     collapse_empty: bool,
+    depth: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", "🗺️  Generating code map...".bright_blue().bold());
 
@@ -1365,7 +1380,9 @@ fn map_command(
         .unwrap());
     pb.set_message("Analyzing structure...");
 
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut config = AnalysisConfig::default();
+    config.depth = depth.parse().unwrap_or(rust_tree_sitter::AnalysisDepth::Full);
+    let mut analyzer = CodebaseAnalyzer::with_config(config);
     let result = analyzer.analyze_directory(&path)?;
 
     pb.finish_with_message("Map generation complete!");
@@ -2188,6 +2205,7 @@ fn security_command(
     output: Option<PathBuf>,
     summary_only: bool,
     compliance: bool,
+    depth: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", "🔍 Scanning for security vulnerabilities...".bright_red().bold());
 
@@ -2198,7 +2216,9 @@ fn security_command(
     pb.set_message("Analyzing code...");
 
     // Analyze the codebase
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut config = AnalysisConfig::default();
+    config.depth = depth.parse().unwrap_or(rust_tree_sitter::AnalysisDepth::Full);
+    let mut analyzer = CodebaseAnalyzer::with_config(config);
     let result = analyzer.analyze_directory(&path)?;
 
     pb.set_message("Scanning for vulnerabilities...");
