@@ -12,6 +12,7 @@ A powerful command-line interface for intelligent codebase analysis using tree-s
 - **🎮 Interactive Mode**: Explore codebases interactively
 - **🗺️ Visual Code Maps**: Generate beautiful project structure visualizations
 - **📋 Multiple Output Formats**: JSON, Markdown, Table, Text, ASCII, Unicode, and Mermaid
+- **Configurable Analysis Depth**: Choose basic, deep, or full scanning
 
 ## 🚀 Quick Start
 
@@ -48,6 +49,14 @@ tree-sitter-cli map ./src --map-type overview --show-sizes --show-symbols
 tree-sitter-cli interactive ./src
 ```
 
+### Analysis Depth Levels
+
+Use `--depth` with commands like `analyze`, `map`, and `security` to control how much scanning is performed.
+
+- `basic` – gather file metadata only
+- `deep` – parse files but skip symbol extraction
+- `full` – full parsing with symbols (default)
+
 ## 📚 Commands
 
 ### `analyze` - Comprehensive Codebase Analysis
@@ -61,6 +70,7 @@ Options:
   -f, --format <FORMAT>        Output format: table, json, summary [default: table]
   --max-size <SIZE>           Maximum file size in KB [default: 1024]
   --max-depth <DEPTH>         Maximum directory depth [default: 20]
+  --depth <LEVEL>             Analysis depth: basic, deep, full [default: full]
   --include-hidden            Include hidden files and directories
   --exclude-dirs <DIRS>       Exclude directories (comma-separated)
   --include-exts <EXTS>       Include only specific extensions (comma-separated)
@@ -78,6 +88,9 @@ tree-sitter-cli analyze ./src --detailed --format json -o analysis.json
 
 # Analyze only Rust files
 tree-sitter-cli analyze ./src --include-exts rs
+
+# Limit directory depth
+tree-sitter-cli analyze ./src --max-depth 2 --format summary
 ```
 
 ### `insights` - AI-Friendly Intelligence Report
@@ -204,12 +217,20 @@ Options:
   --show-symbols              Show symbol counts
   --languages <LANGUAGES>     Include only specific languages
   --collapse-empty            Collapse empty directories
+  --depth <LEVEL>             Analysis depth: basic, deep, full [default: full]
 ```
 
 **Examples:**
 ```bash
 # Overview map with sizes and symbols
 tree-sitter-cli map ./src --map-type overview --show-sizes --show-symbols
+
+# Example output
+src
+├─ lib.rs (1.2 KB)
+├─ parser.rs (3.4 KB)
+└─ languages/
+   └─ mod.rs (0.8 KB)
 
 # Clean tree structure
 tree-sitter-cli map ./src --map-type tree --max-depth 3
@@ -235,7 +256,7 @@ tree-sitter-cli map ./src --languages rust,javascript
 - **`overview`**: Complete project overview with summary and tree structure
 - **`tree`**: Clean directory tree with file information
 - **`symbols`**: Detailed symbol breakdown by type and file
-- **`dependencies`**: Module and file relationships (basic implementation)
+- **`dependencies`**: Module and file relationships
 
 #### Output Formats
 
@@ -243,6 +264,34 @@ tree-sitter-cli map ./src --languages rust,javascript
 - **`ascii`**: Simple ASCII tree for compatibility
 - **`json`**: Structured data for programmatic use
 - **`mermaid`**: Mermaid diagrams for documentation
+
+### `security` - Vulnerability Scanning
+
+Perform full security analysis with CVE lookup and secrets detection.
+
+```bash
+tree-sitter-cli security <PATH> [OPTIONS]
+
+Options:
+  -f, --format <FORMAT>      Output format: table, json, markdown [default: table]
+  --min-severity <LEVEL>     Minimum severity to report [default: low]
+  --compliance               Include OWASP compliance report
+  -o, --output <FILE>        Save detailed report
+  --summary-only             Show summary only
+```
+
+**Example:**
+
+```bash
+tree-sitter-cli security ./src --summary-only
+```
+
+```text
+🔍 SECURITY REPORT
+Vulnerabilities: 0
+Secrets Detected: 0
+Compliance: 5/5 rules passed
+```
 
 ### `languages` - Supported Languages
 

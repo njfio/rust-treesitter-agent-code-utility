@@ -45,12 +45,13 @@ pub mod security;
 pub mod smart_refactoring;
 pub mod test_coverage;
 pub mod tree;
+pub mod code_map;
 
 // Re-export commonly used types
 pub use advanced_ai_analysis::{AdvancedAIAnalyzer, AdvancedAIResult, AdvancedAIConfig, SemanticAnalysis, ArchitecturePattern};
 pub use advanced_security::{AdvancedSecurityAnalyzer, AdvancedSecurityResult, AdvancedSecurityConfig, SecurityVulnerability as AdvancedSecurityVulnerability};
 pub use ai_analysis::{AIAnalyzer, AIAnalysisResult, AIConfig, CodebaseExplanation, FileExplanation, SymbolExplanation};
-pub use analyzer::{CodebaseAnalyzer, AnalysisConfig, AnalysisResult, FileInfo, Symbol};
+pub use analyzer::{CodebaseAnalyzer, AnalysisConfig, AnalysisDepth, AnalysisResult, FileInfo, Symbol};
 pub use dependency_analysis::{DependencyAnalyzer, DependencyAnalysisResult, DependencyConfig, Dependency, PackageManager};
 pub use error::{Error, Result};
 pub use languages::Language;
@@ -63,6 +64,7 @@ pub use enhanced_security::{EnhancedSecurityScanner, EnhancedSecurityResult, Enh
 pub use advanced_security::{AdvancedSecurityAnalyzer as SecurityScanner, AdvancedSecurityResult as SecurityScanResult, SecurityVulnerability, AdvancedSecurityConfig as SecurityConfig, SecuritySeverity};
 pub use smart_refactoring::{SmartRefactoringEngine, SmartRefactoringResult, SmartRefactoringConfig, CodeSmellFix};
 pub use test_coverage::{TestCoverageAnalyzer, TestCoverageResult, TestCoverageConfig, MissingTest};
+pub use code_map::{CallGraph, ModuleGraph, build_call_graph, build_module_graph};
 pub use tree::{Node, SyntaxTree, TreeCursor, TreeEdit};
 
 // Re-export tree-sitter types that users might need

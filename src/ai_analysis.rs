@@ -248,7 +248,7 @@ impl AIAnalyzer {
         let total_symbols: usize = result.files.iter().map(|f| f.symbols.len()).sum();
         let _public_symbols: usize = result.files.iter()
             .flat_map(|f| &f.symbols)
-            .filter(|s| s.is_public)
+            .filter(|s| s.visibility == "public")
             .count();
 
         let complexity_level = self.assess_codebase_complexity(result);
@@ -503,7 +503,7 @@ impl AIAnalyzer {
                 if symbol.name == "main" && symbol.kind == "function" {
                     entry_points.push(format!("{}::{}", file.path.display(), symbol.name));
                 }
-                if symbol.is_public && (symbol.kind == "function" || symbol.kind == "struct" || symbol.kind == "class") {
+                if symbol.visibility == "public" && (symbol.kind == "function" || symbol.kind == "struct" || symbol.kind == "class") {
                     if symbol.name.contains("new") || symbol.name.contains("create") || symbol.name.contains("init") {
                         entry_points.push(format!("{}::{}", file.path.display(), symbol.name));
                     }
@@ -680,7 +680,7 @@ impl AIAnalyzer {
     }
 
     fn determine_file_role(&self, file: &FileInfo, _file_name: &str) -> String {
-        let public_symbols = file.symbols.iter().filter(|s| s.is_public).count();
+        let public_symbols = file.symbols.iter().filter(|s| s.visibility == "public").count();
         let total_symbols = file.symbols.len();
 
         if public_symbols > total_symbols / 2 {
@@ -704,7 +704,7 @@ impl AIAnalyzer {
             responsibilities.push(format!("Defines {} {}(s)", count, symbol_type));
         }
 
-        if file.symbols.iter().any(|s| s.is_public) {
+        if file.symbols.iter().any(|s| s.visibility == "public") {
             responsibilities.push("Provides public API".to_string());
         }
 
@@ -739,7 +739,7 @@ impl AIAnalyzer {
             suggestions.push("High symbol count - consider grouping related functionality".to_string());
         }
 
-        if file.symbols.iter().filter(|s| s.is_public).count() > 10 {
+        if file.symbols.iter().filter(|s| s.visibility == "public").count() > 10 {
             suggestions.push("Large public API - consider reducing surface area".to_string());
         }
 
@@ -768,9 +768,9 @@ impl AIAnalyzer {
 
     fn generate_symbol_usage(&self, symbol: &Symbol) -> String {
         match symbol.kind.as_str() {
-            "function" if symbol.is_public => format!("Call {}() to use this functionality", symbol.name),
-            "struct" if symbol.is_public => format!("Create instances using {}::new() or similar", symbol.name),
-            "enum" if symbol.is_public => format!("Use {}::VariantName to access enum values", symbol.name),
+            "function" if symbol.visibility == "public" => format!("Call {}() to use this functionality", symbol.name),
+            "struct" if symbol.visibility == "public" => format!("Create instances using {}::new() or similar", symbol.name),
+            "enum" if symbol.visibility == "public" => format!("Use {}::VariantName to access enum values", symbol.name),
             _ => "Internal implementation detail".to_string(),
         }
     }
@@ -791,7 +791,7 @@ impl AIAnalyzer {
     fn suggest_symbol_best_practices(&self, symbol: &Symbol) -> Vec<String> {
         let mut practices = Vec::new();
 
-        if symbol.is_public {
+        if symbol.visibility == "public" {
             practices.push("Add comprehensive documentation for public APIs".to_string());
             practices.push("Consider adding usage examples".to_string());
         }
