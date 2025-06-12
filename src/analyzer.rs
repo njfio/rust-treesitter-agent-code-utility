@@ -14,6 +14,35 @@ use std::path::{Path, PathBuf};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+/// Depth level for analysis
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum AnalysisDepth {
+    /// Only collect basic file metadata without parsing
+    Basic,
+    /// Parse files but skip symbol extraction
+    Deep,
+    /// Full parsing with symbol extraction
+    Full,
+}
+
+impl Default for AnalysisDepth {
+    fn default() -> Self {
+        AnalysisDepth::Full
+    }
+}
+
+impl std::str::FromStr for AnalysisDepth {
+    type Err = ();
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "basic" => Ok(AnalysisDepth::Basic),
+            "deep" => Ok(AnalysisDepth::Deep),
+            "full" | _ => Ok(AnalysisDepth::Full),
+        }
+    }
+}
+
 /// Configuration for codebase analysis
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -32,6 +61,8 @@ pub struct AnalysisConfig {
     pub max_depth: Option<usize>,
     /// Whether to include hidden files/directories
     pub include_hidden: bool,
+    /// How much analysis to perform
+    pub depth: AnalysisDepth,
 }
 
 impl Default for AnalysisConfig {
@@ -52,6 +83,7 @@ impl Default for AnalysisConfig {
             follow_symlinks: false,
             max_depth: Some(20),
             include_hidden: false,
+            depth: AnalysisDepth::Full,
         }
     }
 }
@@ -92,10 +124,10 @@ pub struct Symbol {
     pub start_column: usize,
     /// End column (0-based)
     pub end_column: usize,
+    /// Symbol visibility (public, private, etc.)
+    pub visibility: String,
     /// Symbol documentation if available
     pub documentation: Option<String>,
-    /// Whether the symbol is public/exported
-    pub is_public: bool,
 }
 
 /// Results of codebase analysis
@@ -281,6 +313,21 @@ impl CodebaseAnalyzer {
         let lang_name = language.name().to_string();
         *result.languages.entry(lang_name.clone()).or_insert(0) += 1;
 
+        // Skip parsing if depth is Basic
+        if matches!(self.config.depth, AnalysisDepth::Basic) {
+            let file_info = FileInfo {
+                path: relative_path,
+                language: lang_name,
+                size: file_size,
+                lines: line_count,
+                parsed_successfully: false,
+                parse_errors: Vec::new(),
+                symbols: Vec::new(),
+            };
+            result.files.push(file_info);
+            return Ok(());
+        }
+
         // Parse the file
         let parser = self.get_parser(language)?;
         let mut file_info = FileInfo {
@@ -312,8 +359,10 @@ impl CodebaseAnalyzer {
                     }
                 }
 
-                // Extract symbols
-                file_info.symbols = self.extract_symbols(&tree, &content, language)?;
+                // Extract symbols only for Full depth
+                if matches!(self.config.depth, AnalysisDepth::Full) {
+                    file_info.symbols = self.extract_symbols(&tree, &content, language)?;
+                }
             }
             Err(e) => {
                 file_info.parse_errors.push(e.to_string());
@@ -357,7 +406,11 @@ impl CodebaseAnalyzer {
         for func in functions {
             if let Some(name_node) = func.child_by_field_name("name") {
                 if let Ok(name) = name_node.text() {
-                    let is_public = func.children().iter().any(|child| child.kind() == "visibility_modifier");
+                    let visibility = if func.children().iter().any(|child| child.kind() == "visibility_modifier") {
+                        "public"
+                    } else {
+                        "private"
+                    };
 
                     let docs = self.extract_rust_doc_comments(content, func.start_position().row);
 
@@ -368,8 +421,8 @@ impl CodebaseAnalyzer {
                         end_line: func.end_position().row + 1,
                         start_column: func.start_position().column,
                         end_column: func.end_position().column,
+                        visibility: visibility.to_string(),
                         documentation: docs,
-                        is_public,
                     });
                 }
             }
@@ -380,7 +433,11 @@ impl CodebaseAnalyzer {
         for struct_node in structs {
             if let Some(name_node) = struct_node.child_by_field_name("name") {
                 if let Ok(name) = name_node.text() {
-                    let is_public = struct_node.children().iter().any(|child| child.kind() == "visibility_modifier");
+                    let visibility = if struct_node.children().iter().any(|child| child.kind() == "visibility_modifier") {
+                        "public"
+                    } else {
+                        "private"
+                    };
                     
                     symbols.push(Symbol {
                         name: name.to_string(),
@@ -389,8 +446,8 @@ impl CodebaseAnalyzer {
                         end_line: struct_node.end_position().row + 1,
                         start_column: struct_node.start_position().column,
                         end_column: struct_node.end_position().column,
+                        visibility: visibility.to_string(),
                         documentation: None,
-                        is_public,
                     });
                 }
             }
@@ -401,7 +458,11 @@ impl CodebaseAnalyzer {
         for enum_node in enums {
             if let Some(name_node) = enum_node.child_by_field_name("name") {
                 if let Ok(name) = name_node.text() {
-                    let is_public = enum_node.children().iter().any(|child| child.kind() == "visibility_modifier");
+                    let visibility = if enum_node.children().iter().any(|child| child.kind() == "visibility_modifier") {
+                        "public"
+                    } else {
+                        "private"
+                    };
                     
                     symbols.push(Symbol {
                         name: name.to_string(),
@@ -410,8 +471,8 @@ impl CodebaseAnalyzer {
                         end_line: enum_node.end_position().row + 1,
                         start_column: enum_node.start_position().column,
                         end_column: enum_node.end_position().column,
+                        visibility: visibility.to_string(),
                         documentation: None,
-                        is_public,
                     });
                 }
             }
@@ -434,8 +495,8 @@ impl CodebaseAnalyzer {
                         end_line: func.end_position().row + 1,
                         start_column: func.start_position().column,
                         end_column: func.end_position().column,
+                        visibility: "public".to_string(),
                         documentation: None,
-                        is_public: true, // JavaScript functions are generally public
                     });
                 }
             }
@@ -453,8 +514,8 @@ impl CodebaseAnalyzer {
                         end_line: class.end_position().row + 1,
                         start_column: class.start_position().column,
                         end_column: class.end_position().column,
+                        visibility: "public".to_string(),
                         documentation: None,
-                        is_public: true,
                     });
                 }
             }
@@ -470,7 +531,7 @@ impl CodebaseAnalyzer {
         for func in functions {
             if let Some(name_node) = func.child_by_field_name("name") {
                 if let Ok(name) = name_node.text() {
-                    let is_public = !name.starts_with('_');
+                    let visibility = if name.starts_with('_') { "private" } else { "public" };
                     
                     symbols.push(Symbol {
                         name: name.to_string(),
@@ -479,8 +540,8 @@ impl CodebaseAnalyzer {
                         end_line: func.end_position().row + 1,
                         start_column: func.start_position().column,
                         end_column: func.end_position().column,
+                        visibility: visibility.to_string(),
                         documentation: None,
-                        is_public,
                     });
                 }
             }
@@ -491,7 +552,7 @@ impl CodebaseAnalyzer {
         for class in classes {
             if let Some(name_node) = class.child_by_field_name("name") {
                 if let Ok(name) = name_node.text() {
-                    let is_public = !name.starts_with('_');
+                    let visibility = if name.starts_with('_') { "private" } else { "public" };
                     
                     symbols.push(Symbol {
                         name: name.to_string(),
@@ -500,8 +561,8 @@ impl CodebaseAnalyzer {
                         end_line: class.end_position().row + 1,
                         start_column: class.start_position().column,
                         end_column: class.end_position().column,
+                        visibility: visibility.to_string(),
                         documentation: None,
-                        is_public,
                     });
                 }
             }
@@ -527,8 +588,8 @@ impl CodebaseAnalyzer {
                                 end_line: func.end_position().row + 1,
                                 start_column: func.start_position().column,
                                 end_column: func.end_position().column,
+                                visibility: "public".to_string(),
                                 documentation: None,
-                                is_public: true, // C functions are generally public
                             });
                         }
                     }
@@ -546,6 +607,11 @@ impl CodebaseAnalyzer {
         for func in functions {
             if let Some(name_node) = func.child_by_field_name("name") {
                 if let Ok(name) = name_node.text() {
+                    let visibility = if name.chars().next().unwrap_or('a').is_uppercase() {
+                        "public"
+                    } else {
+                        "private"
+                    };
                     symbols.push(Symbol {
                         name: name.to_string(),
                         kind: "function".to_string(),
@@ -553,8 +619,8 @@ impl CodebaseAnalyzer {
                         start_column: func.start_position().column,
                         end_line: func.end_position().row + 1,
                         end_column: func.end_position().column,
+                        visibility: visibility.to_string(),
                         documentation: None,
-                        is_public: name.chars().next().unwrap_or('a').is_uppercase(),
                     });
                 }
             }
@@ -565,6 +631,11 @@ impl CodebaseAnalyzer {
         for method in methods {
             if let Some(name_node) = method.child_by_field_name("name") {
                 if let Ok(name) = name_node.text() {
+                    let visibility = if name.chars().next().unwrap_or('a').is_uppercase() {
+                        "public"
+                    } else {
+                        "private"
+                    };
                     symbols.push(Symbol {
                         name: name.to_string(),
                         kind: "method".to_string(),
@@ -572,8 +643,8 @@ impl CodebaseAnalyzer {
                         start_column: method.start_position().column,
                         end_line: method.end_position().row + 1,
                         end_column: method.end_position().column,
+                        visibility: visibility.to_string(),
                         documentation: None,
-                        is_public: name.chars().next().unwrap_or('a').is_uppercase(),
                     });
                 }
             }
@@ -596,6 +667,11 @@ impl CodebaseAnalyzer {
                             } else {
                                 "type"
                             };
+                            let visibility = if name.chars().next().unwrap_or('a').is_uppercase() {
+                                "public"
+                            } else {
+                                "private"
+                            };
                             symbols.push(Symbol {
                                 name: name.to_string(),
                                 kind: kind.to_string(),
@@ -603,8 +679,8 @@ impl CodebaseAnalyzer {
                                 start_column: type_decl.start_position().column,
                                 end_line: type_decl.end_position().row + 1,
                                 end_column: type_decl.end_position().column,
+                                visibility: visibility.to_string(),
                                 documentation: None,
-                                is_public: name.chars().next().unwrap_or('a').is_uppercase(),
                             });
                         }
                     }
@@ -673,6 +749,7 @@ mod tests {
         // Create a Rust file
         let rust_file = temp_path.join("main.rs");
         fs::write(&rust_file, r#"
+            /// Main entry point
             pub fn main() {
                 println!("Hello, world!");
             }
@@ -710,7 +787,9 @@ mod tests {
         // Check that symbols were extracted
         let rust_file_info = result.files.iter().find(|f| f.path.extension().unwrap() == "rs").unwrap();
         assert!(rust_file_info.symbols.len() > 0);
-        assert!(rust_file_info.symbols.iter().any(|s| s.name == "main"));
+        let main_symbol = rust_file_info.symbols.iter().find(|s| s.name == "main").unwrap();
+        assert_eq!(main_symbol.visibility, "public");
+        assert_eq!(main_symbol.documentation.as_deref(), Some("Main entry point"));
 
         let js_file_info = result.files.iter().find(|f| f.path.extension().unwrap() == "js").unwrap();
         assert!(js_file_info.symbols.len() > 0);
