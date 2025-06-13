@@ -419,195 +419,198 @@ impl CodebaseAnalyzer {
     }
 
     /// Extract JavaScript symbols
-    fn extract_javascript_symbols(&self, tree: &SyntaxTree, _content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
-        // Extract function declarations
-        let functions = tree.find_nodes_by_kind("function_declaration");
-        for func in functions {
-            if let Some(name_node) = func.child_by_field_name("name") {
-                if let Ok(name) = name_node.text() {
-                    symbols.push(Symbol {
-                        name: name.to_string(),
-                        kind: "function".to_string(),
-                        start_line: func.start_position().row + 1,
-                        end_line: func.end_position().row + 1,
-                        start_column: func.start_position().column,
-                        end_column: func.end_position().column,
-                        documentation: None,
-                        is_public: true, // JavaScript functions are generally public
-                    });
-                }
-            }
+    fn extract_javascript_symbols(&self, tree: &SyntaxTree, content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
+        use crate::languages::javascript::JavaScriptSyntax;
+
+        // Extract functions
+        let functions = JavaScriptSyntax::find_functions(tree, content);
+        for (name, location) in functions {
+            symbols.push(Symbol {
+                name,
+                kind: "function".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1, // TODO: Get actual end position
+                start_column: location.column,
+                end_column: location.column, // TODO: Get actual end position
+                documentation: None, // TODO: Extract JSDoc comments
+                is_public: true, // JavaScript functions are generally public
+            });
         }
 
-        // Extract class declarations
-        let classes = tree.find_nodes_by_kind("class_declaration");
-        for class in classes {
-            if let Some(name_node) = class.child_by_field_name("name") {
-                if let Ok(name) = name_node.text() {
-                    symbols.push(Symbol {
-                        name: name.to_string(),
-                        kind: "class".to_string(),
-                        start_line: class.start_position().row + 1,
-                        end_line: class.end_position().row + 1,
-                        start_column: class.start_position().column,
-                        end_column: class.end_position().column,
-                        documentation: None,
-                        is_public: true,
-                    });
-                }
-            }
+        // Extract classes
+        let classes = JavaScriptSyntax::find_classes(tree, content);
+        for (name, location) in classes {
+            symbols.push(Symbol {
+                name,
+                kind: "class".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1, // TODO: Get actual end position
+                start_column: location.column,
+                end_column: location.column, // TODO: Get actual end position
+                documentation: None,
+                is_public: true,
+            });
         }
 
         Ok(())
     }
 
     /// Extract Python symbols
-    fn extract_python_symbols(&self, tree: &SyntaxTree, _content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
-        // Extract function definitions
-        let functions = tree.find_nodes_by_kind("function_definition");
-        for func in functions {
-            if let Some(name_node) = func.child_by_field_name("name") {
-                if let Ok(name) = name_node.text() {
-                    let is_public = !name.starts_with('_');
-                    
-                    symbols.push(Symbol {
-                        name: name.to_string(),
-                        kind: "function".to_string(),
-                        start_line: func.start_position().row + 1,
-                        end_line: func.end_position().row + 1,
-                        start_column: func.start_position().column,
-                        end_column: func.end_position().column,
-                        documentation: None,
-                        is_public,
-                    });
-                }
-            }
+    fn extract_python_symbols(&self, tree: &SyntaxTree, content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
+        use crate::languages::python::PythonSyntax;
+
+        // Extract functions
+        let functions = PythonSyntax::find_functions(tree, content);
+        for (name, location) in functions {
+            let is_public = !name.starts_with('_');
+            symbols.push(Symbol {
+                name,
+                kind: "function".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1, // TODO: Get actual end position
+                start_column: location.column,
+                end_column: location.column, // TODO: Get actual end position
+                documentation: None, // TODO: Extract docstrings
+                is_public,
+            });
         }
 
-        // Extract class definitions
-        let classes = tree.find_nodes_by_kind("class_definition");
-        for class in classes {
-            if let Some(name_node) = class.child_by_field_name("name") {
-                if let Ok(name) = name_node.text() {
-                    let is_public = !name.starts_with('_');
-                    
-                    symbols.push(Symbol {
-                        name: name.to_string(),
-                        kind: "class".to_string(),
-                        start_line: class.start_position().row + 1,
-                        end_line: class.end_position().row + 1,
-                        start_column: class.start_position().column,
-                        end_column: class.end_position().column,
-                        documentation: None,
-                        is_public,
-                    });
-                }
-            }
+        // Extract classes
+        let classes = PythonSyntax::find_classes(tree, content);
+        for (name, location) in classes {
+            let is_public = !name.starts_with('_');
+            symbols.push(Symbol {
+                name,
+                kind: "class".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1, // TODO: Get actual end position
+                start_column: location.column,
+                end_column: location.column, // TODO: Get actual end position
+                documentation: None, // TODO: Extract docstrings
+                is_public,
+            });
         }
 
         Ok(())
     }
 
     /// Extract C/C++ symbols
-    fn extract_c_symbols(&self, tree: &SyntaxTree, _content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
-        // Extract function definitions
-        let functions = tree.find_nodes_by_kind("function_definition");
-        for func in functions {
-            if let Some(declarator) = func.child_by_field_name("declarator") {
-                if let Some(func_declarator) = declarator.children().iter()
-                    .find(|child| child.kind() == "function_declarator") {
-                    if let Some(name_node) = func_declarator.child_by_field_name("declarator") {
-                        if let Ok(name) = name_node.text() {
-                            symbols.push(Symbol {
-                                name: name.to_string(),
-                                kind: "function".to_string(),
-                                start_line: func.start_position().row + 1,
-                                end_line: func.end_position().row + 1,
-                                start_column: func.start_position().column,
-                                end_column: func.end_position().column,
-                                documentation: None,
-                                is_public: true, // C functions are generally public
-                            });
-                        }
-                    }
-                }
-            }
+    fn extract_c_symbols(&self, tree: &SyntaxTree, content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
+        use crate::languages::c::CSyntax;
+        use crate::languages::cpp::CppSyntax;
+
+        // Extract functions
+        let functions = CSyntax::find_functions(tree, content);
+        for (name, location) in functions {
+            symbols.push(Symbol {
+                name,
+                kind: "function".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1, // TODO: Get actual end position
+                start_column: location.column,
+                end_column: location.column, // TODO: Get actual end position
+                documentation: None,
+                is_public: true, // C functions are generally public
+            });
+        }
+
+        // Extract structs
+        let structs = CSyntax::find_structs(tree, content);
+        for (name, location) in structs {
+            symbols.push(Symbol {
+                name,
+                kind: "struct".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1,
+                start_column: location.column,
+                end_column: location.column,
+                documentation: None,
+                is_public: true,
+            });
+        }
+
+        // For C++, also extract classes and namespaces
+        let classes = CppSyntax::find_classes(tree, content);
+        for (name, location) in classes {
+            symbols.push(Symbol {
+                name,
+                kind: "class".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1,
+                start_column: location.column,
+                end_column: location.column,
+                documentation: None,
+                is_public: true, // TODO: Check access modifiers
+            });
+        }
+
+        let namespaces = CppSyntax::find_namespaces(tree, content);
+        for (name, location) in namespaces {
+            symbols.push(Symbol {
+                name,
+                kind: "namespace".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1,
+                start_column: location.column,
+                end_column: location.column,
+                documentation: None,
+                is_public: true,
+            });
         }
 
         Ok(())
     }
 
     /// Extract Go symbols
-    fn extract_go_symbols(&self, tree: &SyntaxTree, _content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
-        // Extract function declarations
-        let functions = tree.find_nodes_by_kind("function_declaration");
-        for func in functions {
-            if let Some(name_node) = func.child_by_field_name("name") {
-                if let Ok(name) = name_node.text() {
-                    symbols.push(Symbol {
-                        name: name.to_string(),
-                        kind: "function".to_string(),
-                        start_line: func.start_position().row + 1,
-                        start_column: func.start_position().column,
-                        end_line: func.end_position().row + 1,
-                        end_column: func.end_position().column,
-                        documentation: None,
-                        is_public: name.chars().next().unwrap_or('a').is_uppercase(),
-                    });
-                }
-            }
+    fn extract_go_symbols(&self, tree: &SyntaxTree, content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
+        use crate::languages::go::GoSyntax;
+
+        // Extract functions
+        let functions = GoSyntax::find_functions(tree, content);
+        for (name, location) in functions {
+            let is_public = GoSyntax::is_exported(&name);
+            symbols.push(Symbol {
+                name,
+                kind: "function".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1, // TODO: Get actual end position
+                start_column: location.column,
+                end_column: location.column, // TODO: Get actual end position
+                documentation: None,
+                is_public,
+            });
         }
 
-        // Extract method declarations
-        let methods = tree.find_nodes_by_kind("method_declaration");
-        for method in methods {
-            if let Some(name_node) = method.child_by_field_name("name") {
-                if let Ok(name) = name_node.text() {
-                    symbols.push(Symbol {
-                        name: name.to_string(),
-                        kind: "method".to_string(),
-                        start_line: method.start_position().row + 1,
-                        start_column: method.start_position().column,
-                        end_line: method.end_position().row + 1,
-                        end_column: method.end_position().column,
-                        documentation: None,
-                        is_public: name.chars().next().unwrap_or('a').is_uppercase(),
-                    });
-                }
-            }
+        // Extract methods
+        let methods = GoSyntax::find_methods(tree, content);
+        for (name, receiver_type, location) in methods {
+            let is_public = GoSyntax::is_exported(&name);
+            symbols.push(Symbol {
+                name: format!("{}::{}", receiver_type, name),
+                kind: "method".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1,
+                start_column: location.column,
+                end_column: location.column,
+                documentation: None,
+                is_public,
+            });
         }
 
-        // Extract type declarations (structs, interfaces)
-        let types = tree.find_nodes_by_kind("type_declaration");
-        for type_decl in types {
-            // Look for type_spec children
-            for child in type_decl.children() {
-                if child.kind() == "type_spec" {
-                    if let Some(name_node) = child.child_by_field_name("name") {
-                        if let Ok(name) = name_node.text() {
-                            let kind = if let Some(type_node) = child.child_by_field_name("type") {
-                                match type_node.kind() {
-                                    "struct_type" => "struct",
-                                    "interface_type" => "interface",
-                                    _ => "type",
-                                }
-                            } else {
-                                "type"
-                            };
-                            symbols.push(Symbol {
-                                name: name.to_string(),
-                                kind: kind.to_string(),
-                                start_line: type_decl.start_position().row + 1,
-                                start_column: type_decl.start_position().column,
-                                end_line: type_decl.end_position().row + 1,
-                                end_column: type_decl.end_position().column,
-                                documentation: None,
-                                is_public: name.chars().next().unwrap_or('a').is_uppercase(),
-                            });
-                        }
-                    }
-                }
-            }
+        // Extract types (structs, interfaces)
+        let types = GoSyntax::find_types(tree, content);
+        for (name, location) in types {
+            let is_public = GoSyntax::is_exported(&name);
+            symbols.push(Symbol {
+                name,
+                kind: "type".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1,
+                start_column: location.column,
+                end_column: location.column,
+                documentation: None,
+                is_public,
+            });
         }
 
         Ok(())
