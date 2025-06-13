@@ -74,6 +74,10 @@ pub struct FileInfo {
     pub parse_errors: Vec<String>,
     /// Extracted symbols (functions, classes, etc.)
     pub symbols: Vec<Symbol>,
+    /// Import statements found in the file
+    pub imports: Vec<String>,
+    /// Export statements found in the file
+    pub exports: Vec<String>,
 }
 
 /// A code symbol (function, class, struct, etc.)
@@ -292,6 +296,8 @@ impl CodebaseAnalyzer {
             parsed_successfully: false,
             parse_errors: Vec::new(),
             symbols: Vec::new(),
+            imports: Vec::new(),
+            exports: Vec::new(),
         };
 
         match parser.parse(&content, None) {
@@ -448,14 +454,14 @@ impl CodebaseAnalyzer {
 
         // Extract functions
         let functions = JavaScriptSyntax::find_functions(tree, content);
-        for (name, location) in functions {
+        for (name, start_pos, end_pos) in functions {
             symbols.push(Symbol {
                 name,
                 kind: "function".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1, // TODO: Get actual end position
-                start_column: location.column,
-                end_column: location.column, // TODO: Get actual end position
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation: None, // TODO: Extract JSDoc comments
                 is_public: true, // JavaScript functions are generally public
             });
@@ -463,14 +469,14 @@ impl CodebaseAnalyzer {
 
         // Extract classes
         let classes = JavaScriptSyntax::find_classes(tree, content);
-        for (name, location) in classes {
+        for (name, start_pos, end_pos) in classes {
             symbols.push(Symbol {
                 name,
                 kind: "class".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1, // TODO: Get actual end position
-                start_column: location.column,
-                end_column: location.column, // TODO: Get actual end position
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation: None,
                 is_public: true,
             });
@@ -485,14 +491,14 @@ impl CodebaseAnalyzer {
 
         // Extract functions
         let functions = TypeScriptSyntax::find_functions(tree, content);
-        for (name, location) in functions {
+        for (name, start_pos, end_pos) in functions {
             symbols.push(Symbol {
                 name,
                 kind: "function".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1, // TODO: Get actual end position
-                start_column: location.column,
-                end_column: location.column, // TODO: Get actual end position
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation: None, // TODO: Extract TSDoc comments
                 is_public: true, // TypeScript functions are generally public
             });
@@ -500,14 +506,14 @@ impl CodebaseAnalyzer {
 
         // Extract classes
         let classes = TypeScriptSyntax::find_classes(tree, content);
-        for (name, location) in classes {
+        for (name, start_pos, end_pos) in classes {
             symbols.push(Symbol {
                 name,
                 kind: "class".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1,
-                start_column: location.column,
-                end_column: location.column,
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation: None,
                 is_public: true,
             });
@@ -515,14 +521,14 @@ impl CodebaseAnalyzer {
 
         // Extract interfaces
         let interfaces = TypeScriptSyntax::find_interfaces(tree, content);
-        for (name, location) in interfaces {
+        for (name, start_pos, end_pos) in interfaces {
             symbols.push(Symbol {
                 name,
                 kind: "interface".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1,
-                start_column: location.column,
-                end_column: location.column,
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation: None,
                 is_public: true,
             });
@@ -530,14 +536,14 @@ impl CodebaseAnalyzer {
 
         // Extract type aliases
         let type_aliases = TypeScriptSyntax::find_type_aliases(tree, content);
-        for (name, location) in type_aliases {
+        for (name, start_pos, end_pos) in type_aliases {
             symbols.push(Symbol {
                 name,
                 kind: "type".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1,
-                start_column: location.column,
-                end_column: location.column,
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation: None,
                 is_public: true,
             });
@@ -545,14 +551,14 @@ impl CodebaseAnalyzer {
 
         // Extract enums
         let enums = TypeScriptSyntax::find_enums(tree, content);
-        for (name, location) in enums {
+        for (name, start_pos, end_pos) in enums {
             symbols.push(Symbol {
                 name,
                 kind: "enum".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1,
-                start_column: location.column,
-                end_column: location.column,
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation: None,
                 is_public: true,
             });
@@ -567,17 +573,17 @@ impl CodebaseAnalyzer {
 
         // Extract functions
         let functions = PythonSyntax::find_functions(tree, content);
-        for (name, location) in functions {
+        for (name, start_pos, end_pos) in functions {
             let is_public = !name.starts_with('_');
             let documentation = PythonSyntax::extract_docstring(&name, content);
 
             symbols.push(Symbol {
                 name,
                 kind: "function".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1, // TODO: Get actual end position
-                start_column: location.column,
-                end_column: location.column, // TODO: Get actual end position
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation,
                 is_public,
             });
@@ -585,17 +591,17 @@ impl CodebaseAnalyzer {
 
         // Extract classes
         let classes = PythonSyntax::find_classes(tree, content);
-        for (name, location) in classes {
+        for (name, start_pos, end_pos) in classes {
             let is_public = !name.starts_with('_');
             let documentation = PythonSyntax::extract_docstring(&name, content);
 
             symbols.push(Symbol {
                 name,
                 kind: "class".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1, // TODO: Get actual end position
-                start_column: location.column,
-                end_column: location.column, // TODO: Get actual end position
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation,
                 is_public,
             });
@@ -646,14 +652,14 @@ impl CodebaseAnalyzer {
 
         // Extract functions
         let functions = CSyntax::find_functions(tree, content);
-        for (name, location) in functions {
+        for (name, start_pos, end_pos) in functions {
             symbols.push(Symbol {
                 name,
                 kind: "function".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1, // TODO: Get actual end position
-                start_column: location.column,
-                end_column: location.column, // TODO: Get actual end position
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation: None,
                 is_public: true, // C functions are generally public
             });
@@ -661,14 +667,29 @@ impl CodebaseAnalyzer {
 
         // Extract structs
         let structs = CSyntax::find_structs(tree, content);
-        for (name, location) in structs {
+        for (name, start_pos, end_pos) in structs {
             symbols.push(Symbol {
                 name,
                 kind: "struct".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1,
-                start_column: location.column,
-                end_column: location.column,
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
+                documentation: None,
+                is_public: true,
+            });
+        }
+
+        // Extract typedefs
+        let typedefs = CSyntax::find_typedefs(tree, content);
+        for (name, start_pos, end_pos) in typedefs {
+            symbols.push(Symbol {
+                name,
+                kind: "typedef".to_string(),
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation: None,
                 is_public: true,
             });
@@ -676,28 +697,28 @@ impl CodebaseAnalyzer {
 
         // For C++, also extract classes and namespaces
         let classes = CppSyntax::find_classes(tree, content);
-        for (name, location) in classes {
+        for (name, start_pos, end_pos) in classes {
             symbols.push(Symbol {
                 name,
                 kind: "class".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1,
-                start_column: location.column,
-                end_column: location.column,
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation: None,
                 is_public: true, // TODO: Check access modifiers
             });
         }
 
         let namespaces = CppSyntax::find_namespaces(tree, content);
-        for (name, location) in namespaces {
+        for (name, start_pos, end_pos) in namespaces {
             symbols.push(Symbol {
                 name,
                 kind: "namespace".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1,
-                start_column: location.column,
-                end_column: location.column,
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation: None,
                 is_public: true,
             });
@@ -713,14 +734,14 @@ impl CodebaseAnalyzer {
 
         // Extract functions (both C and C++ style)
         let functions = CSyntax::find_functions(tree, content);
-        for (name, location) in functions {
+        for (name, start_pos, end_pos) in functions {
             symbols.push(Symbol {
                 name,
                 kind: "function".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1,
-                start_column: location.column,
-                end_column: location.column,
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation: None,
                 is_public: true, // C++ functions are generally public unless in private class section
             });
@@ -728,14 +749,14 @@ impl CodebaseAnalyzer {
 
         // Extract C++ classes
         let classes = CppSyntax::find_classes(tree, content);
-        for (name, location) in classes {
+        for (name, start_pos, end_pos) in classes {
             symbols.push(Symbol {
                 name,
                 kind: "class".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1,
-                start_column: location.column,
-                end_column: location.column,
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation: None,
                 is_public: true, // TODO: Check access modifiers
             });
@@ -743,14 +764,14 @@ impl CodebaseAnalyzer {
 
         // Extract namespaces
         let namespaces = CppSyntax::find_namespaces(tree, content);
-        for (name, location) in namespaces {
+        for (name, start_pos, end_pos) in namespaces {
             symbols.push(Symbol {
                 name,
                 kind: "namespace".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1,
-                start_column: location.column,
-                end_column: location.column,
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation: None,
                 is_public: true,
             });
@@ -758,14 +779,29 @@ impl CodebaseAnalyzer {
 
         // Extract structs
         let structs = CSyntax::find_structs(tree, content);
-        for (name, location) in structs {
+        for (name, start_pos, end_pos) in structs {
             symbols.push(Symbol {
                 name,
                 kind: "struct".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1,
-                start_column: location.column,
-                end_column: location.column,
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
+                documentation: None,
+                is_public: true,
+            });
+        }
+
+        // Extract typedefs (C-style typedefs also work in C++)
+        let typedefs = CSyntax::find_typedefs(tree, content);
+        for (name, start_pos, end_pos) in typedefs {
+            symbols.push(Symbol {
+                name,
+                kind: "typedef".to_string(),
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation: None,
                 is_public: true,
             });
@@ -780,15 +816,15 @@ impl CodebaseAnalyzer {
 
         // Extract functions
         let functions = GoSyntax::find_functions(tree, content);
-        for (name, location) in functions {
+        for (name, start_pos, end_pos) in functions {
             let is_public = GoSyntax::is_exported(&name);
             symbols.push(Symbol {
                 name,
                 kind: "function".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1, // TODO: Get actual end position
-                start_column: location.column,
-                end_column: location.column, // TODO: Get actual end position
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation: None, // TODO: Extract Go doc comments
                 is_public,
             });
@@ -796,15 +832,15 @@ impl CodebaseAnalyzer {
 
         // Extract methods
         let methods = GoSyntax::find_methods(tree, content);
-        for (name, receiver_type, location) in methods {
+        for (name, receiver_type, start_pos, end_pos) in methods {
             let is_public = GoSyntax::is_exported(&name);
             symbols.push(Symbol {
                 name: format!("{}::{}", receiver_type, name),
                 kind: "method".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1,
-                start_column: location.column,
-                end_column: location.column,
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation: None,
                 is_public,
             });
@@ -812,15 +848,15 @@ impl CodebaseAnalyzer {
 
         // Extract types (structs, interfaces)
         let types = GoSyntax::find_types(tree, content);
-        for (name, location) in types {
+        for (name, start_pos, end_pos) in types {
             let is_public = GoSyntax::is_exported(&name);
             symbols.push(Symbol {
                 name,
                 kind: "type".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1,
-                start_column: location.column,
-                end_column: location.column,
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation: None,
                 is_public,
             });
@@ -828,15 +864,15 @@ impl CodebaseAnalyzer {
 
         // Extract constants
         let constants = GoSyntax::find_constants(tree, content);
-        for (name, location) in constants {
+        for (name, start_pos, end_pos) in constants {
             let is_public = GoSyntax::is_exported(&name);
             symbols.push(Symbol {
                 name,
                 kind: "constant".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1,
-                start_column: location.column,
-                end_column: location.column,
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation: None,
                 is_public,
             });
@@ -844,15 +880,15 @@ impl CodebaseAnalyzer {
 
         // Extract variables
         let variables = GoSyntax::find_variables(tree, content);
-        for (name, location) in variables {
+        for (name, start_pos, end_pos) in variables {
             let is_public = GoSyntax::is_exported(&name);
             symbols.push(Symbol {
                 name,
                 kind: "variable".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1,
-                start_column: location.column,
-                end_column: location.column,
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation: None,
                 is_public,
             });
