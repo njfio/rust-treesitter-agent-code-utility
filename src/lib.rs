@@ -35,6 +35,7 @@ pub mod analyzer;
 pub mod dependency_analysis;
 pub mod enhanced_security;
 pub mod error;
+pub mod error_handling;
 pub mod infrastructure;
 pub mod languages;
 pub mod parser;
@@ -53,6 +54,7 @@ pub use ai_analysis::{AIAnalyzer, AIAnalysisResult, AIConfig, CodebaseExplanatio
 pub use analyzer::{CodebaseAnalyzer, AnalysisConfig, AnalysisResult, FileInfo, Symbol};
 pub use dependency_analysis::{DependencyAnalyzer, DependencyAnalysisResult, DependencyConfig, Dependency, PackageManager};
 pub use error::{Error, Result};
+pub use error_handling::{OptionExt, ResultExt, PathValidator, SafeString, SafeCollection, TimeoutHandler};
 pub use languages::Language;
 pub use parser::{Parser, ParseOptions, create_edit};
 pub use performance_analysis::{PerformanceAnalyzer, PerformanceAnalysisResult, PerformanceConfig, PerformanceHotspot};

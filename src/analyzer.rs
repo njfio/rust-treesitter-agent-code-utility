@@ -146,7 +146,8 @@ impl CodebaseAnalyzer {
             let parser = Parser::new(language)?;
             self.parsers.insert(language, parser);
         }
-        Ok(self.parsers.get(&language).unwrap())
+        self.parsers.get(&language)
+            .ok_or_else(|| Error::internal(format!("Parser for language {:?} not found after creation", language)))
     }
 
     /// Analyze a directory and return structured results
@@ -636,9 +637,10 @@ mod tests {
     }
 
     #[test]
-    fn test_analyze_directory() {
+    fn test_analyze_directory() -> Result<()> {
         // Create a temporary directory with some test files
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new()
+            .map_err(|e| Error::internal(format!("Failed to create temp directory: {}", e)))?;
         let temp_path = temp_dir.path();
 
         // Create a Rust file
@@ -647,12 +649,12 @@ mod tests {
             pub fn main() {
                 println!("Hello, world!");
             }
-            
+
             struct Point {
                 x: i32,
                 y: i32,
             }
-        "#).unwrap();
+        "#).map_err(|e| Error::file_system(format!("Failed to write Rust test file: {}", e)))?;
 
         // Create a JavaScript file
         let js_file = temp_path.join("app.js");
@@ -660,17 +662,17 @@ mod tests {
             function greet(name) {
                 console.log("Hello, " + name);
             }
-            
+
             class Calculator {
                 add(a, b) {
                     return a + b;
                 }
             }
-        "#).unwrap();
+        "#).map_err(|e| Error::file_system(format!("Failed to write JavaScript test file: {}", e)))?;
 
         // Analyze the directory
         let mut analyzer = CodebaseAnalyzer::new();
-        let result = analyzer.analyze_directory(temp_path).unwrap();
+        let result = analyzer.analyze_directory(temp_path)?;
 
         assert_eq!(result.total_files, 2);
         assert_eq!(result.parsed_files, 2);
@@ -679,12 +681,18 @@ mod tests {
         assert!(result.languages.contains_key("JavaScript"));
 
         // Check that symbols were extracted
-        let rust_file_info = result.files.iter().find(|f| f.path.extension().unwrap() == "rs").unwrap();
+        let rust_file_info = result.files.iter()
+            .find(|f| f.path.extension().map_or(false, |ext| ext == "rs"))
+            .ok_or_else(|| Error::internal("No Rust file found in test results"))?;
         assert!(rust_file_info.symbols.len() > 0);
         assert!(rust_file_info.symbols.iter().any(|s| s.name == "main"));
 
-        let js_file_info = result.files.iter().find(|f| f.path.extension().unwrap() == "js").unwrap();
+        let js_file_info = result.files.iter()
+            .find(|f| f.path.extension().map_or(false, |ext| ext == "js"))
+            .ok_or_else(|| Error::internal("No JavaScript file found in test results"))?;
         assert!(js_file_info.symbols.len() > 0);
         assert!(js_file_info.symbols.iter().any(|s| s.name == "greet"));
+
+        Ok(())
     }
 }

@@ -188,48 +188,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parser_creation() {
-        let parser = Parser::new(Language::Rust);
-        assert!(parser.is_ok());
-        
-        let parser = parser.unwrap();
+    fn test_parser_creation() -> Result<()> {
+        let parser = Parser::new(Language::Rust)?;
         assert_eq!(parser.language(), Language::Rust);
+        Ok(())
     }
 
     #[test]
-    fn test_basic_parsing() {
-        let mut parser = Parser::new(Language::Rust).unwrap();
+    fn test_basic_parsing() -> Result<()> {
+        let mut parser = Parser::new(Language::Rust)?;
         let source = "fn main() { println!(\"Hello, world!\"); }";
-        
-        let tree = parser.parse(source, None);
-        assert!(tree.is_ok());
-        
-        let tree = tree.unwrap();
+
+        let tree = parser.parse(source, None)?;
         assert_eq!(tree.root_node().kind(), "source_file");
+        Ok(())
     }
 
     #[test]
-    fn test_parse_options() {
+    fn test_parse_options() -> Result<()> {
         let options = ParseOptions {
             max_bytes: Some(1000),
             timeout_millis: Some(1000),
             include_extras: false,
         };
-        
-        let parser = Parser::with_options(Language::Rust, options.clone());
-        assert!(parser.is_ok());
-        
-        let parser = parser.unwrap();
+
+        let parser = Parser::with_options(Language::Rust, options.clone())?;
         assert_eq!(parser.options().max_bytes, Some(1000));
         assert_eq!(parser.options().timeout_millis, Some(1000));
         assert!(!parser.options().include_extras);
+        Ok(())
     }
 
     #[test]
-    fn test_parser_clone() {
-        let parser1 = Parser::new(Language::Rust).unwrap();
+    fn test_parser_clone() -> Result<()> {
+        let parser1 = Parser::new(Language::Rust)?;
         let parser2 = parser1.clone();
-        
+
         assert_eq!(parser1.language(), parser2.language());
+        Ok(())
     }
 }
