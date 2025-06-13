@@ -319,22 +319,23 @@ impl GoSyntax {
         imports
     }
 
-    /// Get all function declarations in a syntax tree
-    pub fn find_functions(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+    /// Get all function declarations in a syntax tree with start and end positions
+    pub fn find_functions(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut functions = Vec::new();
         let function_nodes = tree.find_nodes_by_kind("function_declaration");
 
         for func_node in function_nodes {
             if let Some(name) = Self::function_name(&func_node, source) {
-                functions.push((name, func_node.start_position()));
+                let ts_node = func_node.inner();
+                functions.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
         functions
     }
 
-    /// Get all method declarations in a syntax tree
-    pub fn find_methods(tree: &SyntaxTree, source: &str) -> Vec<(String, String, Point)> {
+    /// Get all method declarations in a syntax tree with start and end positions
+    pub fn find_methods(tree: &SyntaxTree, source: &str) -> Vec<(String, String, tree_sitter::Point, tree_sitter::Point)> {
         let mut methods = Vec::new();
         let method_nodes = tree.find_nodes_by_kind("method_declaration");
 
@@ -342,21 +343,23 @@ impl GoSyntax {
             if let Some(name) = Self::method_name(&method_node, source) {
                 let receiver_type = Self::method_receiver_type(&method_node, source)
                     .unwrap_or_else(|| "unknown".to_string());
-                methods.push((name, receiver_type, method_node.start_position()));
+                let ts_node = method_node.inner();
+                methods.push((name, receiver_type, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
         methods
     }
 
-    /// Get all type declarations in a syntax tree
-    pub fn find_types(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+    /// Get all type declarations in a syntax tree with start and end positions
+    pub fn find_types(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut types = Vec::new();
         let type_nodes = tree.find_nodes_by_kind("type_declaration");
 
         for type_node in type_nodes {
             if let Some(name) = Self::type_name(&type_node, source) {
-                types.push((name, type_node.start_position()));
+                let ts_node = type_node.inner();
+                types.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
@@ -570,11 +573,11 @@ impl GoSyntax {
         let types = Self::find_types(tree, source);
 
         let exported_functions = functions.iter()
-            .filter(|(name, _)| Self::is_exported(name))
+            .filter(|(name, _, _)| Self::is_exported(name))
             .count();
 
         let exported_types = types.iter()
-            .filter(|(name, _)| Self::is_exported(name))
+            .filter(|(name, _, _)| Self::is_exported(name))
             .count();
 
         PackageAnalysis {
@@ -588,8 +591,8 @@ impl GoSyntax {
         }
     }
 
-    /// Find all constant declarations in a syntax tree
-    pub fn find_constants(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+    /// Find all constant declarations in a syntax tree with start and end positions
+    pub fn find_constants(tree: &SyntaxTree, _source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut constants = Vec::new();
         let const_nodes = tree.find_nodes_by_kind("const_declaration");
 
@@ -602,7 +605,7 @@ impl GoSyntax {
                     if node.kind() == "const_spec" {
                         if let Some(name_node) = node.child_by_field_name("name") {
                             if let Ok(name) = name_node.text() {
-                                constants.push((name.to_string(), node.start_position()));
+                                constants.push((name.to_string(), node.start_position(), node.end_position()));
                             }
                         }
                     }
@@ -617,8 +620,8 @@ impl GoSyntax {
         constants
     }
 
-    /// Find all variable declarations in a syntax tree
-    pub fn find_variables(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+    /// Find all variable declarations in a syntax tree with start and end positions
+    pub fn find_variables(tree: &SyntaxTree, _source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut variables = Vec::new();
         let var_nodes = tree.find_nodes_by_kind("var_declaration");
 
@@ -631,7 +634,7 @@ impl GoSyntax {
                     if node.kind() == "var_spec" {
                         if let Some(name_node) = node.child_by_field_name("name") {
                             if let Ok(name) = name_node.text() {
-                                variables.push((name.to_string(), node.start_position()));
+                                variables.push((name.to_string(), node.start_position(), node.end_position()));
                             }
                         }
                     }
@@ -690,7 +693,7 @@ func init() {
         let functions = GoSyntax::find_functions(&tree, source);
         assert_eq!(functions.len(), 3);
 
-        let function_names: Vec<&str> = functions.iter().map(|(name, _)| name.as_str()).collect();
+        let function_names: Vec<&str> = functions.iter().map(|(name, _, _)| name.as_str()).collect();
         assert!(function_names.contains(&"main"));
         assert!(function_names.contains(&"add"));
         assert!(function_names.contains(&"init"));
@@ -722,7 +725,7 @@ func (r *Rectangle) Scale(factor float64) {
         assert_eq!(methods.len(), 2);
 
         let method_info: Vec<(&str, &str)> = methods.iter()
-            .map(|(name, receiver, _)| (name.as_str(), receiver.as_str()))
+            .map(|(name, receiver, _, _)| (name.as_str(), receiver.as_str()))
             .collect();
 
         assert!(method_info.contains(&("Area", "Rectangle")));

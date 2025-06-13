@@ -29,7 +29,7 @@ pub struct VulnerabilityRecord {
     pub description: String,
     pub published_date: DateTime<Utc>,
     pub last_modified: DateTime<Utc>,
-    pub references: String, // JSON array of URLs
+    pub reference_urls: String, // JSON array of URLs
     pub cwe_ids: String,    // JSON array of CWE IDs
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -108,7 +108,7 @@ impl DatabaseManager {
                 description TEXT NOT NULL,
                 published_date TEXT NOT NULL,
                 last_modified TEXT NOT NULL,
-                references TEXT NOT NULL,
+                reference_urls TEXT NOT NULL,
                 cwe_ids TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -210,9 +210,9 @@ impl DatabaseManager {
     /// Store vulnerability data
     pub async fn store_vulnerability(&self, vuln: &VulnerabilityRecord) -> Result<(), sqlx::Error> {
         sqlx::query(r#"
-            INSERT OR REPLACE INTO vulnerabilities 
-            (id, cve_id, package_name, affected_versions, severity, cvss_score, description, 
-             published_date, last_modified, references, cwe_ids, created_at, updated_at)
+            INSERT OR REPLACE INTO vulnerabilities
+            (id, cve_id, package_name, affected_versions, severity, cvss_score, description,
+             published_date, last_modified, reference_urls, cwe_ids, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#)
         .bind(&vuln.id)
@@ -224,7 +224,7 @@ impl DatabaseManager {
         .bind(&vuln.description)
         .bind(vuln.published_date.to_rfc3339())
         .bind(vuln.last_modified.to_rfc3339())
-        .bind(&vuln.references)
+        .bind(&vuln.reference_urls)
         .bind(&vuln.cwe_ids)
         .bind(vuln.created_at.to_rfc3339())
         .bind(vuln.updated_at.to_rfc3339())

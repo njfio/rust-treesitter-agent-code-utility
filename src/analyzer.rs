@@ -144,6 +144,65 @@ impl CodebaseAnalyzer {
         }
     }
 
+    /// Extract JSDoc comment for a function node
+    fn extract_jsdoc_comment(start_pos: tree_sitter::Point, content: &str) -> Option<String> {
+        // Look for comment nodes before the function
+        let lines: Vec<&str> = content.lines().collect();
+        let mut comment_lines = Vec::new();
+
+        // Check lines before the function for JSDoc comments
+        for line_idx in (0..start_pos.row).rev() {
+            if let Some(line) = lines.get(line_idx) {
+                let trimmed = line.trim();
+                if trimmed.starts_with("/**") || trimmed.starts_with("*") || trimmed.ends_with("*/") {
+                    comment_lines.insert(0, trimmed.to_string());
+                    if trimmed.starts_with("/**") {
+                        break;
+                    }
+                } else if !trimmed.is_empty() {
+                    break;
+                }
+            }
+        }
+
+        if !comment_lines.is_empty() {
+            Some(comment_lines.join("\n"))
+        } else {
+            None
+        }
+    }
+
+    /// Extract TSDoc comment for a TypeScript function node
+    fn extract_tsdoc_comment(start_pos: tree_sitter::Point, content: &str) -> Option<String> {
+        // TSDoc uses the same format as JSDoc
+        Self::extract_jsdoc_comment(start_pos, content)
+    }
+
+    /// Extract Go doc comment for a function node
+    fn extract_go_doc_comment(start_pos: tree_sitter::Point, content: &str) -> Option<String> {
+        // Go doc comments are single-line comments immediately before the declaration
+        let lines: Vec<&str> = content.lines().collect();
+        let mut comment_lines = Vec::new();
+
+        // Check lines before the function for Go doc comments
+        for line_idx in (0..start_pos.row).rev() {
+            if let Some(line) = lines.get(line_idx) {
+                let trimmed = line.trim();
+                if trimmed.starts_with("//") {
+                    comment_lines.insert(0, trimmed.trim_start_matches("//").trim().to_string());
+                } else if !trimmed.is_empty() {
+                    break;
+                }
+            }
+        }
+
+        if !comment_lines.is_empty() {
+            Some(comment_lines.join("\n"))
+        } else {
+            None
+        }
+    }
+
     /// Get or create a parser for the given language
     fn get_parser(&mut self, language: Language) -> Result<&Parser> {
         if !self.parsers.contains_key(&language) {
@@ -462,7 +521,7 @@ impl CodebaseAnalyzer {
                 end_line: end_pos.row + 1,
                 start_column: start_pos.column,
                 end_column: end_pos.column,
-                documentation: None, // TODO: Extract JSDoc comments
+                documentation: Self::extract_jsdoc_comment(start_pos, content),
                 is_public: true, // JavaScript functions are generally public
             });
         }
@@ -499,7 +558,7 @@ impl CodebaseAnalyzer {
                 end_line: end_pos.row + 1,
                 start_column: start_pos.column,
                 end_column: end_pos.column,
-                documentation: None, // TODO: Extract TSDoc comments
+                documentation: Self::extract_tsdoc_comment(start_pos, content),
                 is_public: true, // TypeScript functions are generally public
             });
         }
@@ -614,13 +673,13 @@ impl CodebaseAnalyzer {
             let full_name = format!("{}::{}", class_name, method_name);
 
             symbols.push(Symbol {
-                name: full_name,
+                name: full_name.clone(),
                 kind: "method".to_string(),
                 start_line: location.row + 1,
                 end_line: location.row + 1,
                 start_column: location.column,
                 end_column: location.column,
-                documentation: None, // TODO: Extract method docstrings
+                documentation: PythonSyntax::extract_docstring(&full_name, content),
                 is_public,
             });
         }
@@ -698,6 +757,13 @@ impl CodebaseAnalyzer {
         // For C++, also extract classes and namespaces
         let classes = CppSyntax::find_classes(tree, content);
         for (name, start_pos, end_pos) in classes {
+            // Find the class node to check access modifiers
+            let class_nodes = tree.find_nodes_by_kind("class_specifier");
+            let is_public = class_nodes.iter()
+                .find(|node| node.start_position() == start_pos)
+                .map(|node| CppSyntax::is_public_member(node))
+                .unwrap_or(true);
+
             symbols.push(Symbol {
                 name,
                 kind: "class".to_string(),
@@ -706,7 +772,7 @@ impl CodebaseAnalyzer {
                 start_column: start_pos.column,
                 end_column: end_pos.column,
                 documentation: None,
-                is_public: true, // TODO: Check access modifiers
+                is_public,
             });
         }
 
@@ -750,6 +816,13 @@ impl CodebaseAnalyzer {
         // Extract C++ classes
         let classes = CppSyntax::find_classes(tree, content);
         for (name, start_pos, end_pos) in classes {
+            // Find the class node to check access modifiers
+            let class_nodes = tree.find_nodes_by_kind("class_specifier");
+            let is_public = class_nodes.iter()
+                .find(|node| node.start_position() == start_pos)
+                .map(|node| CppSyntax::is_public_member(node))
+                .unwrap_or(true);
+
             symbols.push(Symbol {
                 name,
                 kind: "class".to_string(),
@@ -758,7 +831,7 @@ impl CodebaseAnalyzer {
                 start_column: start_pos.column,
                 end_column: end_pos.column,
                 documentation: None,
-                is_public: true, // TODO: Check access modifiers
+                is_public,
             });
         }
 
@@ -825,7 +898,7 @@ impl CodebaseAnalyzer {
                 end_line: end_pos.row + 1,
                 start_column: start_pos.column,
                 end_column: end_pos.column,
-                documentation: None, // TODO: Extract Go doc comments
+                documentation: Self::extract_go_doc_comment(start_pos, content),
                 is_public,
             });
         }
@@ -974,5 +1047,64 @@ mod tests {
         assert!(js_file_info.symbols.iter().any(|s| s.name == "greet"));
 
         Ok(())
+    }
+
+    #[test]
+    fn test_jsdoc_extraction() {
+        let content = r#"
+/**
+ * This is a JSDoc comment
+ * @param name The name parameter
+ * @returns A greeting string
+ */
+function greet(name) {
+    return "Hello, " + name;
+}
+        "#;
+
+        let start_pos = tree_sitter::Point { row: 6, column: 0 };
+        let doc = CodebaseAnalyzer::extract_jsdoc_comment(start_pos, content);
+
+        assert!(doc.is_some());
+        let doc_text = doc.unwrap();
+        assert!(doc_text.contains("This is a JSDoc comment"));
+        assert!(doc_text.contains("@param name"));
+        assert!(doc_text.contains("@returns"));
+    }
+
+    #[test]
+    fn test_go_doc_extraction() {
+        let content = r#"
+// Package main provides the entry point
+package main
+
+// greet returns a greeting message for the given name.
+// It formats the name with a standard greeting.
+func greet(name string) string {
+    return "Hello, " + name
+}
+        "#;
+
+        let start_pos = tree_sitter::Point { row: 6, column: 0 };
+        let doc = CodebaseAnalyzer::extract_go_doc_comment(start_pos, content);
+
+        assert!(doc.is_some());
+        let doc_text = doc.unwrap();
+        assert!(doc_text.contains("greet returns a greeting message"));
+        assert!(doc_text.contains("It formats the name"));
+    }
+
+    #[test]
+    fn test_no_documentation() {
+        let content = r#"
+function greet(name) {
+    return "Hello, " + name;
+}
+        "#;
+
+        let start_pos = tree_sitter::Point { row: 1, column: 0 };
+        let doc = CodebaseAnalyzer::extract_jsdoc_comment(start_pos, content);
+
+        assert!(doc.is_none());
     }
 }

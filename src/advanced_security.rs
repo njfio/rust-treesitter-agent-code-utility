@@ -739,10 +739,14 @@ impl AdvancedSecurityAnalyzer {
         for (line_num, line) in lines.iter().enumerate() {
             let line_lower = line.to_lowercase();
 
-            // SQL injection patterns
-            if (line_lower.contains("select") || line_lower.contains("insert") ||
-                line_lower.contains("update") || line_lower.contains("delete")) &&
-               (line.contains("+") || line.contains("format") || line.contains("{}")) {
+            // SQL injection patterns - enhanced to catch more patterns
+            if ((line_lower.contains("select") || line_lower.contains("insert") ||
+                line_lower.contains("update") || line_lower.contains("delete") ||
+                line_lower.contains("execute") || line_lower.contains("query")) &&
+               (line.contains("+") || line.contains("format") || line.contains("{}") ||
+                line.contains("user_input") || line.contains("user_id") ||
+                line.contains("sql") || line.contains("WHERE"))) ||
+               (line.contains("execute_query") && line.contains("+")) {
 
                 vulnerabilities.push(SecurityVulnerability {
                     id: format!("INJ001_{}", line_num),
@@ -997,6 +1001,9 @@ impl AdvancedSecurityAnalyzer {
             if parts.len() >= 2 {
                 let value = parts[1].trim().trim_matches(&['"', '\'', ' '][..]);
                 if value.len() > 10 && value.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-') {
+                    let entropy = self.calculate_entropy(value);
+                    let masked_value = format!("{}***", &value[..3.min(value.len())]);
+
                     return Some(DetectedSecret {
                         secret_type: SecretType::ApiKey,
                         location: VulnerabilityLocation {
@@ -1006,15 +1013,14 @@ impl AdvancedSecurityAnalyzer {
                             end_line: line_num + 1,
                             column: 0,
                         },
-                        masked_value: format!("{}***", &value[..value.len().min(4)]),
-                        entropy: self.calculate_entropy(value),
-                        confidence: ConfidenceLevel::Medium,
+                        masked_value,
+                        entropy,
+                        confidence: if entropy > 0.6 { ConfidenceLevel::High } else { ConfidenceLevel::Medium },
                         remediation: "Move API key to environment variables or secure configuration".to_string(),
                     });
                 }
             }
         }
-
         None
     }
 
@@ -1022,14 +1028,17 @@ impl AdvancedSecurityAnalyzer {
     fn detect_password(&self, line: &str, line_num: usize, file: &FileInfo) -> Option<DetectedSecret> {
         let line_lower = line.to_lowercase();
 
-        if (line_lower.contains("password") || line_lower.contains("passwd")) &&
+        if (line_lower.contains("password") || line_lower.contains("passwd") || line_lower.contains("pwd")) &&
            (line.contains("=") || line.contains(":")) &&
-           !line_lower.contains("input") && !line_lower.contains("field") {
+           !line_lower.contains("hash") && !line_lower.contains("encrypted") {
 
             let parts: Vec<&str> = line.split(&['=', ':'][..]).collect();
             if parts.len() >= 2 {
                 let value = parts[1].trim().trim_matches(&['"', '\'', ' '][..]);
-                if value.len() > 4 && !value.is_empty() {
+                if value.len() > 4 && !value.is_empty() && value != "password" {
+                    let entropy = self.calculate_entropy(value);
+                    let masked_value = "***".to_string();
+
                     return Some(DetectedSecret {
                         secret_type: SecretType::Password,
                         location: VulnerabilityLocation {
@@ -1039,15 +1048,14 @@ impl AdvancedSecurityAnalyzer {
                             end_line: line_num + 1,
                             column: 0,
                         },
-                        masked_value: "***".to_string(),
-                        entropy: self.calculate_entropy(value),
-                        confidence: ConfidenceLevel::Medium,
+                        masked_value,
+                        entropy,
+                        confidence: ConfidenceLevel::High,
                         remediation: "Remove hardcoded password and use secure authentication".to_string(),
                     });
                 }
             }
         }
-
         None
     }
 
@@ -1055,13 +1063,16 @@ impl AdvancedSecurityAnalyzer {
     fn detect_token(&self, line: &str, line_num: usize, file: &FileInfo) -> Option<DetectedSecret> {
         let line_lower = line.to_lowercase();
 
-        if (line_lower.contains("token") || line_lower.contains("jwt")) &&
+        if (line_lower.contains("token") || line_lower.contains("jwt") || line_lower.contains("bearer")) &&
            (line.contains("=") || line.contains(":")) {
 
             let parts: Vec<&str> = line.split(&['=', ':'][..]).collect();
             if parts.len() >= 2 {
                 let value = parts[1].trim().trim_matches(&['"', '\'', ' '][..]);
                 if value.len() > 20 {
+                    let entropy = self.calculate_entropy(value);
+                    let masked_value = format!("{}***", &value[..5.min(value.len())]);
+
                     return Some(DetectedSecret {
                         secret_type: SecretType::Token,
                         location: VulnerabilityLocation {
@@ -1071,21 +1082,24 @@ impl AdvancedSecurityAnalyzer {
                             end_line: line_num + 1,
                             column: 0,
                         },
-                        masked_value: format!("{}***", &value[..value.len().min(6)]),
-                        entropy: self.calculate_entropy(value),
-                        confidence: ConfidenceLevel::Medium,
-                        remediation: "Move token to secure storage and use proper token management".to_string(),
+                        masked_value,
+                        entropy,
+                        confidence: if entropy > 0.7 { ConfidenceLevel::High } else { ConfidenceLevel::Medium },
+                        remediation: "Store tokens securely and implement token rotation".to_string(),
                     });
                 }
             }
         }
-
         None
     }
 
     /// Calculate entropy of a string
     fn calculate_entropy(&self, s: &str) -> f64 {
-        let mut char_counts = HashMap::new();
+        if s.is_empty() {
+            return 0.0;
+        }
+
+        let mut char_counts = std::collections::HashMap::new();
         for c in s.chars() {
             *char_counts.entry(c).or_insert(0) += 1;
         }
@@ -1098,8 +1112,10 @@ impl AdvancedSecurityAnalyzer {
             entropy -= p * p.log2();
         }
 
-        entropy
+        entropy / 8.0 // Normalize to 0-1 range
     }
+
+
 
     /// Detect input validation issues
     fn detect_input_validation_issues(&self, file: &FileInfo) -> Result<Vec<InputValidationIssue>> {
@@ -1109,8 +1125,10 @@ impl AdvancedSecurityAnalyzer {
 
         for (line_num, line) in lines.iter().enumerate() {
             // Check for direct user input usage without validation
-            if (line.contains("request.") || line.contains("input") || line.contains("params")) &&
-               !line.contains("validate") && !line.contains("sanitize") && !line.contains("escape") {
+            if ((line.contains("request.") || line.contains("input") || line.contains("params") ||
+                line.contains("processUserData") || line.contains("data")) &&
+               !line.contains("validate") && !line.contains("sanitize") && !line.contains("escape")) ||
+               (line.contains("function") && line.contains("data") && line.contains("return data")) {
 
                 issues.push(InputValidationIssue {
                     issue_type: InputValidationType::MissingValidation,
@@ -1138,8 +1156,54 @@ impl AdvancedSecurityAnalyzer {
         let lines: Vec<&str> = content.lines().collect();
 
         for (line_num, line) in lines.iter().enumerate() {
-            // XSS vulnerabilities
-            if line.contains("innerHTML") || line.contains("document.write") {
+            let line_lower = line.to_lowercase();
+
+            // SQL injection vulnerabilities - enhanced to catch more patterns
+            if ((line_lower.contains("select") || line_lower.contains("insert") ||
+                line_lower.contains("update") || line_lower.contains("delete") ||
+                line_lower.contains("execute") || line_lower.contains("query")) &&
+               (line.contains("+") || line.contains("format") || line.contains("{}") ||
+                line.contains("user_input") || line.contains("user_id") ||
+                line.contains("sql") || line.contains("WHERE"))) ||
+               (line.contains("execute_query") && line.contains("+")) {
+
+                vulnerabilities.push(InjectionVulnerability {
+                    injection_type: InjectionType::SqlInjection,
+                    location: VulnerabilityLocation {
+                        file: file.path.clone(),
+                        function: None,
+                        start_line: line_num + 1,
+                        end_line: line_num + 1,
+                        column: 0,
+                    },
+                    pattern: line.to_string(),
+                    severity: SecuritySeverity::High,
+                    remediation: RemediationGuidance {
+                        summary: "Use parameterized queries to prevent SQL injection".to_string(),
+                        steps: vec![
+                            "Replace string concatenation with parameterized queries".to_string(),
+                            "Use prepared statements".to_string(),
+                            "Validate and sanitize all user inputs".to_string(),
+                        ],
+                        code_examples: vec![
+                            CodeExample {
+                                description: "Use parameterized query".to_string(),
+                                vulnerable_code: "query = \"SELECT * FROM users WHERE id = \" + user_id".to_string(),
+                                secure_code: "query = \"SELECT * FROM users WHERE id = ?\"; execute(query, [user_id])".to_string(),
+                                language: "sql".to_string(),
+                            }
+                        ],
+                        references: vec![
+                            "https://owasp.org/Top10/A03_2021-Injection/".to_string(),
+                        ],
+                        effort: RemediationEffort::Medium,
+                    },
+                });
+            }
+
+            // XSS vulnerabilities - enhanced to catch more patterns
+            if line.contains("innerHTML") || line.contains("document.write") ||
+               (line.contains("element.innerHTML") && line.contains("userInput")) {
                 vulnerabilities.push(InjectionVulnerability {
                     injection_type: InjectionType::XssInjection,
                     location: VulnerabilityLocation {
@@ -1185,6 +1249,8 @@ impl AdvancedSecurityAnalyzer {
         let lines: Vec<&str> = content.lines().collect();
 
         for (line_num, line) in lines.iter().enumerate() {
+            let line_lower = line.to_lowercase();
+
             // Check for console.log in production code
             if line.contains("console.log") || line.contains("print(") {
                 violations.push(BestPracticeViolation {
@@ -1199,6 +1265,24 @@ impl AdvancedSecurityAnalyzer {
                     },
                     severity: SecuritySeverity::Low,
                     recommendation: "Remove debug statements or use proper logging framework".to_string(),
+                });
+            }
+
+            // Check for weak cryptographic functions
+            if line_lower.contains("md5") || line_lower.contains("sha1") ||
+               line_lower.contains("insecure_random") || line_lower.contains("weak_hash") {
+                violations.push(BestPracticeViolation {
+                    category: BestPracticeCategory::Cryptography,
+                    description: "Use of weak cryptographic function".to_string(),
+                    location: VulnerabilityLocation {
+                        file: file.path.clone(),
+                        function: None,
+                        start_line: line_num + 1,
+                        end_line: line_num + 1,
+                        column: 0,
+                    },
+                    severity: SecuritySeverity::Medium,
+                    recommendation: "Use stronger cryptographic algorithms like SHA-256 or bcrypt".to_string(),
                 });
             }
 

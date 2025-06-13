@@ -34,7 +34,19 @@ impl CSyntax {
 
     /// Check if a node represents a struct declaration
     pub fn is_struct_declaration(node: &Node) -> bool {
-        node.kind() == "struct_specifier"
+        if node.kind() != "struct_specifier" {
+            return false;
+        }
+
+        // Check if this struct has a field declaration list (body)
+        // This distinguishes between struct definitions and struct references
+        for child in node.children() {
+            if child.kind() == "field_declaration_list" {
+                return true;
+            }
+        }
+
+        false
     }
 
     /// Check if a node represents a union declaration
@@ -49,14 +61,12 @@ impl CSyntax {
 
     /// Check if a node represents a typedef declaration
     pub fn is_typedef_declaration(node: &Node) -> bool {
-        if node.kind() != "declaration" {
-            return false;
-        }
-
-        for child in node.children() {
-            if child.kind() == "storage_class_specifier" {
-                if let Ok(text) = child.text() {
-                    return text == "typedef";
+        // In C tree-sitter grammar, typedefs are represented as "type_definition" nodes
+        if node.kind() == "type_definition" {
+            // Check if it starts with "typedef"
+            for child in node.children() {
+                if child.kind() == "typedef" {
+                    return true;
                 }
             }
         }
@@ -145,23 +155,49 @@ impl CSyntax {
             return None;
         }
 
-        // Look for the last identifier in the declaration
-        let mut last_identifier = None;
-        
+        // For type_definition nodes, the typedef name can be:
+        // 1. A direct type_identifier (e.g., typedef int Integer;)
+        // 2. Inside a pointer_declarator (e.g., typedef char* String;)
+        let mut typedef_name = None;
+
         for child in node.children() {
-            if child.kind() == "type_identifier" || child.kind() == "identifier" {
+            if child.kind() == "type_identifier" {
                 if let Ok(text) = child.text() {
-                    last_identifier = Some(text.to_string());
+                    typedef_name = Some(text.to_string());
+                }
+            } else if child.kind() == "pointer_declarator" {
+                // Look for type_identifier inside pointer_declarator
+                for pointer_child in child.children() {
+                    if pointer_child.kind() == "type_identifier" {
+                        if let Ok(text) = pointer_child.text() {
+                            typedef_name = Some(text.to_string());
+                        }
+                    }
                 }
             }
         }
 
-        last_identifier
+        typedef_name
     }
 
     /// Extract macro name from a macro definition
     pub fn macro_name(node: &Node, source: &str) -> Option<String> {
         if !Self::is_macro_definition(node) {
+            return None;
+        }
+
+        for child in node.children() {
+            if child.kind() == "identifier" {
+                return child.text().ok().map(|s| s.to_string());
+            }
+        }
+
+        None
+    }
+
+    /// Extract macro name from a function-like macro definition
+    pub fn function_macro_name(node: &Node, source: &str) -> Option<String> {
+        if node.kind() != "preproc_function_def" {
             return None;
         }
 
@@ -189,13 +225,9 @@ impl CSyntax {
                     if decl_child.kind() == "parameter_list" {
                         for param in decl_child.children() {
                             if param.kind() == "parameter_declaration" {
-                                // Look for identifier in the parameter
-                                for param_part in param.children() {
-                                    if param_part.kind() == "identifier" {
-                                        if let Ok(param_name) = param_part.text() {
-                                            parameters.push(param_name.to_string());
-                                        }
-                                    }
+                                // Look for identifier in the parameter, which might be nested
+                                if let Some(param_name) = Self::extract_parameter_name(&param) {
+                                    parameters.push(param_name);
                                 }
                             }
                         }
@@ -205,6 +237,39 @@ impl CSyntax {
         }
 
         parameters
+    }
+
+    /// Helper function to extract parameter name from parameter_declaration
+    fn extract_parameter_name(param_node: &Node) -> Option<String> {
+        // Look for identifier directly in parameter_declaration
+        for child in param_node.children() {
+            if child.kind() == "identifier" {
+                if let Ok(param_name) = child.text() {
+                    return Some(param_name.to_string());
+                }
+            }
+            // Look for identifier in pointer_declarator
+            else if child.kind() == "pointer_declarator" {
+                for pointer_child in child.children() {
+                    if pointer_child.kind() == "identifier" {
+                        if let Ok(param_name) = pointer_child.text() {
+                            return Some(param_name.to_string());
+                        }
+                    }
+                }
+            }
+            // Look for identifier in array_declarator
+            else if child.kind() == "array_declarator" {
+                for array_child in child.children() {
+                    if array_child.kind() == "identifier" {
+                        if let Ok(param_name) = array_child.text() {
+                            return Some(param_name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Get function return type
@@ -302,6 +367,16 @@ impl CSyntax {
                                         field_name = name_text.to_string();
                                     }
                                 }
+                                "array_declarator" => {
+                                    // For array fields like "char name[50]", extract the identifier
+                                    for array_child in field_part.children() {
+                                        if array_child.kind() == "field_identifier" {
+                                            if let Ok(name_text) = array_child.text() {
+                                                field_name = name_text.to_string();
+                                            }
+                                        }
+                                    }
+                                }
                                 _ => {}
                             }
                         }
@@ -317,28 +392,30 @@ impl CSyntax {
         fields
     }
 
-    /// Get all function definitions in a syntax tree
-    pub fn find_functions(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+    /// Get all function definitions in a syntax tree with start and end positions
+    pub fn find_functions(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut functions = Vec::new();
         let function_nodes = tree.find_nodes_by_kind("function_definition");
-        
+
         for func_node in function_nodes {
             if let Some(name) = Self::function_name(&func_node, source) {
-                functions.push((name, func_node.start_position()));
+                let ts_node = func_node.inner();
+                functions.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
         functions
     }
 
-    /// Get all struct definitions in a syntax tree
-    pub fn find_structs(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+    /// Get all struct definitions in a syntax tree with start and end positions
+    pub fn find_structs(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut structs = Vec::new();
         let struct_nodes = tree.find_nodes_by_kind("struct_specifier");
-        
+
         for struct_node in struct_nodes {
             if let Some(name) = Self::struct_name(&struct_node, source) {
-                structs.push((name, struct_node.start_position()));
+                let ts_node = struct_node.inner();
+                structs.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
@@ -359,29 +436,31 @@ impl CSyntax {
         unions
     }
 
-    /// Get all enum definitions in a syntax tree
-    pub fn find_enums(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+    /// Get all enum definitions in a syntax tree with start and end positions
+    pub fn find_enums(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut enums = Vec::new();
         let enum_nodes = tree.find_nodes_by_kind("enum_specifier");
-        
+
         for enum_node in enum_nodes {
             if let Some(name) = Self::enum_name(&enum_node, source) {
-                enums.push((name, enum_node.start_position()));
+                let ts_node = enum_node.inner();
+                enums.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
         enums
     }
 
-    /// Get all typedef definitions in a syntax tree
-    pub fn find_typedefs(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+    /// Get all typedef definitions in a syntax tree with start and end positions
+    pub fn find_typedefs(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut typedefs = Vec::new();
-        let declaration_nodes = tree.find_nodes_by_kind("declaration");
-        
-        for decl_node in declaration_nodes {
-            if Self::is_typedef_declaration(&decl_node) {
-                if let Some(name) = Self::typedef_name(&decl_node, source) {
-                    typedefs.push((name, decl_node.start_position()));
+        let type_definition_nodes = tree.find_nodes_by_kind("type_definition");
+
+        for type_def_node in type_definition_nodes {
+            if Self::is_typedef_declaration(&type_def_node) {
+                if let Some(name) = Self::typedef_name(&type_def_node, source) {
+                    let ts_node = type_def_node.inner();
+                    typedefs.push((name, ts_node.start_position(), ts_node.end_position()));
                 }
             }
         }
@@ -389,14 +468,25 @@ impl CSyntax {
         typedefs
     }
 
-    /// Get all macro definitions in a syntax tree
-    pub fn find_macros(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+    /// Get all macro definitions in a syntax tree with start and end positions
+    pub fn find_macros(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut macros = Vec::new();
-        let macro_nodes = tree.find_nodes_by_kind("preproc_def");
 
-        for macro_node in macro_nodes {
+        // Find simple macro definitions (#define NAME value)
+        let simple_macro_nodes = tree.find_nodes_by_kind("preproc_def");
+        for macro_node in simple_macro_nodes {
             if let Some(name) = Self::macro_name(&macro_node, source) {
-                macros.push((name, macro_node.start_position()));
+                let ts_node = macro_node.inner();
+                macros.push((name, ts_node.start_position(), ts_node.end_position()));
+            }
+        }
+
+        // Find function-like macro definitions (#define NAME(args) body)
+        let function_macro_nodes = tree.find_nodes_by_kind("preproc_function_def");
+        for macro_node in function_macro_nodes {
+            if let Some(name) = Self::function_macro_name(&macro_node, source) {
+                let ts_node = macro_node.inner();
+                macros.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
@@ -536,9 +626,9 @@ impl CSyntax {
         }
 
         // Check for typedefs
-        let declarations = tree.find_nodes_by_kind("declaration");
-        for decl in declarations {
-            if Self::is_typedef_declaration(&decl) {
+        let type_definitions = tree.find_nodes_by_kind("type_definition");
+        for type_def in type_definitions {
+            if Self::is_typedef_declaration(&type_def) {
                 features.push("Typedefs".to_string());
                 break;
             }
@@ -663,7 +753,7 @@ inline int calculate(int a, int b) {
         let functions = CSyntax::find_functions(&tree, source);
         assert_eq!(functions.len(), 3);
 
-        let function_names: Vec<&str> = functions.iter().map(|(name, _)| name.as_str()).collect();
+        let function_names: Vec<&str> = functions.iter().map(|(name, _, _)| name.as_str()).collect();
         assert!(function_names.contains(&"main"));
         assert!(function_names.contains(&"helper_function"));
         assert!(function_names.contains(&"calculate"));
@@ -694,7 +784,7 @@ typedef struct {
         let structs = CSyntax::find_structs(&tree, source);
         assert_eq!(structs.len(), 2); // Named structs only
 
-        let struct_names: Vec<&str> = structs.iter().map(|(name, _)| name.as_str()).collect();
+        let struct_names: Vec<&str> = structs.iter().map(|(name, _, _)| name.as_str()).collect();
         assert!(struct_names.contains(&"Point"));
         assert!(struct_names.contains(&"Rectangle"));
     }
@@ -714,10 +804,12 @@ typedef struct {
         let mut parser = Parser::new(crate::Language::C).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
+
+
         let typedefs = CSyntax::find_typedefs(&tree, source);
         assert!(typedefs.len() >= 3); // At least Integer, String, Point_t
 
-        let typedef_names: Vec<&str> = typedefs.iter().map(|(name, _)| name.as_str()).collect();
+        let typedef_names: Vec<&str> = typedefs.iter().map(|(name, _, _)| name.as_str()).collect();
         assert!(typedef_names.contains(&"Integer"));
         assert!(typedef_names.contains(&"String"));
         assert!(typedef_names.contains(&"Point_t"));
@@ -744,7 +836,7 @@ enum Status {
         let enums = CSyntax::find_enums(&tree, source);
         assert_eq!(enums.len(), 2);
 
-        let enum_names: Vec<&str> = enums.iter().map(|(name, _)| name.as_str()).collect();
+        let enum_names: Vec<&str> = enums.iter().map(|(name, _, _)| name.as_str()).collect();
         assert!(enum_names.contains(&"Color"));
         assert!(enum_names.contains(&"Status"));
     }
@@ -761,13 +853,16 @@ enum Status {
         let tree = parser.parse(source, None).unwrap();
 
         let macros = CSyntax::find_macros(&tree, source);
+
         assert_eq!(macros.len(), 3);
 
-        let macro_names: Vec<&str> = macros.iter().map(|(name, _)| name.as_str()).collect();
+        let macro_names: Vec<&str> = macros.iter().map(|(name, _, _)| name.as_str()).collect();
         assert!(macro_names.contains(&"MAX_SIZE"));
         assert!(macro_names.contains(&"MIN"));
         assert!(macro_names.contains(&"DEBUG_PRINT"));
     }
+
+
 
     #[test]
     fn test_function_parameters() {

@@ -552,7 +552,7 @@ impl EnhancedSecurityScanner {
             + owasp_findings.iter().filter(|o| matches!(o.severity, crate::security::owasp_detector::VulnSeverity::High)).count();
 
         // OWASP compliance (based on OWASP findings)
-        let owasp_compliance = if total_critical == 0 && total_high == 0 {
+        let owasp_compliance: u8 = if total_critical == 0 && total_high == 0 {
             95
         } else if total_critical == 0 && total_high <= 2 {
             80
@@ -563,7 +563,7 @@ impl EnhancedSecurityScanner {
         };
 
         // CWE compliance (based on all findings)
-        let cwe_compliance = if total_critical == 0 {
+        let cwe_compliance: u8 = if total_critical == 0 {
             90
         } else if total_critical <= 2 {
             70
@@ -572,7 +572,7 @@ impl EnhancedSecurityScanner {
         };
 
         // Secrets compliance (based on secret findings)
-        let secrets_compliance = if secret_findings.is_empty() {
+        let secrets_compliance: u8 = if secret_findings.is_empty() {
             100
         } else if secret_findings.iter().all(|s| !matches!(s.severity, crate::security::secrets_detector::SecretSeverity::Critical | crate::security::secrets_detector::SecretSeverity::High)) {
             80
@@ -580,7 +580,7 @@ impl EnhancedSecurityScanner {
             50
         };
 
-        let overall_compliance = (owasp_compliance + cwe_compliance + secrets_compliance) / 3;
+        let overall_compliance = (owasp_compliance.saturating_add(cwe_compliance).saturating_add(secrets_compliance)) / 3;
 
         let mut recommendations = Vec::new();
         if total_critical > 0 {

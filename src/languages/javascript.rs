@@ -6,7 +6,7 @@
 use crate::error::{Error, Result};
 use crate::query::Query;
 use crate::tree::{Node, SyntaxTree};
-use tree_sitter::Point;
+
 
 /// JavaScript-specific syntax utilities
 pub struct JavaScriptSyntax;
@@ -200,15 +200,16 @@ impl JavaScriptSyntax {
         parameters
     }
 
-    /// Get all function definitions in a syntax tree
-    pub fn find_functions(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+    /// Get all function definitions in a syntax tree with start and end positions
+    pub fn find_functions(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut functions = Vec::new();
-        
+
         // Find function declarations
         let function_nodes = tree.find_nodes_by_kind("function_declaration");
         for func_node in function_nodes {
             if let Some(name) = Self::function_name(&func_node, source) {
-                functions.push((name, func_node.start_position()));
+                let ts_node = func_node.inner();
+                functions.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
@@ -216,7 +217,8 @@ impl JavaScriptSyntax {
         let expr_nodes = tree.find_nodes_by_kind("function_expression");
         for func_node in expr_nodes {
             if let Some(name) = Self::function_name(&func_node, source) {
-                functions.push((name, func_node.start_position()));
+                let ts_node = func_node.inner();
+                functions.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
@@ -224,22 +226,24 @@ impl JavaScriptSyntax {
         let arrow_nodes = tree.find_nodes_by_kind("arrow_function");
         for func_node in arrow_nodes {
             if let Some(name) = Self::function_name(&func_node, source) {
-                functions.push((name, func_node.start_position()));
+                let ts_node = func_node.inner();
+                functions.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
         functions
     }
 
-    /// Get all class definitions in a syntax tree
-    pub fn find_classes(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+    /// Get all class definitions in a syntax tree with start and end positions
+    pub fn find_classes(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut classes = Vec::new();
-        
+
         // Find class declarations
         let class_nodes = tree.find_nodes_by_kind("class_declaration");
         for class_node in class_nodes {
             if let Some(name) = Self::class_name(&class_node, source) {
-                classes.push((name, class_node.start_position()));
+                let ts_node = class_node.inner();
+                classes.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
@@ -247,7 +251,8 @@ impl JavaScriptSyntax {
         let expr_nodes = tree.find_nodes_by_kind("class_expression");
         for class_node in expr_nodes {
             if let Some(name) = Self::class_name(&class_node, source) {
-                classes.push((name, class_node.start_position()));
+                let ts_node = class_node.inner();
+                classes.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
@@ -482,7 +487,7 @@ mod tests {
         let functions = JavaScriptSyntax::find_functions(&tree, source);
         assert_eq!(functions.len(), 3);
 
-        let function_names: Vec<&str> = functions.iter().map(|(name, _)| name.as_str()).collect();
+        let function_names: Vec<&str> = functions.iter().map(|(name, _, _)| name.as_str()).collect();
         assert!(function_names.contains(&"regularFunction"));
         assert!(function_names.contains(&"arrowFunction"));
         assert!(function_names.contains(&"asyncFunction"));
