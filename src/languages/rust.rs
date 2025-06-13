@@ -99,30 +99,30 @@ impl RustSyntax {
             .map(|s| s.to_string())
     }
 
-    /// Get all function definitions in a syntax tree
-    pub fn find_functions(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point)> {
+    /// Get all function definitions in a syntax tree with start and end positions
+    pub fn find_functions(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut functions = Vec::new();
         let function_nodes = tree.find_nodes_by_kind("function_item");
 
         for func_node in function_nodes {
             let ts_node = func_node.inner();
             if let Some(name) = Self::function_name(&ts_node, source) {
-                functions.push((name, func_node.start_position()));
+                functions.push((name, func_node.start_position(), func_node.end_position()));
             }
         }
 
         functions
     }
 
-    /// Get all struct definitions in a syntax tree
-    pub fn find_structs(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point)> {
+    /// Get all struct definitions in a syntax tree with start and end positions
+    pub fn find_structs(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut structs = Vec::new();
         let struct_nodes = tree.find_nodes_by_kind("struct_item");
 
         for struct_node in struct_nodes {
             let ts_node = struct_node.inner();
             if let Some(name) = Self::struct_name(&ts_node, source) {
-                structs.push((name, struct_node.start_position()));
+                structs.push((name, struct_node.start_position(), struct_node.end_position()));
             }
         }
 

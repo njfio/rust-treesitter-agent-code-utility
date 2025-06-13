@@ -363,17 +363,17 @@ impl CodebaseAnalyzer {
 
         // Extract functions
         let functions = RustSyntax::find_functions(tree, content);
-        for (name, location) in functions {
+        for (name, start_pos, end_pos) in functions {
             let is_public = RustSyntax::is_public_function(&name, content);
             let documentation = RustSyntax::extract_doc_comment(&name, content);
 
             symbols.push(Symbol {
                 name,
                 kind: "function".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1, // TODO: Calculate actual end position
-                start_column: location.column,
-                end_column: location.column, // TODO: Calculate actual end position
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation,
                 is_public,
             });
@@ -381,17 +381,17 @@ impl CodebaseAnalyzer {
 
         // Extract structs
         let structs = RustSyntax::find_structs(tree, content);
-        for (name, location) in structs {
+        for (name, start_pos, end_pos) in structs {
             let is_public = RustSyntax::is_public_struct(&name, content);
             let documentation = RustSyntax::extract_doc_comment(&name, content);
 
             symbols.push(Symbol {
                 name,
                 kind: "struct".to_string(),
-                start_line: location.row + 1,
-                end_line: location.row + 1,
-                start_column: location.column,
-                end_column: location.column,
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
                 documentation,
                 is_public,
             });
