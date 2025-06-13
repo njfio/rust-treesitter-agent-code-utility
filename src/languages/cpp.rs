@@ -634,8 +634,8 @@ namespace MyProject {
 }
         "#;
 
-        let mut parser = Parser::new(crate::Language::Cpp).unwrap();
-        let tree = parser.parse(source, None).unwrap();
+        let mut parser = Parser::new(crate::Language::Cpp).expect("Failed to create C++ parser");
+        let tree = parser.parse(source, None).expect("Failed to parse C++ source");
 
         let namespaces = CppSyntax::find_namespaces(&tree, source);
         assert!(namespaces.len() >= 3); // std, MyProject, Utils

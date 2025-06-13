@@ -514,13 +514,21 @@ fn analyze_command(
     output: Option<PathBuf>,
     detailed: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Input validation
+    validate_path_input(&path)?;
+    validate_format_input(&format)?;
+    validate_size_limits(max_size, max_depth)?;
+    if let Some(ref output_path) = output {
+        validate_output_path(output_path)?;
+    }
+
     println!("{}", "🔍 Analyzing codebase...".bright_blue().bold());
     
     // Create progress bar
     let pb = ProgressBar::new_spinner();
     pb.set_style(ProgressStyle::default_spinner()
         .template("{spinner:.green} {msg}")
-        .unwrap());
+        .expect("Failed to set progress bar style"));
     pb.set_message("Scanning files...");
     
     // Configure analyzer
@@ -1466,7 +1474,7 @@ fn map_command(
     let pb = ProgressBar::new_spinner();
     pb.set_style(ProgressStyle::default_spinner()
         .template("{spinner:.green} {msg}")
-        .unwrap());
+        .expect("Failed to set progress bar style"));
     pb.set_message("Analyzing structure...");
 
     let mut analyzer = CodebaseAnalyzer::new();
@@ -3444,4 +3452,72 @@ fn generate_coverage_html(coverage_items: &[CoverageItem], detailed: bool) -> St
 
     html.push_str("</body>\n</html>");
     html
+}
+
+/// Input validation functions for security and robustness
+
+/// Validate path input to prevent directory traversal and ensure path exists
+fn validate_path_input(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    // Check if path exists
+    if !path.exists() {
+        return Err(format!("Path does not exist: {}", path.display()).into());
+    }
+
+    // Canonicalize path to resolve any .. or . components
+    let canonical_path = path.canonicalize()
+        .map_err(|e| format!("Cannot resolve path {}: {}", path.display(), e))?;
+
+    // Basic security check - ensure path doesn't contain suspicious patterns
+    let path_str = canonical_path.to_string_lossy();
+    if path_str.contains("..") {
+        return Err("Path contains suspicious directory traversal patterns".into());
+    }
+
+    Ok(())
+}
+
+/// Validate format input
+fn validate_format_input(format: &str) -> Result<(), Box<dyn std::error::Error>> {
+    match format {
+        "json" | "table" | "summary" | "markdown" | "html" | "text" => Ok(()),
+        _ => Err(format!("Unsupported format: {}. Supported formats: json, table, summary, markdown, html, text", format).into())
+    }
+}
+
+/// Validate size and depth limits to prevent resource exhaustion
+fn validate_size_limits(max_size: usize, max_depth: usize) -> Result<(), Box<dyn std::error::Error>> {
+    const MAX_ALLOWED_SIZE: usize = 100_000_000; // 100MB
+    const MAX_ALLOWED_DEPTH: usize = 50;
+
+    if max_size > MAX_ALLOWED_SIZE {
+        return Err(format!("Max size {} exceeds allowed limit of {}", max_size, MAX_ALLOWED_SIZE).into());
+    }
+
+    if max_depth > MAX_ALLOWED_DEPTH {
+        return Err(format!("Max depth {} exceeds allowed limit of {}", max_depth, MAX_ALLOWED_DEPTH).into());
+    }
+
+    Ok(())
+}
+
+/// Validate output path
+fn validate_output_path(output_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    // Check if parent directory exists
+    if let Some(parent) = output_path.parent() {
+        if !parent.exists() {
+            return Err(format!("Output directory does not exist: {}", parent.display()).into());
+        }
+    }
+
+    // Check if we can write to the location (if file exists)
+    if output_path.exists() {
+        let metadata = output_path.metadata()
+            .map_err(|e| format!("Cannot access output file {}: {}", output_path.display(), e))?;
+
+        if metadata.permissions().readonly() {
+            return Err(format!("Output file is read-only: {}", output_path.display()).into());
+        }
+    }
+
+    Ok(())
 }
