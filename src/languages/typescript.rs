@@ -217,7 +217,7 @@ impl TypeScriptSyntax {
 
                     let type_annotation = child.child_by_field_name("type")
                         .and_then(|n| n.text().ok())
-                        .map(|s| s.to_string());
+                        .map(|s| s.trim_start_matches(':').trim().to_string());
 
                     if let Some(param_name) = name {
                         parameters.push((param_name, type_annotation));
@@ -319,15 +319,16 @@ impl TypeScriptSyntax {
         decorators
     }
 
-    /// Get all function definitions in a syntax tree
-    pub fn find_functions(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+    /// Get all function definitions in a syntax tree with start and end positions
+    pub fn find_functions(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut functions = Vec::new();
 
         // Find function declarations
         let function_nodes = tree.find_nodes_by_kind("function_declaration");
         for func_node in function_nodes {
             if let Some(name) = Self::function_name(&func_node, source) {
-                functions.push((name, func_node.start_position()));
+                let ts_node = func_node.inner();
+                functions.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
@@ -335,7 +336,8 @@ impl TypeScriptSyntax {
         let expr_nodes = tree.find_nodes_by_kind("function_expression");
         for func_node in expr_nodes {
             if let Some(name) = Self::function_name(&func_node, source) {
-                functions.push((name, func_node.start_position()));
+                let ts_node = func_node.inner();
+                functions.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
@@ -343,63 +345,68 @@ impl TypeScriptSyntax {
         let arrow_nodes = tree.find_nodes_by_kind("arrow_function");
         for func_node in arrow_nodes {
             if let Some(name) = Self::function_name(&func_node, source) {
-                functions.push((name, func_node.start_position()));
+                let ts_node = func_node.inner();
+                functions.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
         functions
     }
 
-    /// Get all class definitions in a syntax tree
-    pub fn find_classes(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+    /// Get all class definitions in a syntax tree with start and end positions
+    pub fn find_classes(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut classes = Vec::new();
         let class_nodes = tree.find_nodes_by_kind("class_declaration");
 
         for class_node in class_nodes {
             if let Some(name) = Self::class_name(&class_node, source) {
-                classes.push((name, class_node.start_position()));
+                let ts_node = class_node.inner();
+                classes.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
         classes
     }
 
-    /// Get all interface definitions in a syntax tree
-    pub fn find_interfaces(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+    /// Get all interface definitions in a syntax tree with start and end positions
+    pub fn find_interfaces(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut interfaces = Vec::new();
         let interface_nodes = tree.find_nodes_by_kind("interface_declaration");
 
         for interface_node in interface_nodes {
             if let Some(name) = Self::interface_name(&interface_node, source) {
-                interfaces.push((name, interface_node.start_position()));
+                let ts_node = interface_node.inner();
+                interfaces.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
         interfaces
     }
 
-    /// Get all type alias definitions in a syntax tree
-    pub fn find_type_aliases(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+    /// Get all type alias definitions in a syntax tree with start and end positions
+    pub fn find_type_aliases(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut type_aliases = Vec::new();
         let type_nodes = tree.find_nodes_by_kind("type_alias_declaration");
 
         for type_node in type_nodes {
             if let Some(name) = Self::type_alias_name(&type_node, source) {
-                type_aliases.push((name, type_node.start_position()));
+                let ts_node = type_node.inner();
+                type_aliases.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
         type_aliases
     }
 
-    /// Get all enum definitions in a syntax tree
-    pub fn find_enums(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+    /// Get all enum definitions in a syntax tree with start and end positions
+    pub fn find_enums(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut enums = Vec::new();
         let enum_nodes = tree.find_nodes_by_kind("enum_declaration");
 
         for enum_node in enum_nodes {
             if let Some(name) = Self::enum_name(&enum_node, source) {
-                enums.push((name, enum_node.start_position()));
+                let ts_node = enum_node.inner();
+                enums.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
@@ -608,7 +615,7 @@ mod tests {
         let functions = TypeScriptSyntax::find_functions(&tree, source);
         assert_eq!(functions.len(), 3);
 
-        let function_names: Vec<&str> = functions.iter().map(|(name, _)| name.as_str()).collect();
+        let function_names: Vec<&str> = functions.iter().map(|(name, _, _)| name.as_str()).collect();
         assert!(function_names.contains(&"regularFunction"));
         assert!(function_names.contains(&"arrowFunction"));
         assert!(function_names.contains(&"asyncFunction"));
@@ -658,7 +665,7 @@ mod tests {
         let interfaces = TypeScriptSyntax::find_interfaces(&tree, source);
         assert_eq!(interfaces.len(), 2);
 
-        let interface_names: Vec<&str> = interfaces.iter().map(|(name, _)| name.as_str()).collect();
+        let interface_names: Vec<&str> = interfaces.iter().map(|(name, _, _)| name.as_str()).collect();
         assert!(interface_names.contains(&"User"));
         assert!(interface_names.contains(&"Admin"));
     }
@@ -676,7 +683,7 @@ mod tests {
         let type_aliases = TypeScriptSyntax::find_type_aliases(&tree, source);
         assert_eq!(type_aliases.len(), 2);
 
-        let type_names: Vec<&str> = type_aliases.iter().map(|(name, _)| name.as_str()).collect();
+        let type_names: Vec<&str> = type_aliases.iter().map(|(name, _, _)| name.as_str()).collect();
         assert!(type_names.contains(&"StringOrNumber"));
         assert!(type_names.contains(&"UserCallback"));
     }
@@ -702,7 +709,7 @@ mod tests {
         let enums = TypeScriptSyntax::find_enums(&tree, source);
         assert_eq!(enums.len(), 2);
 
-        let enum_names: Vec<&str> = enums.iter().map(|(name, _)| name.as_str()).collect();
+        let enum_names: Vec<&str> = enums.iter().map(|(name, _, _)| name.as_str()).collect();
         assert!(enum_names.contains(&"Color"));
         assert!(enum_names.contains(&"Status"));
     }

@@ -174,6 +174,21 @@ impl PythonSyntax {
     pub fn get_decorators(node: &Node, source: &str) -> Vec<String> {
         let mut decorators = Vec::new();
 
+        // Check if this function is inside a decorated_definition
+        if let Some(parent) = node.parent() {
+            if parent.kind() == "decorated_definition" {
+                // Look for decorator children in the parent
+                for child in parent.children() {
+                    if Self::is_decorator(&child) {
+                        if let Ok(decorator_text) = child.text() {
+                            decorators.push(decorator_text.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Also check direct children (in case structure is different)
         for child in node.children() {
             if Self::is_decorator(&child) {
                 if let Ok(decorator_text) = child.text() {
@@ -231,28 +246,30 @@ impl PythonSyntax {
         None
     }
 
-    /// Get all function definitions in a syntax tree
-    pub fn find_functions(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+    /// Get all function definitions in a syntax tree with start and end positions
+    pub fn find_functions(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut functions = Vec::new();
         let function_nodes = tree.find_nodes_by_kind("function_definition");
-        
+
         for func_node in function_nodes {
             if let Some(name) = Self::function_name(&func_node, source) {
-                functions.push((name, func_node.start_position()));
+                let ts_node = func_node.inner();
+                functions.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
         functions
     }
 
-    /// Get all class definitions in a syntax tree
-    pub fn find_classes(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+    /// Get all class definitions in a syntax tree with start and end positions
+    pub fn find_classes(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut classes = Vec::new();
         let class_nodes = tree.find_nodes_by_kind("class_definition");
-        
+
         for class_node in class_nodes {
             if let Some(name) = Self::class_name(&class_node, source) {
-                classes.push((name, class_node.start_position()));
+                let ts_node = class_node.inner();
+                classes.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
@@ -410,8 +427,10 @@ impl PythonSyntax {
             features.push("Generator Expressions".to_string());
         }
 
-        // Check for f-strings
-        if !tree.find_nodes_by_kind("formatted_string").is_empty() {
+        // Check for f-strings (try multiple possible node types)
+        if !tree.find_nodes_by_kind("formatted_string").is_empty()
+            || !tree.find_nodes_by_kind("f_string").is_empty()
+            || !tree.find_nodes_by_kind("string").is_empty() && tree.root_node().text().unwrap_or("").contains("f\"") {
             features.push("F-strings".to_string());
         }
 
@@ -461,7 +480,7 @@ impl PythonSyntax {
 
         // Check function names (should be snake_case)
         let functions = Self::find_functions(tree, source);
-        for (name, _) in functions {
+        for (name, _, _) in functions {
             if !Self::is_snake_case(&name) && !Self::is_special_method_name(&name) {
                 violations.push(format!("Function '{}' should use snake_case", name));
             }
@@ -469,7 +488,7 @@ impl PythonSyntax {
 
         // Check class names (should be PascalCase)
         let classes = Self::find_classes(tree, source);
-        for (name, _) in classes {
+        for (name, _, _) in classes {
             if !Self::is_pascal_case(&name) {
                 violations.push(format!("Class '{}' should use PascalCase", name));
             }
@@ -684,7 +703,7 @@ def function_with_params(a, b, c=None):
         let functions = PythonSyntax::find_functions(&tree, source);
         assert_eq!(functions.len(), 3);
 
-        let function_names: Vec<&str> = functions.iter().map(|(name, _)| name.as_str()).collect();
+        let function_names: Vec<&str> = functions.iter().map(|(name, _, _)| name.as_str()).collect();
         assert!(function_names.contains(&"regular_function"));
         assert!(function_names.contains(&"async_function"));
         assert!(function_names.contains(&"function_with_params"));
@@ -711,7 +730,7 @@ class InheritedClass(MyClass):
         let classes = PythonSyntax::find_classes(&tree, source);
         assert_eq!(classes.len(), 2);
 
-        let class_names: Vec<&str> = classes.iter().map(|(name, _)| name.as_str()).collect();
+        let class_names: Vec<&str> = classes.iter().map(|(name, _, _)| name.as_str()).collect();
         assert!(class_names.contains(&"MyClass"));
         assert!(class_names.contains(&"InheritedClass"));
     }
