@@ -30,9 +30,9 @@
 
 ### 4. Missing CLI Command Implementations
 **Priority: MEDIUM**
-- [ ] Add missing CLI commands mentioned in README but not implemented:
-  - [ ] `performance` command for hotspot detection
-  - [ ] `coverage` command for test coverage analysis
+- [x] Add missing CLI commands mentioned in README but not implemented:
+  - [x] `performance` command for hotspot detection - DONE
+  - [x] `coverage` command for test coverage analysis - DONE
   - [ ] Advanced refactoring options (--patterns, --implementation-steps, etc.)
   - [ ] Advanced security scanning options
 - [ ] Implement missing output format handlers for some commands
@@ -387,11 +387,11 @@ For each major feature implementation, use this checklist:
 ---
 
 **Total Estimated Work**: ~300-400 hours for complete professional implementation
-**Current Completion**: ~55% (core functionality working, language modules complete, tree-sitter integration complete)
-**Critical Path**: ✅ Language modules → ✅ Tree-sitter integration → Testing → CLI enhancements → Documentation
+**Current Completion**: ~60% (core functionality working, language modules complete, tree-sitter integration complete, CLI commands complete)
+**Critical Path**: ✅ Language modules → ✅ Tree-sitter integration → ✅ CLI enhancements → Testing → Documentation
 **Next Critical Steps**:
 1. ✅ Complete missing language-specific modules (JavaScript, TypeScript, Python, C, C++, Go) - DONE
 2. ✅ Add missing tree-sitter dependencies (Go, TypeScript) - DONE
-3. Add comprehensive test coverage for all modules
-4. Implement CLI command completeness and missing features
+3. ✅ Implement CLI command completeness (performance, coverage commands) - DONE
+4. Add comprehensive test coverage for all modules
 5. Resolve all TODO comments and code quality issues
