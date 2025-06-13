@@ -334,14 +334,20 @@ impl CodebaseAnalyzer {
             Language::Rust => {
                 self.extract_rust_symbols(tree, content, &mut symbols)?;
             }
-            Language::JavaScript | Language::TypeScript => {
+            Language::JavaScript => {
                 self.extract_javascript_symbols(tree, content, &mut symbols)?;
+            }
+            Language::TypeScript => {
+                self.extract_typescript_symbols(tree, content, &mut symbols)?;
             }
             Language::Python => {
                 self.extract_python_symbols(tree, content, &mut symbols)?;
             }
-            Language::C | Language::Cpp => {
+            Language::C => {
                 self.extract_c_symbols(tree, content, &mut symbols)?;
+            }
+            Language::Cpp => {
+                self.extract_cpp_symbols(tree, content, &mut symbols)?;
             }
             Language::Go => {
                 self.extract_go_symbols(tree, content, &mut symbols)?;
@@ -352,26 +358,43 @@ impl CodebaseAnalyzer {
     }
 
     /// Extract Rust symbols
-    fn extract_rust_symbols(&self, tree: &SyntaxTree, _content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
+    fn extract_rust_symbols(&self, tree: &SyntaxTree, content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
+        use crate::languages::rust::RustSyntax;
+
         // Extract functions
-        let functions = tree.find_nodes_by_kind("function_item");
-        for func in functions {
-            if let Some(name_node) = func.child_by_field_name("name") {
-                if let Ok(name) = name_node.text() {
-                    let is_public = func.children().iter().any(|child| child.kind() == "visibility_modifier");
-                    
-                    symbols.push(Symbol {
-                        name: name.to_string(),
-                        kind: "function".to_string(),
-                        start_line: func.start_position().row + 1,
-                        end_line: func.end_position().row + 1,
-                        start_column: func.start_position().column,
-                        end_column: func.end_position().column,
-                        documentation: None, // TODO: Extract doc comments
-                        is_public,
-                    });
-                }
-            }
+        let functions = RustSyntax::find_functions(tree, content);
+        for (name, location) in functions {
+            let is_public = RustSyntax::is_public_function(&name, content);
+            let documentation = RustSyntax::extract_doc_comment(&name, content);
+
+            symbols.push(Symbol {
+                name,
+                kind: "function".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1, // TODO: Calculate actual end position
+                start_column: location.column,
+                end_column: location.column, // TODO: Calculate actual end position
+                documentation,
+                is_public,
+            });
+        }
+
+        // Extract structs
+        let structs = RustSyntax::find_structs(tree, content);
+        for (name, location) in structs {
+            let is_public = RustSyntax::is_public_struct(&name, content);
+            let documentation = RustSyntax::extract_doc_comment(&name, content);
+
+            symbols.push(Symbol {
+                name,
+                kind: "struct".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1,
+                start_column: location.column,
+                end_column: location.column,
+                documentation,
+                is_public,
+            });
         }
 
         // Extract structs
@@ -456,6 +479,88 @@ impl CodebaseAnalyzer {
         Ok(())
     }
 
+    /// Extract TypeScript symbols
+    fn extract_typescript_symbols(&self, tree: &SyntaxTree, content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
+        use crate::languages::typescript::TypeScriptSyntax;
+
+        // Extract functions
+        let functions = TypeScriptSyntax::find_functions(tree, content);
+        for (name, location) in functions {
+            symbols.push(Symbol {
+                name,
+                kind: "function".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1, // TODO: Get actual end position
+                start_column: location.column,
+                end_column: location.column, // TODO: Get actual end position
+                documentation: None, // TODO: Extract TSDoc comments
+                is_public: true, // TypeScript functions are generally public
+            });
+        }
+
+        // Extract classes
+        let classes = TypeScriptSyntax::find_classes(tree, content);
+        for (name, location) in classes {
+            symbols.push(Symbol {
+                name,
+                kind: "class".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1,
+                start_column: location.column,
+                end_column: location.column,
+                documentation: None,
+                is_public: true,
+            });
+        }
+
+        // Extract interfaces
+        let interfaces = TypeScriptSyntax::find_interfaces(tree, content);
+        for (name, location) in interfaces {
+            symbols.push(Symbol {
+                name,
+                kind: "interface".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1,
+                start_column: location.column,
+                end_column: location.column,
+                documentation: None,
+                is_public: true,
+            });
+        }
+
+        // Extract type aliases
+        let type_aliases = TypeScriptSyntax::find_type_aliases(tree, content);
+        for (name, location) in type_aliases {
+            symbols.push(Symbol {
+                name,
+                kind: "type".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1,
+                start_column: location.column,
+                end_column: location.column,
+                documentation: None,
+                is_public: true,
+            });
+        }
+
+        // Extract enums
+        let enums = TypeScriptSyntax::find_enums(tree, content);
+        for (name, location) in enums {
+            symbols.push(Symbol {
+                name,
+                kind: "enum".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1,
+                start_column: location.column,
+                end_column: location.column,
+                documentation: None,
+                is_public: true,
+            });
+        }
+
+        Ok(())
+    }
+
     /// Extract Python symbols
     fn extract_python_symbols(&self, tree: &SyntaxTree, content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
         use crate::languages::python::PythonSyntax;
@@ -464,6 +569,8 @@ impl CodebaseAnalyzer {
         let functions = PythonSyntax::find_functions(tree, content);
         for (name, location) in functions {
             let is_public = !name.starts_with('_');
+            let documentation = PythonSyntax::extract_docstring(&name, content);
+
             symbols.push(Symbol {
                 name,
                 kind: "function".to_string(),
@@ -471,7 +578,7 @@ impl CodebaseAnalyzer {
                 end_line: location.row + 1, // TODO: Get actual end position
                 start_column: location.column,
                 end_column: location.column, // TODO: Get actual end position
-                documentation: None, // TODO: Extract docstrings
+                documentation,
                 is_public,
             });
         }
@@ -480,6 +587,8 @@ impl CodebaseAnalyzer {
         let classes = PythonSyntax::find_classes(tree, content);
         for (name, location) in classes {
             let is_public = !name.starts_with('_');
+            let documentation = PythonSyntax::extract_docstring(&name, content);
+
             symbols.push(Symbol {
                 name,
                 kind: "class".to_string(),
@@ -487,7 +596,42 @@ impl CodebaseAnalyzer {
                 end_line: location.row + 1, // TODO: Get actual end position
                 start_column: location.column,
                 end_column: location.column, // TODO: Get actual end position
-                documentation: None, // TODO: Extract docstrings
+                documentation,
+                is_public,
+            });
+        }
+
+        // Extract methods within classes
+        let methods = PythonSyntax::find_methods(tree, content);
+        for (class_name, method_name, location) in methods {
+            let is_public = !method_name.starts_with('_');
+            let full_name = format!("{}::{}", class_name, method_name);
+
+            symbols.push(Symbol {
+                name: full_name,
+                kind: "method".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1,
+                start_column: location.column,
+                end_column: location.column,
+                documentation: None, // TODO: Extract method docstrings
+                is_public,
+            });
+        }
+
+        // Extract global variables
+        let globals = PythonSyntax::find_global_variables(tree, content);
+        for (name, location) in globals {
+            let is_public = !name.starts_with('_');
+
+            symbols.push(Symbol {
+                name,
+                kind: "variable".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1,
+                start_column: location.column,
+                end_column: location.column,
+                documentation: None,
                 is_public,
             });
         }
@@ -562,6 +706,74 @@ impl CodebaseAnalyzer {
         Ok(())
     }
 
+    /// Extract C++ symbols (separate from C for better C++ specific features)
+    fn extract_cpp_symbols(&self, tree: &SyntaxTree, content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
+        use crate::languages::c::CSyntax;
+        use crate::languages::cpp::CppSyntax;
+
+        // Extract functions (both C and C++ style)
+        let functions = CSyntax::find_functions(tree, content);
+        for (name, location) in functions {
+            symbols.push(Symbol {
+                name,
+                kind: "function".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1,
+                start_column: location.column,
+                end_column: location.column,
+                documentation: None,
+                is_public: true, // C++ functions are generally public unless in private class section
+            });
+        }
+
+        // Extract C++ classes
+        let classes = CppSyntax::find_classes(tree, content);
+        for (name, location) in classes {
+            symbols.push(Symbol {
+                name,
+                kind: "class".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1,
+                start_column: location.column,
+                end_column: location.column,
+                documentation: None,
+                is_public: true, // TODO: Check access modifiers
+            });
+        }
+
+        // Extract namespaces
+        let namespaces = CppSyntax::find_namespaces(tree, content);
+        for (name, location) in namespaces {
+            symbols.push(Symbol {
+                name,
+                kind: "namespace".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1,
+                start_column: location.column,
+                end_column: location.column,
+                documentation: None,
+                is_public: true,
+            });
+        }
+
+        // Extract structs
+        let structs = CSyntax::find_structs(tree, content);
+        for (name, location) in structs {
+            symbols.push(Symbol {
+                name,
+                kind: "struct".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1,
+                start_column: location.column,
+                end_column: location.column,
+                documentation: None,
+                is_public: true,
+            });
+        }
+
+        Ok(())
+    }
+
     /// Extract Go symbols
     fn extract_go_symbols(&self, tree: &SyntaxTree, content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
         use crate::languages::go::GoSyntax;
@@ -577,7 +789,7 @@ impl CodebaseAnalyzer {
                 end_line: location.row + 1, // TODO: Get actual end position
                 start_column: location.column,
                 end_column: location.column, // TODO: Get actual end position
-                documentation: None,
+                documentation: None, // TODO: Extract Go doc comments
                 is_public,
             });
         }
@@ -605,6 +817,38 @@ impl CodebaseAnalyzer {
             symbols.push(Symbol {
                 name,
                 kind: "type".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1,
+                start_column: location.column,
+                end_column: location.column,
+                documentation: None,
+                is_public,
+            });
+        }
+
+        // Extract constants
+        let constants = GoSyntax::find_constants(tree, content);
+        for (name, location) in constants {
+            let is_public = GoSyntax::is_exported(&name);
+            symbols.push(Symbol {
+                name,
+                kind: "constant".to_string(),
+                start_line: location.row + 1,
+                end_line: location.row + 1,
+                start_column: location.column,
+                end_column: location.column,
+                documentation: None,
+                is_public,
+            });
+        }
+
+        // Extract variables
+        let variables = GoSyntax::find_variables(tree, content);
+        for (name, location) in variables {
+            let is_public = GoSyntax::is_exported(&name);
+            symbols.push(Symbol {
+                name,
+                kind: "variable".to_string(),
                 start_line: location.row + 1,
                 end_line: location.row + 1,
                 start_column: location.column,

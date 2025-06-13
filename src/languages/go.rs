@@ -587,6 +587,64 @@ impl GoSyntax {
             exported_types,
         }
     }
+
+    /// Find all constant declarations in a syntax tree
+    pub fn find_constants(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+        let mut constants = Vec::new();
+        let const_nodes = tree.find_nodes_by_kind("const_declaration");
+
+        for const_node in const_nodes {
+            // Look for const_spec nodes within the const declaration
+            let mut cursor = const_node.walk();
+            if cursor.goto_first_child() {
+                loop {
+                    let node = cursor.node();
+                    if node.kind() == "const_spec" {
+                        if let Some(name_node) = node.child_by_field_name("name") {
+                            if let Ok(name) = name_node.text() {
+                                constants.push((name.to_string(), node.start_position()));
+                            }
+                        }
+                    }
+
+                    if !cursor.goto_next_sibling() {
+                        break;
+                    }
+                }
+            }
+        }
+
+        constants
+    }
+
+    /// Find all variable declarations in a syntax tree
+    pub fn find_variables(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+        let mut variables = Vec::new();
+        let var_nodes = tree.find_nodes_by_kind("var_declaration");
+
+        for var_node in var_nodes {
+            // Look for var_spec nodes within the var declaration
+            let mut cursor = var_node.walk();
+            if cursor.goto_first_child() {
+                loop {
+                    let node = cursor.node();
+                    if node.kind() == "var_spec" {
+                        if let Some(name_node) = node.child_by_field_name("name") {
+                            if let Ok(name) = name_node.text() {
+                                variables.push((name.to_string(), node.start_position()));
+                            }
+                        }
+                    }
+
+                    if !cursor.goto_next_sibling() {
+                        break;
+                    }
+                }
+            }
+        }
+
+        variables
+    }
 }
 
 /// Package-level analysis result

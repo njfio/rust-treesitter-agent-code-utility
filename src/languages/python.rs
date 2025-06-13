@@ -281,16 +281,16 @@ impl PythonSyntax {
     }
 
     /// Get all global variables in a syntax tree
-    pub fn find_global_variables(tree: &SyntaxTree, source: &str) -> Vec<String> {
+    pub fn find_global_variables(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point)> {
         let mut globals = Vec::new();
-        
+
         // Find assignment statements at module level
         let assignment_nodes = tree.find_nodes_by_kind("assignment");
         for assign_node in assignment_nodes {
             // Check if it's at module level (not inside function/class)
             let mut is_global = true;
             let mut current = assign_node.parent();
-            
+
             while let Some(parent) = current {
                 if Self::is_function_definition(&parent) || Self::is_class_definition(&parent) {
                     is_global = false;
@@ -298,12 +298,12 @@ impl PythonSyntax {
                 }
                 current = parent.parent();
             }
-            
+
             if is_global {
                 if let Some(left_node) = assign_node.child_by_field_name("left") {
                     if left_node.kind() == "identifier" {
                         if let Ok(var_name) = left_node.text() {
-                            globals.push(var_name.to_string());
+                            globals.push((var_name.to_string(), assign_node.start_position()));
                         }
                     }
                 }
@@ -550,6 +550,113 @@ impl PythonSyntax {
 
         // Check return type annotation
         node.child_by_field_name("return_type").is_some()
+    }
+
+    /// Extract docstring for a symbol
+    pub fn extract_docstring(name: &str, content: &str) -> Option<String> {
+        let lines: Vec<&str> = content.lines().collect();
+
+        // Find the line with the symbol definition
+        for (i, line) in lines.iter().enumerate() {
+            if line.contains(&format!("def {}", name)) || line.contains(&format!("class {}", name)) {
+                // Look for docstring in the next few lines
+                let mut j = i + 1;
+
+                // Skip empty lines and find the opening of the function/class body
+                while j < lines.len() {
+                    let next_line = lines[j].trim();
+                    if next_line.is_empty() {
+                        j += 1;
+                        continue;
+                    }
+
+                    // Check for docstring (triple quotes)
+                    if next_line.starts_with("\"\"\"") || next_line.starts_with("'''") {
+                        let quote_type = if next_line.starts_with("\"\"\"") { "\"\"\"" } else { "'''" };
+                        let mut docstring = String::new();
+
+                        // Single line docstring
+                        if next_line.ends_with(quote_type) && next_line.len() > 6 {
+                            let content = next_line.trim_start_matches(quote_type).trim_end_matches(quote_type);
+                            return Some(content.trim().to_string());
+                        }
+
+                        // Multi-line docstring
+                        let start_content = next_line.trim_start_matches(quote_type);
+                        if !start_content.is_empty() {
+                            docstring.push_str(start_content);
+                        }
+
+                        j += 1;
+                        while j < lines.len() {
+                            let doc_line = lines[j];
+                            if doc_line.contains(quote_type) {
+                                let end_content = doc_line.split(quote_type).next().unwrap_or("");
+                                if !end_content.is_empty() {
+                                    if !docstring.is_empty() {
+                                        docstring.push(' ');
+                                    }
+                                    docstring.push_str(end_content.trim());
+                                }
+                                break;
+                            } else {
+                                if !docstring.is_empty() {
+                                    docstring.push(' ');
+                                }
+                                docstring.push_str(doc_line.trim());
+                            }
+                            j += 1;
+                        }
+
+                        if !docstring.is_empty() {
+                            return Some(docstring.trim().to_string());
+                        }
+                    }
+                    break;
+                }
+                break;
+            }
+        }
+
+        None
+    }
+
+    /// Find methods within classes
+    pub fn find_methods(tree: &SyntaxTree, content: &str) -> Vec<(String, String, tree_sitter::Point)> {
+        let mut methods = Vec::new();
+
+        // Find all class definitions
+        let class_nodes = tree.find_nodes_by_kind("class_definition");
+        for class_node in class_nodes {
+            if let Some(class_name_node) = class_node.child_by_field_name("name") {
+                if let Ok(class_name) = class_name_node.text() {
+                    // Find function definitions within this class
+                    let mut cursor = class_node.walk();
+                    if cursor.goto_first_child() {
+                        loop {
+                            let node = cursor.node();
+                            if node.kind() == "function_definition" {
+                                if let Some(method_name_node) = node.child_by_field_name("name") {
+                                    if let Ok(method_name) = method_name_node.text() {
+                                        methods.push((
+                                            class_name.to_string(),
+                                            method_name.to_string(),
+                                            node.start_position()
+                                        ));
+                                    }
+                                }
+                            }
+
+                            if !cursor.goto_next_sibling() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        methods
     }
 }
 

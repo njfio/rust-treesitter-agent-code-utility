@@ -159,6 +159,64 @@ impl RustSyntax {
         "#;
         Query::new(crate::Language::Rust, query_str)
     }
+
+
+
+    /// Check if a function is public
+    pub fn is_public_function(name: &str, content: &str) -> bool {
+        // Look for the function definition and check for pub keyword
+        for line in content.lines() {
+            if line.contains(&format!("fn {}", name)) {
+                return line.trim_start().starts_with("pub ");
+            }
+        }
+        false
+    }
+
+    /// Check if a struct is public
+    pub fn is_public_struct(name: &str, content: &str) -> bool {
+        // Look for the struct definition and check for pub keyword
+        for line in content.lines() {
+            if line.contains(&format!("struct {}", name)) {
+                return line.trim_start().starts_with("pub ");
+            }
+        }
+        false
+    }
+
+    /// Extract documentation comment for a symbol
+    pub fn extract_doc_comment(name: &str, content: &str) -> Option<String> {
+        let lines: Vec<&str> = content.lines().collect();
+
+        // Find the line with the symbol definition
+        for (i, line) in lines.iter().enumerate() {
+            if line.contains(&format!("fn {}", name)) || line.contains(&format!("struct {}", name)) {
+                // Look backwards for doc comments
+                let mut doc_lines = Vec::new();
+                let mut j = i;
+
+                while j > 0 {
+                    j -= 1;
+                    let prev_line = lines[j].trim();
+
+                    if prev_line.starts_with("///") {
+                        doc_lines.insert(0, prev_line.trim_start_matches("///").trim());
+                    } else if prev_line.is_empty() {
+                        continue;
+                    } else {
+                        break;
+                    }
+                }
+
+                if !doc_lines.is_empty() {
+                    return Some(doc_lines.join(" "));
+                }
+                break;
+            }
+        }
+
+        None
+    }
 }
 
 #[cfg(test)]
