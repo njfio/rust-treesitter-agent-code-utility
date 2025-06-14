@@ -137,6 +137,27 @@ pub struct AnalysisResult {
     pub files: Vec<FileInfo>,
     /// Analysis configuration used
     pub config: AnalysisConfig,
+    /// Extracted symbols from all files
+    pub symbols: Vec<Symbol>,
+    /// Dependencies found in the codebase
+    pub dependencies: Vec<String>,
+}
+
+impl Default for AnalysisResult {
+    fn default() -> Self {
+        Self {
+            root_path: PathBuf::new(),
+            total_files: 0,
+            parsed_files: 0,
+            error_files: 0,
+            total_lines: 0,
+            languages: HashMap::new(),
+            files: Vec::new(),
+            config: AnalysisConfig::default(),
+            symbols: Vec::new(),
+            dependencies: Vec::new(),
+        }
+    }
 }
 
 /// Main analyzer for processing codebases
@@ -251,10 +272,32 @@ impl CodebaseAnalyzer {
             languages: HashMap::new(),
             files: Vec::new(),
             config: self.config.clone(),
+            symbols: Vec::new(),
+            dependencies: Vec::new(),
         };
 
         self.analyze_directory_recursive(&root_path, &root_path, &mut result, 0)?;
 
+        Ok(result)
+    }
+
+    /// Analyze a single file and return analysis result
+    pub fn analyze_file<P: AsRef<Path>>(&mut self, file_path: P) -> Result<AnalysisResult> {
+        let file_path = file_path.as_ref();
+        let mut result = AnalysisResult {
+            root_path: file_path.parent().unwrap_or(file_path).to_path_buf(),
+            total_files: 0,
+            parsed_files: 0,
+            error_files: 0,
+            total_lines: 0,
+            languages: HashMap::new(),
+            files: Vec::new(),
+            config: self.config.clone(),
+            symbols: Vec::new(),
+            dependencies: Vec::new(),
+        };
+
+        self.analyze_single_file(file_path, file_path.parent().unwrap_or(file_path), &mut result)?;
         Ok(result)
     }
 
@@ -313,7 +356,7 @@ impl CodebaseAnalyzer {
                 self.analyze_directory_recursive(&path, root_path, result, depth + 1)?;
             } else if path.is_file() {
                 // Analyze file
-                if let Err(e) = self.analyze_file(&path, root_path, result) {
+                if let Err(e) = self.analyze_single_file(&path, root_path, result) {
                     eprintln!("Warning: Failed to analyze file {}: {}", path.display(), e);
                 }
             }
@@ -323,7 +366,7 @@ impl CodebaseAnalyzer {
     }
 
     /// Analyze a single file
-    fn analyze_file(&mut self, file_path: &Path, root_path: &Path, result: &mut AnalysisResult) -> Result<()> {
+    fn analyze_single_file(&mut self, file_path: &Path, root_path: &Path, result: &mut AnalysisResult) -> Result<()> {
         // Get file extension
         let extension = file_path.extension()
             .and_then(|ext| ext.to_str())

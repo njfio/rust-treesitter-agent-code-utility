@@ -43,6 +43,7 @@ tower = { version = "0.4", features = ["timeout", "retry"] }
 backoff = "0.4"
 dirs = "5.0"
 num_cpus = "1.0"
+rayon = "1.8"
 
 [build-dependencies]
 cc = "1.0"
