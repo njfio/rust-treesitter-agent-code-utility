@@ -51,6 +51,8 @@ cc = "1.0"
 tempfile = "3.0"
 wiremock = "0.5"
 criterion = "0.5"
+assert_cmd = "2.0"
+predicates = "3.0"
 
 [features]
 default = ["std", "serde"]
