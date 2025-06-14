@@ -74,17 +74,44 @@ impl Query {
     }
 
     /// Execute the query and get captures
-    pub fn captures<'a>(&'a self, _tree: &'a SyntaxTree) -> Result<Vec<QueryCapture<'a>>> {
-        // For now, return empty captures to get the library compiling
-        // TODO: Implement proper query captures
-        Ok(Vec::new())
+    pub fn captures<'a>(&'a self, tree: &'a SyntaxTree) -> Result<Vec<QueryCapture<'a>>> {
+        let mut cursor = tree_sitter::QueryCursor::new();
+        let mut captures = Vec::new();
+
+        // Get the source text from the tree
+        let source = tree.source();
+
+        // Execute the query and collect all captures
+        for (query_match, _) in cursor.captures(&self.inner, tree.root_node().inner(), source.as_bytes()) {
+            for capture in query_match.captures {
+                let query_capture = QueryCapture::new(&capture, source, &self.inner);
+                captures.push(query_capture);
+            }
+        }
+
+        Ok(captures)
     }
 
     /// Execute the query on a specific node
-    pub fn matches_in_node<'a>(&'a self, _node: Node<'a>, _source: &'a str) -> Result<Vec<QueryMatch<'a>>> {
-        // For now, return empty matches to get the library compiling
-        // TODO: Implement proper query matching on nodes
-        Ok(Vec::new())
+    pub fn matches_in_node<'a>(&'a self, node: Node<'a>, source: &'a str) -> Result<Vec<QueryMatch<'a>>> {
+        let mut cursor = tree_sitter::QueryCursor::new();
+        let mut matches = Vec::new();
+
+        // Execute the query on the specific node
+        for query_match in cursor.matches(&self.inner, node.inner(), source.as_bytes()) {
+            let mut captures = Vec::new();
+
+            // Collect all captures for this match
+            for capture in query_match.captures {
+                let query_capture = QueryCapture::new(&capture, source, &self.inner);
+                captures.push(query_capture);
+            }
+
+            let match_result = QueryMatch::new(query_match.pattern_index, captures);
+            matches.push(match_result);
+        }
+
+        Ok(matches)
     }
 
     /// Create a query for syntax highlighting
@@ -324,8 +351,88 @@ mod tests {
     fn test_predefined_queries() {
         let functions_query = Query::functions(Language::Rust);
         assert!(functions_query.is_ok());
-        
+
         let classes_query = Query::classes(Language::Rust);
         assert!(classes_query.is_ok());
+    }
+
+    #[test]
+    fn test_query_captures() {
+        let mut parser = Parser::new(Language::Rust).unwrap();
+        let source = "fn main() { let x = 42; } fn test() { let y = 24; }";
+        let tree = parser.parse(source, None).unwrap();
+
+        let query = Query::new(Language::Rust, "(function_item name: (identifier) @name) @function").unwrap();
+        let captures = query.captures(&tree).unwrap();
+
+        // Should have captures for function names and function items
+        // Note: tree-sitter may return duplicate captures from multiple matches
+        assert!(captures.len() >= 4);
+
+        // Check that we can get text from captures
+        let capture_texts: Vec<String> = captures.iter()
+            .map(|c| c.text().unwrap().to_string())
+            .collect();
+
+        assert!(capture_texts.contains(&"main".to_string()));
+        assert!(capture_texts.contains(&"test".to_string()));
+
+        // Check that we have both function names and function bodies
+        let name_captures: Vec<_> = captures.iter()
+            .filter(|c| c.name() == Some("name"))
+            .collect();
+        let function_captures: Vec<_> = captures.iter()
+            .filter(|c| c.name() == Some("function"))
+            .collect();
+
+        assert!(name_captures.len() >= 2);
+        assert!(function_captures.len() >= 2);
+    }
+
+    #[test]
+    fn test_matches_in_node() {
+        let mut parser = Parser::new(Language::Rust).unwrap();
+        let source = "fn main() { let x = 42; let y = 24; }";
+        let tree = parser.parse(source, None).unwrap();
+
+        // Get the function body
+        let function_node = tree.find_nodes_by_kind("function_item")[0];
+        let body_node = function_node.child_by_field_name("body").unwrap();
+
+        let query = Query::new(Language::Rust, "(let_declaration pattern: (identifier) @var)").unwrap();
+        let matches = query.matches_in_node(body_node, source).unwrap();
+
+        // Should find 2 let declarations
+        assert_eq!(matches.len(), 2);
+
+        // Check that each match has captures
+        for query_match in matches {
+            assert!(!query_match.captures().is_empty());
+        }
+    }
+
+    #[test]
+    fn test_capture_names() {
+        let mut parser = Parser::new(Language::Rust).unwrap();
+        let source = "fn main() {}";
+        let tree = parser.parse(source, None).unwrap();
+
+        let query = Query::new(Language::Rust, "(function_item name: (identifier) @func_name) @function").unwrap();
+        let captures = query.captures(&tree).unwrap();
+
+        // Find captures by name
+        let name_captures: Vec<_> = captures.iter()
+            .filter(|c| c.name() == Some("func_name"))
+            .collect();
+
+        assert!(name_captures.len() >= 1);
+        assert_eq!(name_captures[0].text().unwrap(), "main");
+
+        // Verify we also have function captures
+        let function_captures: Vec<_> = captures.iter()
+            .filter(|c| c.name() == Some("function"))
+            .collect();
+
+        assert!(function_captures.len() >= 1);
     }
 }

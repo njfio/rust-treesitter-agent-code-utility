@@ -241,6 +241,74 @@ impl CodebaseAnalyzer {
         }
     }
 
+    /// Extract C/C++ doc comment for a function node
+    fn extract_c_doc_comment(start_pos: tree_sitter::Point, content: &str) -> Option<String> {
+        // C/C++ doc comments can be either /* */ block comments or // line comments
+        let lines: Vec<&str> = content.lines().collect();
+        let mut comment_lines = Vec::new();
+
+        // Check lines before the function for C/C++ doc comments
+        for line_idx in (0..start_pos.row).rev() {
+            if let Some(line) = lines.get(line_idx) {
+                let trimmed = line.trim();
+
+                if trimmed.starts_with("/**") || trimmed.starts_with("/*!") {
+                    // Doxygen-style block comment start
+                    let comment_text = trimmed.trim_start_matches("/**")
+                        .trim_start_matches("/*!")
+                        .trim_start_matches("*")
+                        .trim();
+                    if !comment_text.is_empty() {
+                        comment_lines.insert(0, comment_text.to_string());
+                    }
+                    break;
+                } else if trimmed.starts_with("/*") {
+                    // Regular block comment start
+                    let comment_text = trimmed.trim_start_matches("/*")
+                        .trim_start_matches("*")
+                        .trim();
+                    if !comment_text.is_empty() {
+                        comment_lines.insert(0, comment_text.to_string());
+                    }
+                    break;
+                } else if trimmed.starts_with("///") || trimmed.starts_with("//!") {
+                    // Doxygen-style line comment
+                    let comment_text = trimmed.trim_start_matches("///")
+                        .trim_start_matches("//!")
+                        .trim();
+                    comment_lines.insert(0, comment_text.to_string());
+                } else if trimmed.starts_with("//") {
+                    // Regular line comment
+                    let comment_text = trimmed.trim_start_matches("//").trim();
+                    comment_lines.insert(0, comment_text.to_string());
+                } else if trimmed.contains("*/") {
+                    // End of block comment (working backwards)
+                    let comment_text = trimmed.trim_end_matches("*/")
+                        .trim_start_matches("*")
+                        .trim();
+                    if !comment_text.is_empty() {
+                        comment_lines.insert(0, comment_text.to_string());
+                    }
+                } else if trimmed.starts_with("*") {
+                    // Continuation of block comment
+                    let comment_text = trimmed.trim_start_matches("*").trim();
+                    if !comment_text.is_empty() {
+                        comment_lines.insert(0, comment_text.to_string());
+                    }
+                } else if !trimmed.is_empty() {
+                    // Non-comment, non-empty line breaks the comment block
+                    break;
+                }
+            }
+        }
+
+        if !comment_lines.is_empty() {
+            Some(comment_lines.join("\n"))
+        } else {
+            None
+        }
+    }
+
     /// Get or create a parser for the given language
     fn get_parser(&mut self, language: Language) -> Result<&Parser> {
         if !self.parsers.contains_key(&language) {
@@ -789,6 +857,21 @@ impl CodebaseAnalyzer {
             });
         }
 
+        // Extract imports
+        let imports = PythonSyntax::find_imports(tree, content);
+        for name in imports {
+            symbols.push(Symbol {
+                name,
+                kind: "import".to_string(),
+                start_line: 1, // Imports are typically at the top
+                end_line: 1,
+                start_column: 0,
+                end_column: 0,
+                documentation: None,
+                is_public: false, // Imports are typically not considered public symbols
+            });
+        }
+
         Ok(())
     }
 
@@ -800,6 +883,7 @@ impl CodebaseAnalyzer {
         // Extract functions
         let functions = CSyntax::find_functions(tree, content);
         for (name, start_pos, end_pos) in functions {
+            let documentation = Self::extract_c_doc_comment(start_pos, content);
             symbols.push(Symbol {
                 name,
                 kind: "function".to_string(),
@@ -807,7 +891,7 @@ impl CodebaseAnalyzer {
                 end_line: end_pos.row + 1,
                 start_column: start_pos.column,
                 end_column: end_pos.column,
-                documentation: None,
+                documentation,
                 is_public: true, // C functions are generally public
             });
         }
@@ -815,6 +899,7 @@ impl CodebaseAnalyzer {
         // Extract structs
         let structs = CSyntax::find_structs(tree, content);
         for (name, start_pos, end_pos) in structs {
+            let documentation = Self::extract_c_doc_comment(start_pos, content);
             symbols.push(Symbol {
                 name,
                 kind: "struct".to_string(),
@@ -822,7 +907,7 @@ impl CodebaseAnalyzer {
                 end_line: end_pos.row + 1,
                 start_column: start_pos.column,
                 end_column: end_pos.column,
-                documentation: None,
+                documentation,
                 is_public: true,
             });
         }
@@ -830,6 +915,7 @@ impl CodebaseAnalyzer {
         // Extract typedefs
         let typedefs = CSyntax::find_typedefs(tree, content);
         for (name, start_pos, end_pos) in typedefs {
+            let documentation = Self::extract_c_doc_comment(start_pos, content);
             symbols.push(Symbol {
                 name,
                 kind: "typedef".to_string(),
@@ -837,7 +923,7 @@ impl CodebaseAnalyzer {
                 end_line: end_pos.row + 1,
                 start_column: start_pos.column,
                 end_column: end_pos.column,
-                documentation: None,
+                documentation,
                 is_public: true,
             });
         }
@@ -852,6 +938,7 @@ impl CodebaseAnalyzer {
                 .map(|node| CppSyntax::is_public_member(node))
                 .unwrap_or(true);
 
+            let documentation = Self::extract_c_doc_comment(start_pos, content);
             symbols.push(Symbol {
                 name,
                 kind: "class".to_string(),
@@ -859,13 +946,14 @@ impl CodebaseAnalyzer {
                 end_line: end_pos.row + 1,
                 start_column: start_pos.column,
                 end_column: end_pos.column,
-                documentation: None,
+                documentation,
                 is_public,
             });
         }
 
         let namespaces = CppSyntax::find_namespaces(tree, content);
         for (name, start_pos, end_pos) in namespaces {
+            let documentation = Self::extract_c_doc_comment(start_pos, content);
             symbols.push(Symbol {
                 name,
                 kind: "namespace".to_string(),
@@ -873,7 +961,7 @@ impl CodebaseAnalyzer {
                 end_line: end_pos.row + 1,
                 start_column: start_pos.column,
                 end_column: end_pos.column,
-                documentation: None,
+                documentation,
                 is_public: true,
             });
         }
@@ -889,6 +977,7 @@ impl CodebaseAnalyzer {
         // Extract functions (both C and C++ style)
         let functions = CSyntax::find_functions(tree, content);
         for (name, start_pos, end_pos) in functions {
+            let documentation = Self::extract_c_doc_comment(start_pos, content);
             symbols.push(Symbol {
                 name,
                 kind: "function".to_string(),
@@ -896,7 +985,7 @@ impl CodebaseAnalyzer {
                 end_line: end_pos.row + 1,
                 start_column: start_pos.column,
                 end_column: end_pos.column,
-                documentation: None,
+                documentation,
                 is_public: true, // C++ functions are generally public unless in private class section
             });
         }
@@ -911,6 +1000,7 @@ impl CodebaseAnalyzer {
                 .map(|node| CppSyntax::is_public_member(node))
                 .unwrap_or(true);
 
+            let documentation = Self::extract_c_doc_comment(start_pos, content);
             symbols.push(Symbol {
                 name,
                 kind: "class".to_string(),
@@ -918,7 +1008,7 @@ impl CodebaseAnalyzer {
                 end_line: end_pos.row + 1,
                 start_column: start_pos.column,
                 end_column: end_pos.column,
-                documentation: None,
+                documentation,
                 is_public,
             });
         }
@@ -926,6 +1016,7 @@ impl CodebaseAnalyzer {
         // Extract namespaces
         let namespaces = CppSyntax::find_namespaces(tree, content);
         for (name, start_pos, end_pos) in namespaces {
+            let documentation = Self::extract_c_doc_comment(start_pos, content);
             symbols.push(Symbol {
                 name,
                 kind: "namespace".to_string(),
@@ -933,7 +1024,7 @@ impl CodebaseAnalyzer {
                 end_line: end_pos.row + 1,
                 start_column: start_pos.column,
                 end_column: end_pos.column,
-                documentation: None,
+                documentation,
                 is_public: true,
             });
         }
@@ -941,6 +1032,7 @@ impl CodebaseAnalyzer {
         // Extract structs
         let structs = CSyntax::find_structs(tree, content);
         for (name, start_pos, end_pos) in structs {
+            let documentation = Self::extract_c_doc_comment(start_pos, content);
             symbols.push(Symbol {
                 name,
                 kind: "struct".to_string(),
@@ -948,7 +1040,7 @@ impl CodebaseAnalyzer {
                 end_line: end_pos.row + 1,
                 start_column: start_pos.column,
                 end_column: end_pos.column,
-                documentation: None,
+                documentation,
                 is_public: true,
             });
         }
@@ -956,6 +1048,7 @@ impl CodebaseAnalyzer {
         // Extract typedefs (C-style typedefs also work in C++)
         let typedefs = CSyntax::find_typedefs(tree, content);
         for (name, start_pos, end_pos) in typedefs {
+            let documentation = Self::extract_c_doc_comment(start_pos, content);
             symbols.push(Symbol {
                 name,
                 kind: "typedef".to_string(),
@@ -963,7 +1056,7 @@ impl CodebaseAnalyzer {
                 end_line: end_pos.row + 1,
                 start_column: start_pos.column,
                 end_column: end_pos.column,
-                documentation: None,
+                documentation,
                 is_public: true,
             });
         }
@@ -995,6 +1088,7 @@ impl CodebaseAnalyzer {
         let methods = GoSyntax::find_methods(tree, content);
         for (name, receiver_type, start_pos, end_pos) in methods {
             let is_public = GoSyntax::is_exported(&name);
+            let documentation = Self::extract_go_doc_comment(start_pos, content);
             symbols.push(Symbol {
                 name: format!("{}::{}", receiver_type, name),
                 kind: "method".to_string(),
@@ -1002,7 +1096,7 @@ impl CodebaseAnalyzer {
                 end_line: end_pos.row + 1,
                 start_column: start_pos.column,
                 end_column: end_pos.column,
-                documentation: None,
+                documentation,
                 is_public,
             });
         }
@@ -1011,6 +1105,7 @@ impl CodebaseAnalyzer {
         let types = GoSyntax::find_types(tree, content);
         for (name, start_pos, end_pos) in types {
             let is_public = GoSyntax::is_exported(&name);
+            let documentation = Self::extract_go_doc_comment(start_pos, content);
             symbols.push(Symbol {
                 name,
                 kind: "type".to_string(),
@@ -1018,7 +1113,7 @@ impl CodebaseAnalyzer {
                 end_line: end_pos.row + 1,
                 start_column: start_pos.column,
                 end_column: end_pos.column,
-                documentation: None,
+                documentation,
                 is_public,
             });
         }
@@ -1027,6 +1122,7 @@ impl CodebaseAnalyzer {
         let constants = GoSyntax::find_constants(tree, content);
         for (name, start_pos, end_pos) in constants {
             let is_public = GoSyntax::is_exported(&name);
+            let documentation = Self::extract_go_doc_comment(start_pos, content);
             symbols.push(Symbol {
                 name,
                 kind: "constant".to_string(),
@@ -1034,7 +1130,7 @@ impl CodebaseAnalyzer {
                 end_line: end_pos.row + 1,
                 start_column: start_pos.column,
                 end_column: end_pos.column,
-                documentation: None,
+                documentation,
                 is_public,
             });
         }
@@ -1043,6 +1139,7 @@ impl CodebaseAnalyzer {
         let variables = GoSyntax::find_variables(tree, content);
         for (name, start_pos, end_pos) in variables {
             let is_public = GoSyntax::is_exported(&name);
+            let documentation = Self::extract_go_doc_comment(start_pos, content);
             symbols.push(Symbol {
                 name,
                 kind: "variable".to_string(),
@@ -1050,7 +1147,7 @@ impl CodebaseAnalyzer {
                 end_line: end_pos.row + 1,
                 start_column: start_pos.column,
                 end_column: end_pos.column,
-                documentation: None,
+                documentation,
                 is_public,
             });
         }
@@ -1194,5 +1291,51 @@ function greet(name) {
         let doc = CodebaseAnalyzer::extract_jsdoc_comment(start_pos, content);
 
         assert!(doc.is_none());
+    }
+
+    #[test]
+    fn test_c_doc_extraction() {
+        let content = r#"
+/**
+ * This function calculates the sum of two integers
+ * @param a First integer
+ * @param b Second integer
+ * @return Sum of a and b
+ */
+int add(int a, int b) {
+    return a + b;
+}
+        "#;
+
+        let start_pos = tree_sitter::Point { row: 7, column: 0 };
+        let doc = CodebaseAnalyzer::extract_c_doc_comment(start_pos, content);
+
+        assert!(doc.is_some());
+        let doc_text = doc.unwrap();
+        assert!(doc_text.contains("calculates the sum"));
+        assert!(doc_text.contains("@param a"));
+        assert!(doc_text.contains("@return"));
+    }
+
+    #[test]
+    fn test_c_line_doc_extraction() {
+        let content = r#"
+/// This function multiplies two numbers
+/// @param x First number
+/// @param y Second number
+/// @return Product of x and y
+double multiply(double x, double y) {
+    return x * y;
+}
+        "#;
+
+        let start_pos = tree_sitter::Point { row: 5, column: 0 };
+        let doc = CodebaseAnalyzer::extract_c_doc_comment(start_pos, content);
+
+        assert!(doc.is_some());
+        let doc_text = doc.unwrap();
+        assert!(doc_text.contains("multiplies two numbers"));
+        assert!(doc_text.contains("@param x"));
+        assert!(doc_text.contains("@return"));
     }
 }

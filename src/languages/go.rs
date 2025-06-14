@@ -389,28 +389,7 @@ impl GoSyntax {
         structs
     }
 
-    /// Get all interface types in a syntax tree
-    pub fn find_interfaces(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
-        let mut interfaces = Vec::new();
-        let type_nodes = tree.find_nodes_by_kind("type_declaration");
 
-        for type_node in type_nodes {
-            // Check if this type declaration contains an interface
-            for child in type_node.children() {
-                if child.kind() == "type_spec" {
-                    if let Some(type_def) = child.child_by_field_name("type") {
-                        if Self::is_interface_type(&type_def) {
-                            if let Some(name) = Self::type_name(&type_node, source) {
-                                interfaces.push((name, type_node.start_position()));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        interfaces
-    }
 
     /// Create a query to find all function declarations
     pub fn functions_query() -> Result<Query> {
@@ -648,6 +627,187 @@ impl GoSyntax {
 
         variables
     }
+
+    /// Find interface declarations in a syntax tree
+    pub fn find_interfaces(tree: &SyntaxTree, source: &str) -> Vec<(String, Vec<String>, tree_sitter::Point, tree_sitter::Point)> {
+        let mut interfaces = Vec::new();
+        let interface_nodes = tree.find_nodes_by_kind("interface_type");
+
+        for interface_node in interface_nodes {
+            // Find the interface name from parent type declaration
+            if let Some(parent) = interface_node.parent() {
+                if parent.kind() == "type_spec" {
+                    if let Some(name_node) = parent.child_by_field_name("name") {
+                        if let Ok(interface_name) = name_node.text() {
+                            let mut methods = Vec::new();
+
+                            // Extract interface methods
+                            let mut cursor = interface_node.walk();
+                            if cursor.goto_first_child() {
+                                loop {
+                                    let node = cursor.node();
+                                    if node.kind() == "method_spec" {
+                                        if let Some(method_name_node) = node.child_by_field_name("name") {
+                                            if let Ok(method_name) = method_name_node.text() {
+                                                methods.push(method_name.to_string());
+                                            }
+                                        }
+                                    }
+
+                                    if !cursor.goto_next_sibling() {
+                                        break;
+                                    }
+                                }
+                            }
+
+                            let ts_node = interface_node.inner();
+                            interfaces.push((
+                                interface_name.to_string(),
+                                methods,
+                                ts_node.start_position(),
+                                ts_node.end_position()
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        interfaces
+    }
+
+    /// Find channel declarations and operations in a syntax tree
+    pub fn find_channels(tree: &SyntaxTree, source: &str) -> Vec<(String, String, tree_sitter::Point, tree_sitter::Point)> {
+        let mut channels = Vec::new();
+
+        // Find channel type declarations
+        let channel_nodes = tree.find_nodes_by_kind("channel_type");
+        for channel_node in channel_nodes {
+            let ts_node = channel_node.inner();
+            if let Ok(channel_text) = channel_node.text() {
+                channels.push((
+                    "channel_type".to_string(),
+                    channel_text.trim().to_string(),
+                    ts_node.start_position(),
+                    ts_node.end_position()
+                ));
+            }
+        }
+
+        // Find make(chan ...) expressions
+        let call_nodes = tree.find_nodes_by_kind("call_expression");
+        for call_node in call_nodes {
+            if let Some(function_node) = call_node.child_by_field_name("function") {
+                if let Ok(func_name) = function_node.text() {
+                    if func_name == "make" {
+                        if let Ok(call_text) = call_node.text() {
+                            if call_text.contains("chan") {
+                                let ts_node = call_node.inner();
+                                channels.push((
+                                    "make_channel".to_string(),
+                                    call_text.trim().to_string(),
+                                    ts_node.start_position(),
+                                    ts_node.end_position()
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        channels
+    }
+
+    /// Find goroutine launches (go statements) in a syntax tree
+    pub fn find_goroutines(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
+        let mut goroutines = Vec::new();
+        let go_nodes = tree.find_nodes_by_kind("go_statement");
+
+        for go_node in go_nodes {
+            let ts_node = go_node.inner();
+            if let Ok(go_text) = go_node.text() {
+                goroutines.push((
+                    go_text.trim().to_string(),
+                    ts_node.start_position(),
+                    ts_node.end_position()
+                ));
+            }
+        }
+
+        goroutines
+    }
+
+    /// Find embedded types in struct declarations
+    pub fn find_embedded_types(tree: &SyntaxTree, source: &str) -> Vec<(String, Vec<String>, tree_sitter::Point, tree_sitter::Point)> {
+        let mut embedded_structs = Vec::new();
+        let struct_nodes = tree.find_nodes_by_kind("struct_type");
+
+        for struct_node in struct_nodes {
+            // Find the struct name from parent type declaration
+            if let Some(parent) = struct_node.parent() {
+                if parent.kind() == "type_spec" {
+                    if let Some(name_node) = parent.child_by_field_name("name") {
+                        if let Ok(struct_name) = name_node.text() {
+                            let mut embedded_types = Vec::new();
+
+                            // Look for field declarations without field names (embedded types)
+                            let mut cursor = struct_node.walk();
+                            if cursor.goto_first_child() {
+                                loop {
+                                    let node = cursor.node();
+                                    if node.kind() == "field_declaration" {
+                                        // Check if it's an embedded field (no field name, just type)
+                                        let children: Vec<_> = node.children().into_iter().collect();
+                                        if children.len() == 1 && children[0].kind() != "field_identifier" {
+                                            if let Ok(embedded_type) = children[0].text() {
+                                                embedded_types.push(embedded_type.to_string());
+                                            }
+                                        }
+                                    }
+
+                                    if !cursor.goto_next_sibling() {
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if !embedded_types.is_empty() {
+                                let ts_node = struct_node.inner();
+                                embedded_structs.push((
+                                    struct_name.to_string(),
+                                    embedded_types,
+                                    ts_node.start_position(),
+                                    ts_node.end_position()
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        embedded_structs
+    }
+
+    /// Find type assertions in a syntax tree
+    pub fn find_type_assertions(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
+        let mut type_assertions = Vec::new();
+        let assertion_nodes = tree.find_nodes_by_kind("type_assertion_expression");
+
+        for assertion_node in assertion_nodes {
+            let ts_node = assertion_node.inner();
+            if let Ok(assertion_text) = assertion_node.text() {
+                type_assertions.push((
+                    assertion_text.trim().to_string(),
+                    ts_node.start_position(),
+                    ts_node.end_position()
+                ));
+            }
+        }
+
+        type_assertions
+    }
 }
 
 /// Package-level analysis result
@@ -780,7 +940,7 @@ type ReadWriter interface {
         let interfaces = GoSyntax::find_interfaces(&tree, source);
         assert_eq!(interfaces.len(), 3);
 
-        let interface_names: Vec<&str> = interfaces.iter().map(|(name, _)| name.as_str()).collect();
+        let interface_names: Vec<&str> = interfaces.iter().map(|(name, _, _, _)| name.as_str()).collect();
         assert!(interface_names.contains(&"Writer"));
         assert!(interface_names.contains(&"Reader"));
         assert!(interface_names.contains(&"ReadWriter"));
