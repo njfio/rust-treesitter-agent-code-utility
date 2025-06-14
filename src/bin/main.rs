@@ -8,7 +8,7 @@ use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
 use rust_tree_sitter::{
     CodebaseAnalyzer, AnalysisConfig, Language,
-    supported_languages
+    supported_languages, InputValidator
 };
 use serde::{Serialize, Deserialize};
 use serde_json;
@@ -665,6 +665,13 @@ fn query_command(
     context: usize,
     format: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Input validation
+    validate_path_input(&path)?;
+    validate_query_pattern_input(&pattern)?;
+    validate_language_input(&language)?;
+    validate_format_input(&format)?;
+    VALIDATOR.validate_range(context, 0, 50, "context")?;
+
     println!("{}", format!("🔍 Querying pattern: {}", pattern).bright_blue().bold());
 
     let lang = language.parse::<Language>()
@@ -848,6 +855,15 @@ fn find_command(
     language: Option<String>,
     public_only: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Input validation
+    validate_path_input(&path)?;
+    if let Some(ref name_pattern) = name {
+        validate_symbol_name_input(name_pattern)?;
+    }
+    if let Some(ref lang) = language {
+        validate_language_input(lang)?;
+    }
+
     println!("{}", "🔍 Finding symbols...".bright_blue().bold());
 
     let pb = ProgressBar::new_spinner();
@@ -3454,49 +3470,29 @@ fn generate_coverage_html(coverage_items: &[CoverageItem], detailed: bool) -> St
     html
 }
 
-/// Input validation functions for security and robustness
+/// Input validation functions for security and robustness using enhanced validation
+
+/// Global input validator instance
+static VALIDATOR: std::sync::LazyLock<InputValidator> = std::sync::LazyLock::new(|| InputValidator::new());
 
 /// Validate path input to prevent directory traversal and ensure path exists
 fn validate_path_input(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    // Check if path exists
-    if !path.exists() {
-        return Err(format!("Path does not exist: {}", path.display()).into());
-    }
-
-    // Canonicalize path to resolve any .. or . components
-    let canonical_path = path.canonicalize()
-        .map_err(|e| format!("Cannot resolve path {}: {}", path.display(), e))?;
-
-    // Basic security check - ensure path doesn't contain suspicious patterns
-    let path_str = canonical_path.to_string_lossy();
-    if path_str.contains("..") {
-        return Err("Path contains suspicious directory traversal patterns".into());
-    }
-
-    Ok(())
+    VALIDATOR.validate_directory(path)
+        .map_err(|e| e.into())
+        .map(|_| ())
 }
 
 /// Validate format input
 fn validate_format_input(format: &str) -> Result<(), Box<dyn std::error::Error>> {
-    match format {
-        "json" | "table" | "summary" | "markdown" | "html" | "text" => Ok(()),
-        _ => Err(format!("Unsupported format: {}. Supported formats: json, table, summary, markdown, html, text", format).into())
-    }
+    VALIDATOR.validate_format(format)
+        .map_err(|e| e.into())
+        .map(|_| ())
 }
 
 /// Validate size and depth limits to prevent resource exhaustion
 fn validate_size_limits(max_size: usize, max_depth: usize) -> Result<(), Box<dyn std::error::Error>> {
-    const MAX_ALLOWED_SIZE: usize = 100_000_000; // 100MB
-    const MAX_ALLOWED_DEPTH: usize = 50;
-
-    if max_size > MAX_ALLOWED_SIZE {
-        return Err(format!("Max size {} exceeds allowed limit of {}", max_size, MAX_ALLOWED_SIZE).into());
-    }
-
-    if max_depth > MAX_ALLOWED_DEPTH {
-        return Err(format!("Max depth {} exceeds allowed limit of {}", max_depth, MAX_ALLOWED_DEPTH).into());
-    }
-
+    VALIDATOR.validate_range(max_size, 1, 100_000_000, "max_size")?;
+    VALIDATOR.validate_range(max_depth, 1, 50, "max_depth")?;
     Ok(())
 }
 
@@ -3520,4 +3516,46 @@ fn validate_output_path(output_path: &PathBuf) -> Result<(), Box<dyn std::error:
     }
 
     Ok(())
+}
+
+/// Validate language input
+fn validate_language_input(language: &str) -> Result<(), Box<dyn std::error::Error>> {
+    VALIDATOR.validate_language(language)
+        .map_err(|e| e.into())
+        .map(|_| ())
+}
+
+/// Validate query pattern input
+fn validate_query_pattern_input(pattern: &str) -> Result<(), Box<dyn std::error::Error>> {
+    VALIDATOR.validate_query_pattern(pattern)
+        .map_err(|e| e.into())
+        .map(|_| ())
+}
+
+/// Validate symbol name input
+fn validate_symbol_name_input(name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    VALIDATOR.validate_symbol_name(name)
+        .map_err(|e| e.into())
+        .map(|_| ())
+}
+
+/// Validate severity level input
+fn validate_severity_input(severity: &str) -> Result<(), Box<dyn std::error::Error>> {
+    VALIDATOR.validate_severity(severity)
+        .map_err(|e| e.into())
+        .map(|_| ())
+}
+
+/// Validate refactoring category input
+fn validate_refactor_category_input(category: &str) -> Result<(), Box<dyn std::error::Error>> {
+    VALIDATOR.validate_refactor_category(category)
+        .map_err(|e| e.into())
+        .map(|_| ())
+}
+
+/// Validate performance category input
+fn validate_performance_category_input(category: &str) -> Result<(), Box<dyn std::error::Error>> {
+    VALIDATOR.validate_performance_category(category)
+        .map_err(|e| e.into())
+        .map(|_| ())
 }

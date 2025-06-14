@@ -3,6 +3,7 @@
 //! This module provides high-level functionality for AI code agents to analyze
 //! entire folders and codebases, extracting structured information about the code.
 
+use crate::enhanced_error_handling::SafeFileOperations;
 use crate::error::{Error, Result};
 use crate::languages::Language;
 use crate::parser::Parser;
@@ -13,6 +14,17 @@ use std::fs;
 use std::path::{Path, PathBuf};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+
+/// Simple wrapper for directory entries to unify handling
+struct DirEntryWrapper {
+    path: PathBuf,
+}
+
+impl DirEntryWrapper {
+    fn path(&self) -> PathBuf {
+        self.path.clone()
+    }
+}
 
 /// Configuration for codebase analysis
 #[derive(Debug, Clone)]
@@ -32,6 +44,8 @@ pub struct AnalysisConfig {
     pub max_depth: Option<usize>,
     /// Whether to include hidden files/directories
     pub include_hidden: bool,
+    /// Whether to use enhanced error handling with recovery
+    pub use_enhanced_error_handling: bool,
 }
 
 impl Default for AnalysisConfig {
@@ -52,6 +66,7 @@ impl Default for AnalysisConfig {
             follow_symlinks: false,
             max_depth: Some(20),
             include_hidden: false,
+            use_enhanced_error_handling: true,
         }
     }
 }
@@ -128,6 +143,7 @@ pub struct AnalysisResult {
 pub struct CodebaseAnalyzer {
     config: AnalysisConfig,
     parsers: HashMap<Language, Parser>,
+    safe_file_ops: SafeFileOperations,
 }
 
 impl CodebaseAnalyzer {
@@ -141,6 +157,7 @@ impl CodebaseAnalyzer {
         Self {
             config,
             parsers: HashMap::new(),
+            safe_file_ops: SafeFileOperations::new(),
         }
     }
 
@@ -256,11 +273,23 @@ impl CodebaseAnalyzer {
             }
         }
 
-        let entries = fs::read_dir(current_path)
-            .map_err(|e| Error::internal(format!("Failed to read directory {}: {}", current_path.display(), e)))?;
+        let entries = if self.config.use_enhanced_error_handling {
+            // Use safe file operations with error recovery
+            let paths = self.safe_file_ops.list_directory(current_path)?;
+            paths.into_iter().map(|path| DirEntryWrapper { path }).collect::<Vec<_>>()
+        } else {
+            // Use standard file operations
+            let entries = fs::read_dir(current_path)
+                .map_err(|e| Error::internal(format!("Failed to read directory {}: {}", current_path.display(), e)))?;
+            let mut result = Vec::new();
+            for entry in entries {
+                let entry = entry.map_err(|e| Error::internal(format!("Failed to read directory entry: {}", e)))?;
+                result.push(DirEntryWrapper { path: entry.path() });
+            }
+            result
+        };
 
         for entry in entries {
-            let entry = entry.map_err(|e| Error::internal(format!("Failed to read directory entry: {}", e)))?;
             let path = entry.path();
 
             // Skip hidden files/directories if not included
@@ -319,18 +348,34 @@ impl CodebaseAnalyzer {
             None => return Ok(()), // Skip files with unknown languages
         };
 
-        // Check file size
-        let metadata = fs::metadata(file_path)?;
-        let file_size = metadata.len() as usize;
-        
-        if let Some(max_size) = self.config.max_file_size {
-            if file_size > max_size {
-                return Ok(()); // Skip large files
-            }
-        }
+        // Check file size and read content with enhanced error handling
+        let (file_size, content) = if self.config.use_enhanced_error_handling {
+            // Use safe file operations with error recovery
+            let metadata = self.safe_file_ops.get_metadata(file_path)?;
+            let file_size = metadata.len() as usize;
 
-        // Read file content
-        let content = fs::read_to_string(file_path)?;
+            if let Some(max_size) = self.config.max_file_size {
+                if file_size > max_size {
+                    return Ok(()); // Skip large files
+                }
+            }
+
+            let content = self.safe_file_ops.read_file(file_path)?;
+            (file_size, content)
+        } else {
+            // Use standard file operations
+            let metadata = fs::metadata(file_path)?;
+            let file_size = metadata.len() as usize;
+
+            if let Some(max_size) = self.config.max_file_size {
+                if file_size > max_size {
+                    return Ok(()); // Skip large files
+                }
+            }
+
+            let content = fs::read_to_string(file_path)?;
+            (file_size, content)
+        };
         let line_count = content.lines().count();
 
         // Get relative path
