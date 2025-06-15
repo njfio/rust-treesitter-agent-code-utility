@@ -148,6 +148,20 @@ impl Language {
     }
 }
 
+/// Detect language from file path based on extension
+pub fn detect_language_from_path<P: AsRef<std::path::Path>>(path: P) -> Option<Language> {
+    let path = path.as_ref();
+    let extension = path.extension()?.to_str()?.to_lowercase();
+
+    for language in Language::all() {
+        if language.file_extensions().contains(&extension.as_str()) {
+            return Some(language);
+        }
+    }
+
+    None
+}
+
 impl std::fmt::Display for Language {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name())
