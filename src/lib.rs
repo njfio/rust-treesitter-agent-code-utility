@@ -42,10 +42,12 @@ pub mod input_validation;
 pub mod performance_optimization;
 pub mod languages;
 pub mod parser;
+pub mod parsing_error_handler;
 pub mod performance_analysis;
 pub mod query;
 pub mod refactoring;
 pub mod security;
+pub mod semantic;
 pub mod smart_refactoring;
 pub mod test_coverage;
 pub mod tree;
@@ -63,10 +65,15 @@ pub use input_validation::InputValidator;
 pub use performance_optimization::{OptimizedAnalyzer, PerformanceConfig, PerformanceMetrics, MemoryStats};
 pub use languages::Language;
 pub use parser::{Parser, ParseOptions, create_edit};
+pub use parsing_error_handler::{ParsingErrorHandler, ParseError, ErrorSeverity, ErrorCategory, ParsingMetrics};
 pub use performance_analysis::{PerformanceAnalyzer, PerformanceAnalysisResult, PerformanceConfig as AnalysisPerformanceConfig, PerformanceHotspot};
 pub use query::{Query, QueryCapture, QueryMatch, QueryBuilder};
 pub use refactoring::{RefactoringAnalyzer, RefactoringResult, RefactoringSuggestion, RefactoringConfig};
 pub use security::{VulnerabilityDatabase, SecretsDetector, OwaspDetector};
+pub use semantic::{
+    SemanticAnalyzer, SemanticConfig, SemanticAnalysisResult, SemanticMetadata,
+    CodeEntity, CodeRelationship, EntityType, RelationshipType, EntityLocation
+};
 pub use enhanced_security::{EnhancedSecurityScanner, EnhancedSecurityResult, EnhancedSecurityConfig};
 pub use advanced_security::{AdvancedSecurityAnalyzer as SecurityScanner, AdvancedSecurityResult as SecurityScanResult, SecurityVulnerability, AdvancedSecurityConfig as SecurityConfig, SecuritySeverity};
 pub use smart_refactoring::{SmartRefactoringEngine, SmartRefactoringResult, SmartRefactoringConfig, CodeSmellFix};

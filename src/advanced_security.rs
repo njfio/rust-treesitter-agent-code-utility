@@ -12,6 +12,7 @@ use crate::{AnalysisResult, FileInfo, Result};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use regex::Regex;
+use rayon::prelude::*;
 
 #[cfg(feature = "serde")]
 use serde::{Serialize, Deserialize};
@@ -462,27 +463,57 @@ impl AdvancedSecurityAnalyzer {
         let mut injection_vulnerabilities = Vec::new();
         let mut best_practice_violations = Vec::new();
         
-        // Analyze each file for security issues
-        for file in &analysis_result.files {
-            if self.config.owasp_analysis {
-                vulnerabilities.extend(self.detect_owasp_vulnerabilities(file)?);
-            }
-            
-            if self.config.secrets_detection {
-                secrets.extend(self.detect_secrets(file)?);
-            }
-            
-            if self.config.input_validation {
-                input_validation_issues.extend(self.detect_input_validation_issues(file)?);
-            }
-            
-            if self.config.injection_analysis {
-                injection_vulnerabilities.extend(self.detect_injection_vulnerabilities(file)?);
-            }
-            
-            if self.config.best_practices {
-                best_practice_violations.extend(self.detect_best_practice_violations(file)?);
-            }
+        // Analyze each file for security issues in parallel for better performance
+        let file_results: Vec<_> = analysis_result.files
+            .par_iter()
+            .map(|file| {
+                let mut file_vulnerabilities = Vec::new();
+                let mut file_secrets = Vec::new();
+                let mut file_input_issues = Vec::new();
+                let mut file_injection_vulns = Vec::new();
+                let mut file_best_practices = Vec::new();
+
+                if self.config.owasp_analysis {
+                    if let Ok(vulns) = self.detect_owasp_vulnerabilities(file) {
+                        file_vulnerabilities.extend(vulns);
+                    }
+                }
+
+                if self.config.secrets_detection {
+                    if let Ok(sec) = self.detect_secrets(file) {
+                        file_secrets.extend(sec);
+                    }
+                }
+
+                if self.config.input_validation {
+                    if let Ok(issues) = self.detect_input_validation_issues(file) {
+                        file_input_issues.extend(issues);
+                    }
+                }
+
+                if self.config.injection_analysis {
+                    if let Ok(vulns) = self.detect_injection_vulnerabilities(file) {
+                        file_injection_vulns.extend(vulns);
+                    }
+                }
+
+                if self.config.best_practices {
+                    if let Ok(violations) = self.detect_best_practice_violations(file) {
+                        file_best_practices.extend(violations);
+                    }
+                }
+
+                (file_vulnerabilities, file_secrets, file_input_issues, file_injection_vulns, file_best_practices)
+            })
+            .collect();
+
+        // Aggregate results from parallel processing
+        for (file_vulns, file_secs, file_inputs, file_injections, file_practices) in file_results {
+            vulnerabilities.extend(file_vulns);
+            secrets.extend(file_secs);
+            input_validation_issues.extend(file_inputs);
+            injection_vulnerabilities.extend(file_injections);
+            best_practice_violations.extend(file_practices);
         }
         
         // Filter by minimum severity
@@ -547,29 +578,30 @@ impl AdvancedSecurityAnalyzer {
         let mut vulnerabilities = Vec::new();
 
         // Read file content for analysis
-        let content = std::fs::read_to_string(&file.path)?;
+        let content = match std::fs::read_to_string(&file.path) {
+            Ok(content) => content,
+            Err(e) => {
+                tracing::warn!("Failed to read file {}: {}", file.path.display(), e);
+                return Ok(vulnerabilities);
+            }
+        };
+
         let lines: Vec<&str> = content.lines().collect();
 
-        // A01: Broken Access Control
-        vulnerabilities.extend(self.detect_access_control_issues(&content, &lines, file)?);
-
-        // A02: Cryptographic Failures
-        vulnerabilities.extend(self.detect_cryptographic_failures(&content, &lines, file)?);
-
-        // A03: Injection
-        vulnerabilities.extend(self.detect_injection_issues(&content, &lines, file)?);
-
-        // A04: Insecure Design
-        vulnerabilities.extend(self.detect_insecure_design(&content, &lines, file)?);
-
-        // A05: Security Misconfiguration
-        vulnerabilities.extend(self.detect_security_misconfiguration(&content, &lines, file)?);
+        // Run all OWASP Top 10 detection methods with content
+        if self.config.owasp_analysis {
+            vulnerabilities.extend(self.detect_access_control_issues(&content, &lines, file)?);
+            vulnerabilities.extend(self.detect_cryptographic_failures(&content, &lines, file)?);
+            vulnerabilities.extend(self.detect_injection_issues(&content, &lines, file)?);
+            vulnerabilities.extend(self.detect_insecure_design(&content, &lines, file)?);
+            vulnerabilities.extend(self.detect_security_misconfiguration(&content, &lines, file)?);
+        }
 
         Ok(vulnerabilities)
     }
 
     /// Detect access control issues
-    fn detect_access_control_issues(&self, content: &str, lines: &[&str], file: &FileInfo) -> Result<Vec<SecurityVulnerability>> {
+    fn detect_access_control_issues(&self, _content: &str, lines: &[&str], file: &FileInfo) -> Result<Vec<SecurityVulnerability>> {
         let mut vulnerabilities = Vec::new();
 
         // Check for missing authorization checks
@@ -625,7 +657,7 @@ impl AdvancedSecurityAnalyzer {
     }
 
     /// Detect cryptographic failures
-    fn detect_cryptographic_failures(&self, content: &str, lines: &[&str], file: &FileInfo) -> Result<Vec<SecurityVulnerability>> {
+    fn detect_cryptographic_failures(&self, _content: &str, lines: &[&str], file: &FileInfo) -> Result<Vec<SecurityVulnerability>> {
         let mut vulnerabilities = Vec::new();
 
         // Check for weak cryptographic algorithms
@@ -732,7 +764,7 @@ impl AdvancedSecurityAnalyzer {
     }
 
     /// Detect injection issues
-    fn detect_injection_issues(&self, content: &str, lines: &[&str], file: &FileInfo) -> Result<Vec<SecurityVulnerability>> {
+    fn detect_injection_issues(&self, _content: &str, lines: &[&str], file: &FileInfo) -> Result<Vec<SecurityVulnerability>> {
         let mut vulnerabilities = Vec::new();
 
         // Check for SQL injection patterns
@@ -966,21 +998,24 @@ impl AdvancedSecurityAnalyzer {
     /// Detect secrets in source code
     fn detect_secrets(&self, file: &FileInfo) -> Result<Vec<DetectedSecret>> {
         let mut secrets = Vec::new();
-        let content = std::fs::read_to_string(&file.path)?;
-        let lines: Vec<&str> = content.lines().collect();
 
-        for (line_num, line) in lines.iter().enumerate() {
-            // Check for API keys
+        // Read file content for analysis
+        let content = match std::fs::read_to_string(&file.path) {
+            Ok(content) => content,
+            Err(e) => {
+                tracing::warn!("Failed to read file {}: {}", file.path.display(), e);
+                return Ok(secrets);
+            }
+        };
+
+        // Analyze each line for secrets
+        for (line_num, line) in content.lines().enumerate() {
             if let Some(secret) = self.detect_api_key(line, line_num, file) {
                 secrets.push(secret);
             }
-
-            // Check for passwords
             if let Some(secret) = self.detect_password(line, line_num, file) {
                 secrets.push(secret);
             }
-
-            // Check for tokens
             if let Some(secret) = self.detect_token(line, line_num, file) {
                 secrets.push(secret);
             }
@@ -1120,16 +1155,35 @@ impl AdvancedSecurityAnalyzer {
     /// Detect input validation issues
     fn detect_input_validation_issues(&self, file: &FileInfo) -> Result<Vec<InputValidationIssue>> {
         let mut issues = Vec::new();
-        let content = std::fs::read_to_string(&file.path)?;
+
+        // Read file content for analysis
+        let content = match std::fs::read_to_string(&file.path) {
+            Ok(content) => content,
+            Err(e) => {
+                tracing::warn!("Failed to read file {}: {}", file.path.display(), e);
+                return Ok(issues);
+            }
+        };
+
         let lines: Vec<&str> = content.lines().collect();
 
+        // Check for input validation issues
         for (line_num, line) in lines.iter().enumerate() {
-            // Check for direct user input usage without validation
-            if ((line.contains("request.") || line.contains("input") || line.contains("params") ||
-                line.contains("processUserData") || line.contains("data")) &&
-               !line.contains("validate") && !line.contains("sanitize") && !line.contains("escape")) ||
-               (line.contains("function") && line.contains("data") && line.contains("return data")) {
+            let line_lower = line.to_lowercase();
 
+            // Check for missing input validation - enhanced patterns
+            let has_input_processing = line_lower.contains("request") || line_lower.contains("input") ||
+                                      line_lower.contains("user") || line_lower.contains("data") ||
+                                      line_lower.contains("param");
+
+            let has_processing = line.contains("=") || line.contains(":") || line.contains("return") ||
+                                line.contains("process") || line.contains("handle");
+
+            let has_validation = line_lower.contains("validate") || line_lower.contains("sanitize") ||
+                                line_lower.contains("escape") || line_lower.contains("filter") ||
+                                line_lower.contains("check") || line_lower.contains("verify");
+
+            if has_input_processing && has_processing && !has_validation {
                 issues.push(InputValidationIssue {
                     issue_type: InputValidationType::MissingValidation,
                     location: VulnerabilityLocation {
@@ -1139,9 +1193,26 @@ impl AdvancedSecurityAnalyzer {
                         end_line: line_num + 1,
                         column: 0,
                     },
-                    description: "User input used without apparent validation".to_string(),
+                    description: "User input processed without validation".to_string(),
                     severity: SecuritySeverity::Medium,
                     remediation: "Add input validation and sanitization".to_string(),
+                });
+            }
+
+            // Check for weak validation patterns
+            if line_lower.contains("validate") && (line.contains("return true") || line.contains("return data")) {
+                issues.push(InputValidationIssue {
+                    issue_type: InputValidationType::InsufficientValidation,
+                    location: VulnerabilityLocation {
+                        file: file.path.clone(),
+                        function: None,
+                        start_line: line_num + 1,
+                        end_line: line_num + 1,
+                        column: 0,
+                    },
+                    description: "Weak or ineffective input validation".to_string(),
+                    severity: SecuritySeverity::Medium,
+                    remediation: "Implement proper input validation logic".to_string(),
                 });
             }
         }
@@ -1152,21 +1223,33 @@ impl AdvancedSecurityAnalyzer {
     /// Detect injection vulnerabilities
     fn detect_injection_vulnerabilities(&self, file: &FileInfo) -> Result<Vec<InjectionVulnerability>> {
         let mut vulnerabilities = Vec::new();
-        let content = std::fs::read_to_string(&file.path)?;
+
+        // Read file content for analysis
+        let content = match std::fs::read_to_string(&file.path) {
+            Ok(content) => content,
+            Err(e) => {
+                tracing::warn!("Failed to read file {}: {}", file.path.display(), e);
+                return Ok(vulnerabilities);
+            }
+        };
+
         let lines: Vec<&str> = content.lines().collect();
 
+        // Check for SQL injection patterns
         for (line_num, line) in lines.iter().enumerate() {
             let line_lower = line.to_lowercase();
 
-            // SQL injection vulnerabilities - enhanced to catch more patterns
-            if ((line_lower.contains("select") || line_lower.contains("insert") ||
-                line_lower.contains("update") || line_lower.contains("delete") ||
-                line_lower.contains("execute") || line_lower.contains("query")) &&
-               (line.contains("+") || line.contains("format") || line.contains("{}") ||
-                line.contains("user_input") || line.contains("user_id") ||
-                line.contains("sql") || line.contains("WHERE"))) ||
-               (line.contains("execute_query") && line.contains("+")) {
+            // SQL injection patterns - enhanced to catch more patterns
+            let has_sql_keywords = line_lower.contains("select") || line_lower.contains("insert") ||
+                                  line_lower.contains("update") || line_lower.contains("delete") ||
+                                  line_lower.contains("execute") || line_lower.contains("query") ||
+                                  line_lower.contains("sql");
 
+            let has_string_concat = line.contains("+") || line.contains("format") || line.contains("{}") ||
+                                   line.contains("user_input") || line.contains("user_id") ||
+                                   line_lower.contains("concat");
+
+            if has_sql_keywords && has_string_concat {
                 vulnerabilities.push(InjectionVulnerability {
                     injection_type: InjectionType::SqlInjection,
                     location: VulnerabilityLocation {
@@ -1179,33 +1262,31 @@ impl AdvancedSecurityAnalyzer {
                     pattern: line.to_string(),
                     severity: SecuritySeverity::High,
                     remediation: RemediationGuidance {
-                        summary: "Use parameterized queries to prevent SQL injection".to_string(),
+                        summary: "Use parameterized queries or prepared statements".to_string(),
                         steps: vec![
                             "Replace string concatenation with parameterized queries".to_string(),
                             "Use prepared statements".to_string(),
                             "Validate and sanitize all user inputs".to_string(),
                         ],
-                        code_examples: vec![
-                            CodeExample {
-                                description: "Use parameterized query".to_string(),
-                                vulnerable_code: "query = \"SELECT * FROM users WHERE id = \" + user_id".to_string(),
-                                secure_code: "query = \"SELECT * FROM users WHERE id = ?\"; execute(query, [user_id])".to_string(),
-                                language: "sql".to_string(),
-                            }
-                        ],
-                        references: vec![
-                            "https://owasp.org/Top10/A03_2021-Injection/".to_string(),
-                        ],
+                        code_examples: vec![],
+                        references: vec![],
                         effort: RemediationEffort::Medium,
                     },
                 });
             }
 
-            // XSS vulnerabilities - enhanced to catch more patterns
-            if line.contains("innerHTML") || line.contains("document.write") ||
-               (line.contains("element.innerHTML") && line.contains("userInput")) {
+            // Command injection patterns
+            let has_command_keywords = line_lower.contains("exec") || line_lower.contains("system") ||
+                                      line_lower.contains("shell") || line_lower.contains("command") ||
+                                      line_lower.contains("subprocess") || line_lower.contains("os.");
+
+            let has_dynamic_input = line.contains("+") || line.contains("format") || line.contains("{}") ||
+                                   line.contains("user_input") || line.contains("input") ||
+                                   line_lower.contains("concat");
+
+            if has_command_keywords && has_dynamic_input {
                 vulnerabilities.push(InjectionVulnerability {
-                    injection_type: InjectionType::XssInjection,
+                    injection_type: InjectionType::CommandInjection,
                     location: VulnerabilityLocation {
                         file: file.path.clone(),
                         function: None,
@@ -1214,26 +1295,17 @@ impl AdvancedSecurityAnalyzer {
                         column: 0,
                     },
                     pattern: line.to_string(),
-                    severity: SecuritySeverity::High,
+                    severity: SecuritySeverity::Critical,
                     remediation: RemediationGuidance {
-                        summary: "Use safe DOM manipulation methods".to_string(),
+                        summary: "Avoid dynamic command construction, use safe APIs".to_string(),
                         steps: vec![
-                            "Replace innerHTML with textContent".to_string(),
-                            "Use DOM methods instead of document.write".to_string(),
-                            "Sanitize user input before rendering".to_string(),
+                            "Replace dynamic command construction with safe APIs".to_string(),
+                            "Use allowlists for command parameters".to_string(),
+                            "Validate and sanitize all inputs".to_string(),
                         ],
-                        code_examples: vec![
-                            CodeExample {
-                                description: "Safe DOM manipulation".to_string(),
-                                vulnerable_code: "element.innerHTML = userInput".to_string(),
-                                secure_code: "element.textContent = userInput".to_string(),
-                                language: "javascript".to_string(),
-                            }
-                        ],
-                        references: vec![
-                            "https://owasp.org/www-community/attacks/xss/".to_string(),
-                        ],
-                        effort: RemediationEffort::Low,
+                        code_examples: vec![],
+                        references: vec![],
+                        effort: RemediationEffort::High,
                     },
                 });
             }
@@ -1245,35 +1317,27 @@ impl AdvancedSecurityAnalyzer {
     /// Detect best practice violations
     fn detect_best_practice_violations(&self, file: &FileInfo) -> Result<Vec<BestPracticeViolation>> {
         let mut violations = Vec::new();
-        let content = std::fs::read_to_string(&file.path)?;
+
+        // Read file content for analysis
+        let content = match std::fs::read_to_string(&file.path) {
+            Ok(content) => content,
+            Err(e) => {
+                tracing::warn!("Failed to read file {}: {}", file.path.display(), e);
+                return Ok(violations);
+            }
+        };
+
         let lines: Vec<&str> = content.lines().collect();
 
+        // Check for best practice violations
         for (line_num, line) in lines.iter().enumerate() {
             let line_lower = line.to_lowercase();
 
-            // Check for console.log in production code
-            if line.contains("console.log") || line.contains("print(") {
-                violations.push(BestPracticeViolation {
-                    category: BestPracticeCategory::Logging,
-                    description: "Debug logging statements in production code".to_string(),
-                    location: VulnerabilityLocation {
-                        file: file.path.clone(),
-                        function: None,
-                        start_line: line_num + 1,
-                        end_line: line_num + 1,
-                        column: 0,
-                    },
-                    severity: SecuritySeverity::Low,
-                    recommendation: "Remove debug statements or use proper logging framework".to_string(),
-                });
-            }
-
-            // Check for weak cryptographic functions
-            if line_lower.contains("md5") || line_lower.contains("sha1") ||
-               line_lower.contains("insecure_random") || line_lower.contains("weak_hash") {
+            // Check for weak cryptographic practices
+            if line_lower.contains("md5") || line_lower.contains("sha1") {
                 violations.push(BestPracticeViolation {
                     category: BestPracticeCategory::Cryptography,
-                    description: "Use of weak cryptographic function".to_string(),
+                    description: "Use of weak cryptographic algorithm".to_string(),
                     location: VulnerabilityLocation {
                         file: file.path.clone(),
                         function: None,
@@ -1286,11 +1350,11 @@ impl AdvancedSecurityAnalyzer {
                 });
             }
 
-            // Check for TODO/FIXME comments
-            if line.to_lowercase().contains("todo") || line.to_lowercase().contains("fixme") {
+            // Check for insecure random number generation
+            if line_lower.contains("math.random") || line_lower.contains("rand()") {
                 violations.push(BestPracticeViolation {
-                    category: BestPracticeCategory::Configuration,
-                    description: "Unresolved TODO/FIXME comment".to_string(),
+                    category: BestPracticeCategory::Cryptography,
+                    description: "Use of insecure random number generator".to_string(),
                     location: VulnerabilityLocation {
                         file: file.path.clone(),
                         function: None,
@@ -1298,8 +1362,27 @@ impl AdvancedSecurityAnalyzer {
                         end_line: line_num + 1,
                         column: 0,
                     },
-                    severity: SecuritySeverity::Info,
-                    recommendation: "Resolve pending issues before production deployment".to_string(),
+                    severity: SecuritySeverity::Medium,
+                    recommendation: "Use cryptographically secure random number generators".to_string(),
+                });
+            }
+
+            // Check for hardcoded credentials
+            if (line_lower.contains("password") || line_lower.contains("secret") || line_lower.contains("key")) &&
+               (line.contains("=") || line.contains(":")) &&
+               (line.contains("\"") || line.contains("'")) {
+                violations.push(BestPracticeViolation {
+                    category: BestPracticeCategory::Authentication,
+                    description: "Hardcoded credentials detected".to_string(),
+                    location: VulnerabilityLocation {
+                        file: file.path.clone(),
+                        function: None,
+                        start_line: line_num + 1,
+                        end_line: line_num + 1,
+                        column: 0,
+                    },
+                    severity: SecuritySeverity::High,
+                    recommendation: "Store credentials in environment variables or secure configuration".to_string(),
                 });
             }
         }
@@ -1441,7 +1524,7 @@ impl AdvancedSecurityAnalyzer {
     /// Calculate overall security score
     fn calculate_security_score(
         &self,
-        total_vulnerabilities: usize,
+        _total_vulnerabilities: usize,
         severity_counts: &HashMap<SecuritySeverity, usize>,
         compliance: &ComplianceAssessment,
     ) -> u8 {

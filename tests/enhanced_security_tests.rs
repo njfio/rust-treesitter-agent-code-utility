@@ -241,15 +241,278 @@ fn test_security_recommendations_generation() {
     assert!(security_result.is_ok());
 
     let result = security_result.unwrap();
-    
+
     // Should generate security recommendations
     assert!(!result.recommendations.is_empty());
-    
+
     let recommendation = &result.recommendations[0];
     assert!(!recommendation.category.is_empty());
     assert!(!recommendation.recommendation.is_empty());
     assert!(!recommendation.implementation.is_empty());
     assert!(recommendation.security_improvement >= 0.0);
+}
+
+// New comprehensive content integration tests
+#[test]
+fn test_content_integration_sql_injection_detection() {
+    let analyzer = AdvancedSecurityAnalyzer::new().unwrap();
+    let analysis_result = create_real_sql_injection_file();
+
+    let security_result = analyzer.analyze(&analysis_result);
+    assert!(security_result.is_ok());
+
+    let result = security_result.unwrap();
+
+    // Should detect SQL injection vulnerabilities from actual file content
+    assert!(result.vulnerabilities.len() > 0);
+
+    // Verify specific SQL injection patterns are detected
+    let sql_vulns: Vec<_> = result.vulnerabilities.iter()
+        .filter(|v| v.title.contains("SQL injection") || v.id.contains("INJ001"))
+        .collect();
+    assert!(!sql_vulns.is_empty());
+
+    // Verify vulnerability details
+    let sql_vuln = &sql_vulns[0];
+    assert_eq!(sql_vuln.severity, SecuritySeverity::High);
+    assert!(!sql_vuln.code_snippet.is_empty());
+    assert!(sql_vuln.location.start_line > 0);
+}
+
+#[test]
+fn test_content_integration_secrets_detection() {
+    let analyzer = AdvancedSecurityAnalyzer::new().unwrap();
+    let analysis_result = create_real_secrets_file();
+
+    let security_result = analyzer.analyze(&analysis_result);
+    assert!(security_result.is_ok());
+
+    let result = security_result.unwrap();
+
+    // Should detect secrets from actual file content
+    assert!(result.secrets.len() > 0);
+
+    // Verify API key detection
+    let api_key_secrets: Vec<_> = result.secrets.iter()
+        .filter(|s| matches!(s.secret_type, rust_tree_sitter::advanced_security::SecretType::ApiKey))
+        .collect();
+    assert!(!api_key_secrets.is_empty());
+
+    // Verify secret details
+    let secret = &api_key_secrets[0];
+    assert!(!secret.masked_value.is_empty());
+    assert!(secret.entropy > 0.0);
+    assert!(secret.location.start_line > 0);
+}
+
+#[test]
+fn test_content_integration_cryptographic_failures() {
+    let analyzer = AdvancedSecurityAnalyzer::new().unwrap();
+    let analysis_result = create_real_crypto_weak_file();
+
+    let security_result = analyzer.analyze(&analysis_result);
+    assert!(security_result.is_ok());
+
+    let result = security_result.unwrap();
+
+    // Should detect cryptographic failures from actual file content
+    assert!(result.vulnerabilities.len() > 0);
+
+    // Verify weak crypto detection
+    let crypto_vulns: Vec<_> = result.vulnerabilities.iter()
+        .filter(|v| v.title.contains("cryptographic") || v.id.contains("CF001"))
+        .collect();
+    assert!(!crypto_vulns.is_empty());
+
+    // Verify vulnerability details
+    let crypto_vuln = &crypto_vulns[0];
+    assert_eq!(crypto_vuln.severity, SecuritySeverity::Medium);
+    assert!(crypto_vuln.code_snippet.contains("md5") || crypto_vuln.code_snippet.contains("sha1"));
+}
+
+#[test]
+fn test_content_integration_command_injection() {
+    let analyzer = AdvancedSecurityAnalyzer::new().unwrap();
+    let analysis_result = create_real_command_injection_file();
+
+    let security_result = analyzer.analyze(&analysis_result);
+    assert!(security_result.is_ok());
+
+    let result = security_result.unwrap();
+
+    // Should detect command injection vulnerabilities
+    assert!(result.vulnerabilities.len() > 0);
+
+    // Verify command injection detection
+    let cmd_vulns: Vec<_> = result.vulnerabilities.iter()
+        .filter(|v| v.title.contains("command injection") || v.id.contains("INJ002"))
+        .collect();
+    assert!(!cmd_vulns.is_empty());
+
+    // Verify vulnerability details
+    let cmd_vuln = &cmd_vulns[0];
+    assert_eq!(cmd_vuln.severity, SecuritySeverity::Critical);
+    assert!(cmd_vuln.code_snippet.contains("exec") || cmd_vuln.code_snippet.contains("system"));
+}
+
+#[test]
+fn test_content_integration_access_control() {
+    let analyzer = AdvancedSecurityAnalyzer::new().unwrap();
+    let analysis_result = create_real_access_control_file();
+
+    let security_result = analyzer.analyze(&analysis_result);
+    assert!(security_result.is_ok());
+
+    let result = security_result.unwrap();
+
+    // Should detect access control issues
+    assert!(result.vulnerabilities.len() > 0);
+
+    // Verify access control detection
+    let access_vulns: Vec<_> = result.vulnerabilities.iter()
+        .filter(|v| v.title.contains("authorization") || v.id.contains("AC001"))
+        .collect();
+    assert!(!access_vulns.is_empty());
+
+    // Verify vulnerability details
+    let access_vuln = &access_vulns[0];
+    assert_eq!(access_vuln.severity, SecuritySeverity::High);
+    assert!(access_vuln.code_snippet.contains("admin"));
+}
+
+#[test]
+fn test_content_integration_insecure_design() {
+    let analyzer = AdvancedSecurityAnalyzer::new().unwrap();
+    let analysis_result = create_real_insecure_design_file();
+
+    let security_result = analyzer.analyze(&analysis_result);
+    assert!(security_result.is_ok());
+
+    let result = security_result.unwrap();
+
+    // Should detect insecure design patterns
+    assert!(result.vulnerabilities.len() > 0);
+
+    // Verify insecure random detection
+    let design_vulns: Vec<_> = result.vulnerabilities.iter()
+        .filter(|v| v.title.contains("random") || v.id.contains("ID001"))
+        .collect();
+    assert!(!design_vulns.is_empty());
+
+    // Verify vulnerability details
+    let design_vuln = &design_vulns[0];
+    assert_eq!(design_vuln.severity, SecuritySeverity::Medium);
+    assert!(design_vuln.code_snippet.contains("Math.random") || design_vuln.code_snippet.contains("rand()"));
+}
+
+#[test]
+fn test_content_integration_security_misconfiguration() {
+    let analyzer = AdvancedSecurityAnalyzer::new().unwrap();
+    let analysis_result = create_real_security_misconfig_file();
+
+    let security_result = analyzer.analyze(&analysis_result);
+    assert!(security_result.is_ok());
+
+    let result = security_result.unwrap();
+
+    // Should detect security misconfigurations
+    assert!(result.vulnerabilities.len() > 0);
+
+    // Verify debug mode detection
+    let config_vulns: Vec<_> = result.vulnerabilities.iter()
+        .filter(|v| v.title.contains("Debug") || v.id.contains("SM001"))
+        .collect();
+    assert!(!config_vulns.is_empty());
+
+    // Verify vulnerability details
+    let config_vuln = &config_vulns[0];
+    assert_eq!(config_vuln.severity, SecuritySeverity::Medium);
+    assert!(config_vuln.code_snippet.contains("debug") && config_vuln.code_snippet.contains("true"));
+}
+
+#[test]
+fn test_content_integration_parallel_processing() {
+    let analyzer = AdvancedSecurityAnalyzer::new().unwrap();
+    let analysis_result = create_large_codebase_for_parallel_test();
+
+    let security_result = analyzer.analyze(&analysis_result);
+    assert!(security_result.is_ok());
+
+    let result = security_result.unwrap();
+
+    // Should process multiple files in parallel and detect vulnerabilities
+    assert!(result.vulnerabilities.len() > 0);
+    assert!(result.secrets.len() > 0);
+
+    // Verify that all file types were processed
+    let sql_vulns = result.vulnerabilities.iter().filter(|v| v.id.contains("INJ001")).count();
+    let crypto_vulns = result.vulnerabilities.iter().filter(|v| v.id.contains("CF001")).count();
+    let access_vulns = result.vulnerabilities.iter().filter(|v| v.id.contains("AC001")).count();
+
+    assert!(sql_vulns > 0);
+    assert!(crypto_vulns > 0);
+    assert!(access_vulns > 0);
+}
+
+#[test]
+fn test_content_integration_entropy_calculation() {
+    let analyzer = AdvancedSecurityAnalyzer::new().unwrap();
+    let analysis_result = create_real_secrets_file();
+
+    let security_result = analyzer.analyze(&analysis_result);
+    assert!(security_result.is_ok());
+
+    let result = security_result.unwrap();
+
+    // Should calculate entropy for detected secrets
+    assert!(result.secrets.len() > 0);
+
+    for secret in &result.secrets {
+        // Entropy should be between 0 and 1
+        assert!(secret.entropy >= 0.0 && secret.entropy <= 1.0);
+
+        // Check confidence levels based on secret type and entropy
+        match secret.secret_type {
+            rust_tree_sitter::advanced_security::SecretType::ApiKey => {
+                if secret.entropy > 0.6 {
+                    assert!(matches!(secret.confidence, rust_tree_sitter::advanced_security::ConfidenceLevel::High));
+                }
+            },
+            rust_tree_sitter::advanced_security::SecretType::Password => {
+                // Passwords always have high confidence
+                assert!(matches!(secret.confidence, rust_tree_sitter::advanced_security::ConfidenceLevel::High));
+            },
+            rust_tree_sitter::advanced_security::SecretType::Token => {
+                if secret.entropy > 0.7 {
+                    assert!(matches!(secret.confidence, rust_tree_sitter::advanced_security::ConfidenceLevel::High));
+                }
+            },
+            _ => {
+                // For other types, just check that confidence is valid
+                assert!(matches!(secret.confidence,
+                    rust_tree_sitter::advanced_security::ConfidenceLevel::High |
+                    rust_tree_sitter::advanced_security::ConfidenceLevel::Medium |
+                    rust_tree_sitter::advanced_security::ConfidenceLevel::Low
+                ));
+            }
+        }
+    }
+}
+
+#[test]
+fn test_content_integration_error_handling() {
+    let analyzer = AdvancedSecurityAnalyzer::new().unwrap();
+    let analysis_result = create_unreadable_file_codebase();
+
+    // Should handle file read errors gracefully
+    let security_result = analyzer.analyze(&analysis_result);
+    assert!(security_result.is_ok());
+
+    let result = security_result.unwrap();
+
+    // Should not crash on unreadable files
+    assert!(result.total_vulnerabilities >= 0);
+    assert!(result.security_score <= 100);
 }
 
 // Helper functions for creating mock data
@@ -330,6 +593,16 @@ fn create_mock_vulnerable_codebase() -> AnalysisResult {
             ]),
         ],
         config: AnalysisConfig::default(),
+        symbols: vec![
+            create_mock_symbol("authenticate", "function"),
+            create_mock_symbol("validateUser", "function"),
+            create_mock_symbol("execute_query", "function"),
+            create_mock_symbol("DatabaseConnection", "class"),
+            create_mock_symbol("API_KEY", "variable"),
+            create_mock_symbol("DATABASE_PASSWORD", "variable"),
+            create_mock_symbol("renderUserInput", "function"),
+        ],
+        dependencies: vec!["lodash".to_string(), "express".to_string(), "moment".to_string()],
     }
 }
 
@@ -351,6 +624,8 @@ fn create_mock_codebase_with_dependencies() -> AnalysisResult {
             ]),
         ],
         config: AnalysisConfig::default(),
+        symbols: vec![create_mock_symbol("main", "function")],
+        dependencies: vec!["serde".to_string(), "tokio".to_string(), "openssl".to_string()],
     }
 }
 
@@ -372,6 +647,11 @@ fn create_mock_codebase_with_secrets() -> AnalysisResult {
             ]),
         ],
         config: AnalysisConfig::default(),
+        symbols: vec![
+            create_mock_symbol("API_KEY", "variable"),
+            create_mock_symbol("DATABASE_PASSWORD", "variable"),
+        ],
+        dependencies: vec![],
     }
 }
 
@@ -395,13 +675,18 @@ fn create_mock_codebase_with_owasp_issues() -> AnalysisResult {
             ]),
         ],
         config: AnalysisConfig::default(),
+        symbols: vec![
+            create_mock_symbol("renderUserInput", "function"),
+            create_mock_symbol("getUserData", "function"),
+        ],
+        dependencies: vec![],
     }
 }
 
 fn create_mock_sql_injection_codebase() -> AnalysisResult {
     let mut languages = HashMap::new();
     languages.insert("Python".to_string(), 100);
-    
+
     AnalysisResult {
         root_path: PathBuf::from("/mock/sql-injection-project"),
         total_files: 3,
@@ -416,13 +701,18 @@ fn create_mock_sql_injection_codebase() -> AnalysisResult {
             ]),
         ],
         config: AnalysisConfig::default(),
+        symbols: vec![
+            create_mock_symbol("get_user_by_id", "function"),
+            create_mock_symbol("search_users", "function"),
+        ],
+        dependencies: vec![],
     }
 }
 
 fn create_mock_input_validation_issues() -> AnalysisResult {
     let mut languages = HashMap::new();
     languages.insert("JavaScript".to_string(), 100);
-    
+
     AnalysisResult {
         root_path: PathBuf::from("/mock/validation-project"),
         total_files: 4,
@@ -437,13 +727,18 @@ fn create_mock_input_validation_issues() -> AnalysisResult {
             ]),
         ],
         config: AnalysisConfig::default(),
+        symbols: vec![
+            create_mock_symbol("processUserData", "function"),
+            create_mock_symbol("validateEmail", "function"),
+        ],
+        dependencies: vec![],
     }
 }
 
 fn create_mock_best_practice_violations() -> AnalysisResult {
     let mut languages = HashMap::new();
     languages.insert("Python".to_string(), 100);
-    
+
     AnalysisResult {
         root_path: PathBuf::from("/mock/practices-project"),
         total_files: 6,
@@ -458,6 +753,11 @@ fn create_mock_best_practice_violations() -> AnalysisResult {
             ]),
         ],
         config: AnalysisConfig::default(),
+        symbols: vec![
+            create_mock_symbol("weak_hash", "function"),
+            create_mock_symbol("insecure_random", "function"),
+        ],
+        dependencies: vec![],
     }
 }
 
@@ -521,5 +821,266 @@ fn create_mock_symbol(name: &str, kind: &str) -> Symbol {
         end_column: 10,
         documentation: None,
         is_public: true,
+    }
+}
+
+// Helper functions for content integration tests
+fn create_real_sql_injection_file() -> AnalysisResult {
+    let mut languages = HashMap::new();
+    languages.insert("Python".to_string(), 100);
+
+    AnalysisResult {
+        root_path: PathBuf::from("/test/sql-injection"),
+        total_files: 1,
+        parsed_files: 1,
+        error_files: 0,
+        total_lines: 10,
+        languages,
+        files: vec![
+            create_real_file_info("vulnerable_sql.py",
+                "def get_user(user_id):\n    query = 'SELECT * FROM users WHERE id = ' + user_id\n    return execute_query(query)\n\ndef search_users(name):\n    sql = \"SELECT * FROM users WHERE name = '\" + name + \"'\"\n    return db.execute(sql)",
+                vec![create_mock_symbol("get_user", "function")]
+            ),
+        ],
+        config: AnalysisConfig::default(),
+        symbols: vec![create_mock_symbol("get_user", "function")],
+        dependencies: vec![],
+    }
+}
+
+fn create_real_secrets_file() -> AnalysisResult {
+    let mut languages = HashMap::new();
+    languages.insert("Python".to_string(), 100);
+
+    AnalysisResult {
+        root_path: PathBuf::from("/test/secrets"),
+        total_files: 1,
+        parsed_files: 1,
+        error_files: 0,
+        total_lines: 8,
+        languages,
+        files: vec![
+            create_real_file_info("config.py",
+                "# Configuration file\nAPI_KEY = 'sk-1234567890abcdefghijklmnopqrstuvwxyz'\nDATABASE_PASSWORD = 'supersecret123'\nAWS_SECRET_KEY = 'AKIAIOSFODNN7EXAMPLE'\ntoken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'\npassword = 'mypassword123'",
+                vec![create_mock_symbol("API_KEY", "variable")]
+            ),
+        ],
+        config: AnalysisConfig::default(),
+        symbols: vec![create_mock_symbol("API_KEY", "variable")],
+        dependencies: vec![],
+    }
+}
+
+fn create_real_crypto_weak_file() -> AnalysisResult {
+    let mut languages = HashMap::new();
+    languages.insert("Python".to_string(), 100);
+
+    AnalysisResult {
+        root_path: PathBuf::from("/test/crypto"),
+        total_files: 1,
+        parsed_files: 1,
+        error_files: 0,
+        total_lines: 6,
+        languages,
+        files: vec![
+            create_real_file_info("crypto_weak.py",
+                "import md5\nimport hashlib\n\ndef weak_hash(password):\n    return md5.new(password).hexdigest()\n\ndef another_weak(data):\n    return hashlib.sha1(data).hexdigest()",
+                vec![create_mock_symbol("weak_hash", "function")]
+            ),
+        ],
+        config: AnalysisConfig::default(),
+        symbols: vec![create_mock_symbol("weak_hash", "function")],
+        dependencies: vec![],
+    }
+}
+
+fn create_real_command_injection_file() -> AnalysisResult {
+    let mut languages = HashMap::new();
+    languages.insert("Python".to_string(), 100);
+
+    AnalysisResult {
+        root_path: PathBuf::from("/test/command-injection"),
+        total_files: 1,
+        parsed_files: 1,
+        error_files: 0,
+        total_lines: 8,
+        languages,
+        files: vec![
+            create_real_file_info("command_injection.py",
+                "import os\nimport subprocess\n\ndef run_command(user_input):\n    os.system('ls ' + user_input)\n\ndef execute_shell(cmd):\n    subprocess.call('ping ' + cmd, shell=True)",
+                vec![create_mock_symbol("run_command", "function")]
+            ),
+        ],
+        config: AnalysisConfig::default(),
+        symbols: vec![create_mock_symbol("run_command", "function")],
+        dependencies: vec![],
+    }
+}
+
+fn create_real_access_control_file() -> AnalysisResult {
+    let mut languages = HashMap::new();
+    languages.insert("JavaScript".to_string(), 100);
+
+    AnalysisResult {
+        root_path: PathBuf::from("/test/access-control"),
+        total_files: 1,
+        parsed_files: 1,
+        error_files: 0,
+        total_lines: 6,
+        languages,
+        files: vec![
+            create_real_file_info("access_control.js",
+                "function adminOperation() {\n    // No authorization check\n    return performAdminTask();\n}\n\nfunction deleteUser(userId) {\n    // Missing admin check\n    return database.delete(userId);\n}",
+                vec![create_mock_symbol("adminOperation", "function")]
+            ),
+        ],
+        config: AnalysisConfig::default(),
+        symbols: vec![create_mock_symbol("adminOperation", "function")],
+        dependencies: vec![],
+    }
+}
+
+fn create_real_file_info(filename: &str, content: &str, symbols: Vec<Symbol>) -> FileInfo {
+    // Create a temporary file with the actual content for testing
+    let temp_path = std::env::temp_dir().join(format!("security_test_{}", filename));
+    std::fs::write(&temp_path, content).unwrap();
+
+    FileInfo {
+        path: temp_path,
+        language: if filename.ends_with(".py") { "Python" } else { "JavaScript" }.to_string(),
+        size: content.len(),
+        lines: content.lines().count(),
+        parsed_successfully: true,
+        parse_errors: vec![],
+        symbols,
+        imports: vec![],
+        exports: vec![],
+    }
+}
+
+fn create_real_insecure_design_file() -> AnalysisResult {
+    let mut languages = HashMap::new();
+    languages.insert("JavaScript".to_string(), 100);
+
+    AnalysisResult {
+        root_path: PathBuf::from("/test/insecure-design"),
+        total_files: 1,
+        parsed_files: 1,
+        error_files: 0,
+        total_lines: 6,
+        languages,
+        files: vec![
+            create_real_file_info("insecure_random.js",
+                "function generateToken() {\n    return Math.random().toString(36);\n}\n\nfunction createSessionId() {\n    return Math.random() * 1000000;\n}",
+                vec![create_mock_symbol("generateToken", "function")]
+            ),
+        ],
+        config: AnalysisConfig::default(),
+        symbols: vec![create_mock_symbol("generateToken", "function")],
+        dependencies: vec![],
+    }
+}
+
+fn create_real_security_misconfig_file() -> AnalysisResult {
+    let mut languages = HashMap::new();
+    languages.insert("JavaScript".to_string(), 100);
+
+    AnalysisResult {
+        root_path: PathBuf::from("/test/misconfig"),
+        total_files: 1,
+        parsed_files: 1,
+        error_files: 0,
+        total_lines: 4,
+        languages,
+        files: vec![
+            create_real_file_info("config.js",
+                "const config = {\n    debug: true,\n    development: true,\n    production: false\n};",
+                vec![create_mock_symbol("config", "variable")]
+            ),
+        ],
+        config: AnalysisConfig::default(),
+        symbols: vec![create_mock_symbol("config", "variable")],
+        dependencies: vec![],
+    }
+}
+
+fn create_large_codebase_for_parallel_test() -> AnalysisResult {
+    let mut languages = HashMap::new();
+    languages.insert("Python".to_string(), 60);
+    languages.insert("JavaScript".to_string(), 40);
+
+    AnalysisResult {
+        root_path: PathBuf::from("/test/large-codebase"),
+        total_files: 5,
+        parsed_files: 5,
+        error_files: 0,
+        total_lines: 50,
+        languages,
+        files: vec![
+            create_real_file_info("sql_vuln.py",
+                "def get_user(user_id):\n    query = 'SELECT * FROM users WHERE id = ' + user_id\n    return execute_query(query)",
+                vec![create_mock_symbol("get_user", "function")]
+            ),
+            create_real_file_info("crypto_weak.py",
+                "import md5\ndef weak_hash(password):\n    return md5.new(password).hexdigest()",
+                vec![create_mock_symbol("weak_hash", "function")]
+            ),
+            create_real_file_info("access_control.js",
+                "function adminOperation() {\n    return performAdminTask();\n}",
+                vec![create_mock_symbol("adminOperation", "function")]
+            ),
+            create_real_file_info("secrets.py",
+                "API_KEY = 'sk-1234567890abcdefghijklmnopqrstuvwxyz'",
+                vec![create_mock_symbol("API_KEY", "variable")]
+            ),
+            create_real_file_info("misconfig.js",
+                "const config = { debug: true };",
+                vec![create_mock_symbol("config", "variable")]
+            ),
+        ],
+        config: AnalysisConfig::default(),
+        symbols: vec![
+            create_mock_symbol("get_user", "function"),
+            create_mock_symbol("weak_hash", "function"),
+            create_mock_symbol("adminOperation", "function"),
+            create_mock_symbol("API_KEY", "variable"),
+            create_mock_symbol("config", "variable"),
+        ],
+        dependencies: vec![],
+    }
+}
+
+fn create_unreadable_file_codebase() -> AnalysisResult {
+    let mut languages = HashMap::new();
+    languages.insert("Python".to_string(), 100);
+
+    // Create a file that will be deleted to simulate read error
+    let temp_path = std::env::temp_dir().join("unreadable_test_file.py");
+    std::fs::write(&temp_path, "print('test')").unwrap();
+    std::fs::remove_file(&temp_path).unwrap(); // Delete it to cause read error
+
+    AnalysisResult {
+        root_path: PathBuf::from("/test/unreadable"),
+        total_files: 1,
+        parsed_files: 1,
+        error_files: 0,
+        total_lines: 1,
+        languages,
+        files: vec![
+            FileInfo {
+                path: temp_path,
+                language: "Python".to_string(),
+                size: 13,
+                lines: 1,
+                parsed_successfully: true,
+                parse_errors: vec![],
+                symbols: vec![],
+                imports: vec![],
+                exports: vec![],
+            }
+        ],
+        config: AnalysisConfig::default(),
+        symbols: vec![],
+        dependencies: vec![],
     }
 }

@@ -134,13 +134,23 @@ impl OwaspDetector {
 
         // Simple pattern-based detection for now
         for (line_num, line) in source.lines().enumerate() {
-            if (line.contains("delete") || line.contains("update") || line.contains("admin")) &&
-               line.contains("fn ") &&
-               !line.contains("auth") &&
-               !line.contains("permission") {
+            let line_lower = line.to_lowercase();
 
+            // Check for privileged operations in functions
+            let has_privileged_ops = line_lower.contains("delete") || line_lower.contains("update") ||
+                                    line_lower.contains("admin") || line_lower.contains("privileged");
+
+            // Check for function definitions (multiple languages)
+            let is_function = line.contains("function ") || line.contains("fn ") ||
+                             line.contains("def ") || line.contains("func ");
+
+            // Check for missing authorization
+            let has_auth_check = line_lower.contains("auth") || line_lower.contains("permission") ||
+                                line_lower.contains("role") || line_lower.contains("access");
+
+            if has_privileged_ops && is_function && !has_auth_check {
                 findings.push(OwaspFinding {
-                    id: uuid::Uuid::new_v4().to_string(),
+                    id: "AC001".to_string(),
                     category: OwaspCategory::A01BrokenAccessControl,
                     name: "Missing Authorization Check".to_string(),
                     description: "Function performs privileged operations without authorization checks".to_string(),

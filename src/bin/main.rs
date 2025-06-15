@@ -691,13 +691,16 @@ fn query_command(
 
     // Filter files by language and execute query
     let mut matches = Vec::new();
-    let query = rust_tree_sitter::Query::new(lang, &pattern)?;
+
+    // Convert simple patterns to proper tree-sitter queries
+    let query_pattern = convert_simple_pattern_to_query(&pattern, &lang);
+    let query = rust_tree_sitter::Query::new(lang, &query_pattern)?;
 
     for file_info in &result.files {
         if file_info.language == lang.name() && file_info.parsed_successfully {
             let file_path = path.join(&file_info.path);
             if let Ok(content) = fs::read_to_string(&file_path) {
-                let parser = rust_tree_sitter::Parser::new(lang)?;
+                let mut parser = rust_tree_sitter::Parser::new(lang)?;
                 if let Ok(tree) = parser.parse(&content, None) {
                     let query_matches = query.matches(&tree)?;
                     for query_match in query_matches {
@@ -1103,6 +1106,87 @@ fn matches_pattern(text: &str, pattern: &str) -> bool {
         }
     } else {
         text.to_lowercase().contains(&pattern.to_lowercase())
+    }
+}
+
+/// Convert simple patterns to proper tree-sitter queries
+fn convert_simple_pattern_to_query(pattern: &str, language: &rust_tree_sitter::Language) -> String {
+    // If the pattern already looks like a tree-sitter query (starts with '('), use it as-is
+    if pattern.trim().starts_with('(') {
+        return pattern.to_string();
+    }
+
+    // Convert simple patterns to tree-sitter queries based on language
+    match language.name() {
+        "rust" => convert_rust_pattern(pattern),
+        "javascript" | "typescript" => convert_js_pattern(pattern),
+        "python" => convert_python_pattern(pattern),
+        "c" | "cpp" => convert_c_pattern(pattern),
+        "go" => convert_go_pattern(pattern),
+        _ => {
+            // Generic fallback - match identifiers
+            "(identifier) @match".to_string()
+        }
+    }
+}
+
+fn convert_rust_pattern(pattern: &str) -> String {
+    match pattern.to_lowercase().as_str() {
+        "function" | "fn" => "(function_item) @function".to_string(),
+        "struct" => "(struct_item) @struct".to_string(),
+        "enum" => "(enum_item) @enum".to_string(),
+        "impl" => "(impl_item) @impl".to_string(),
+        "trait" => "(trait_item) @trait".to_string(),
+        "mod" | "module" => "(mod_item) @module".to_string(),
+        "use" => "(use_declaration) @use".to_string(),
+        "macro" => "(macro_definition) @macro".to_string(),
+        _ => format!("(identifier) @match")
+    }
+}
+
+fn convert_js_pattern(pattern: &str) -> String {
+    match pattern.to_lowercase().as_str() {
+        "function" => "(function_declaration) @function".to_string(),
+        "class" => "(class_declaration) @class".to_string(),
+        "method" => "(method_definition) @method".to_string(),
+        "variable" | "var" => "(variable_declaration) @variable".to_string(),
+        "import" => "(import_statement) @import".to_string(),
+        "export" => "(export_statement) @export".to_string(),
+        _ => "(identifier) @match".to_string()
+    }
+}
+
+fn convert_python_pattern(pattern: &str) -> String {
+    match pattern.to_lowercase().as_str() {
+        "function" | "def" => "(function_definition) @function".to_string(),
+        "class" => "(class_definition) @class".to_string(),
+        "import" => "(import_statement) @import".to_string(),
+        "from" => "(import_from_statement) @import".to_string(),
+        _ => "(identifier) @match".to_string()
+    }
+}
+
+fn convert_c_pattern(pattern: &str) -> String {
+    match pattern.to_lowercase().as_str() {
+        "function" => "(function_definition) @function".to_string(),
+        "struct" => "(struct_specifier) @struct".to_string(),
+        "enum" => "(enum_specifier) @enum".to_string(),
+        "typedef" => "(type_definition) @typedef".to_string(),
+        "include" => "(preproc_include) @include".to_string(),
+        "define" => "(preproc_def) @define".to_string(),
+        _ => "(identifier) @match".to_string()
+    }
+}
+
+fn convert_go_pattern(pattern: &str) -> String {
+    match pattern.to_lowercase().as_str() {
+        "function" | "func" => "(function_declaration) @function".to_string(),
+        "method" => "(method_declaration) @method".to_string(),
+        "struct" => "(type_declaration) @struct".to_string(),
+        "interface" => "(type_declaration) @interface".to_string(),
+        "import" => "(import_declaration) @import".to_string(),
+        "package" => "(package_clause) @package".to_string(),
+        _ => "(identifier) @match".to_string()
     }
 }
 
@@ -2325,8 +2409,12 @@ fn security_command(
         .unwrap());
     pb.set_message("Analyzing code...");
 
-    // Analyze the codebase
-    let mut analyzer = CodebaseAnalyzer::new();
+    // Analyze the codebase with disabled enhanced error handling for CLI
+    let config = rust_tree_sitter::AnalysisConfig {
+        use_enhanced_error_handling: false,
+        ..Default::default()
+    };
+    let mut analyzer = CodebaseAnalyzer::with_config(config);
     let result = analyzer.analyze_directory(&path)?;
 
     pb.set_message("Scanning for vulnerabilities...");
@@ -2343,12 +2431,20 @@ fn security_command(
 
     // Configure security scanner
     let security_config = rust_tree_sitter::SecurityConfig {
+        owasp_analysis: true,
+        secrets_detection: true,
+        input_validation: true,
+        injection_analysis: true,
+        best_practices: true,
         min_severity: min_sev,
-        ..Default::default()
+        custom_rules: Vec::new(),
     };
 
-    let security_scanner = rust_tree_sitter::SecurityScanner::with_config(security_config)?;
-    let security_result = security_scanner.analyze(&result)?;
+    let security_scanner = rust_tree_sitter::SecurityScanner::with_config(security_config)
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+
+    let security_result = security_scanner.analyze(&result)
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     pb.finish_with_message(format!("Scan complete! Found {} vulnerabilities", security_result.total_vulnerabilities));
 

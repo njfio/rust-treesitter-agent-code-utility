@@ -3,7 +3,10 @@
 use crate::error::{Error, Result};
 use crate::languages::Language;
 use crate::tree::SyntaxTree;
+use crate::parsing_error_handler::{ParsingErrorHandler, ParseError, ErrorSeverity};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
+use std::path::Path;
 use tree_sitter::{InputEdit, Point};
 
 /// Configuration options for parsing
@@ -32,6 +35,7 @@ pub struct Parser {
     inner: Arc<Mutex<tree_sitter::Parser>>,
     language: Language,
     options: ParseOptions,
+    error_handler: ParsingErrorHandler,
 }
 
 impl Parser {
@@ -47,6 +51,7 @@ impl Parser {
             inner: Arc::new(Mutex::new(parser)),
             language,
             options: ParseOptions::default(),
+            error_handler: ParsingErrorHandler::default(),
         })
     }
 
@@ -54,6 +59,25 @@ impl Parser {
     pub fn with_options(language: Language, options: ParseOptions) -> Result<Self> {
         let mut parser = Self::new(language)?;
         parser.options = options;
+        Ok(parser)
+    }
+
+    /// Create a new parser with custom error handler
+    pub fn with_error_handler(language: Language, error_handler: ParsingErrorHandler) -> Result<Self> {
+        let mut parser = Self::new(language)?;
+        parser.error_handler = error_handler;
+        Ok(parser)
+    }
+
+    /// Create a new parser with custom options and error handler
+    pub fn with_options_and_error_handler(
+        language: Language,
+        options: ParseOptions,
+        error_handler: ParsingErrorHandler
+    ) -> Result<Self> {
+        let mut parser = Self::new(language)?;
+        parser.options = options;
+        parser.error_handler = error_handler;
         Ok(parser)
     }
 
@@ -67,15 +91,50 @@ impl Parser {
         &self.options
     }
 
+    /// Get the error handler
+    pub fn error_handler(&self) -> &ParsingErrorHandler {
+        &self.error_handler
+    }
+
+    /// Get mutable access to the error handler
+    pub fn error_handler_mut(&mut self) -> &mut ParsingErrorHandler {
+        &mut self.error_handler
+    }
+
+    /// Get parsing errors collected during the last parsing operations
+    pub fn get_parsing_errors(&self) -> &[ParseError] {
+        self.error_handler.get_errors()
+    }
+
+    /// Get parsing metrics
+    pub fn get_parsing_metrics(&self) -> &crate::parsing_error_handler::ParsingMetrics {
+        self.error_handler.get_metrics()
+    }
+
+    /// Clear all collected errors and reset metrics
+    pub fn clear_errors(&mut self) {
+        self.error_handler.clear();
+    }
+
+    /// Check if the error limit has been reached
+    pub fn has_reached_error_limit(&self) -> bool {
+        self.error_handler.has_reached_error_limit()
+    }
+
     /// Set new parse options
     pub fn set_options(&mut self, options: ParseOptions) {
         self.options = options;
     }
 
-    /// Parse source code into a syntax tree
-    pub fn parse(&self, source: &str, old_tree: Option<&SyntaxTree>) -> Result<SyntaxTree> {
+    /// Parse source code into a syntax tree with comprehensive error handling
+    pub fn parse(&mut self, source: &str, old_tree: Option<&SyntaxTree>) -> Result<SyntaxTree> {
+        let start_time = Instant::now();
+
+        // Validate content before parsing
+        self.error_handler.validate_content(source, None)?;
+
         let mut parser = self.inner.lock()
-            .map_err(|e| Error::internal(format!("Failed to acquire parser lock: {}", e)))?;
+            .map_err(|e| Error::concurrency(format!("Failed to acquire parser lock: {}", e)))?;
 
         // Apply parsing options
         if let Some(timeout) = self.options.timeout_millis {
@@ -85,31 +144,153 @@ impl Parser {
         // Convert old tree if provided
         let old_ts_tree = old_tree.map(|t| t.inner());
 
-        // Parse the source
-        let tree = parser.parse(source, old_ts_tree)
-            .ok_or_else(|| Error::parse("Failed to parse source code"))?;
+        // Parse the source with timeout handling
+        let tree = match parser.parse(source, old_ts_tree) {
+            Some(tree) => tree,
+            None => {
+                let parse_time = start_time.elapsed();
+                self.error_handler.update_metrics(parse_time, false);
 
-        // Note: We allow trees with errors to be returned, as they can still be useful
-        // The caller can check tree.has_error() if they need to know about parse errors
+                if let Some(timeout) = self.options.timeout_millis {
+                    if parse_time.as_millis() >= timeout as u128 {
+                        return Err(Error::timeout(format!(
+                            "Parsing timed out after {}ms",
+                            parse_time.as_millis()
+                        )));
+                    }
+                }
 
+                return Err(Error::tree_sitter("Failed to parse source code - tree-sitter returned None"));
+            }
+        };
+
+        let parse_time = start_time.elapsed();
+        let has_errors = tree.root_node().has_error();
+
+        // Handle parsing errors if present
+        if has_errors {
+            let parse_errors = self.error_handler.handle_parse_error(tree.clone(), source, None, self.language);
+
+            // Check if we should fail fast or continue with partial results
+            let critical_errors = parse_errors.iter()
+                .any(|e| matches!(e.severity, ErrorSeverity::Critical));
+
+            if critical_errors {
+                self.error_handler.update_metrics(parse_time, false);
+                return Err(Error::syntax_error(
+                    parse_errors[0].line,
+                    parse_errors[0].column,
+                    parse_errors[0].message.clone(),
+                    None,
+                ));
+            }
+        }
+
+        self.error_handler.update_metrics(parse_time, !has_errors);
         Ok(SyntaxTree::new(tree, source.to_string()))
     }
 
     /// Parse source code from bytes
-    pub fn parse_bytes(&self, source: &[u8], old_tree: Option<&SyntaxTree>) -> Result<SyntaxTree> {
+    pub fn parse_bytes(&mut self, source: &[u8], old_tree: Option<&SyntaxTree>) -> Result<SyntaxTree> {
         let source_str = std::str::from_utf8(source)?;
         self.parse(source_str, old_tree)
     }
 
-    /// Parse a file
-    pub fn parse_file(&self, path: &str) -> Result<SyntaxTree> {
-        let source = std::fs::read_to_string(path)?;
-        self.parse(&source, None)
+    /// Parse a file with comprehensive error handling
+    pub fn parse_file<P: AsRef<Path>>(&mut self, path: P) -> Result<SyntaxTree> {
+        let path = path.as_ref();
+
+        // Validate file before reading
+        self.error_handler.validate_file(path)?;
+
+        // Read file with proper error handling
+        let source = std::fs::read_to_string(path)
+            .map_err(|e| Error::IoError(e))?;
+
+        // Validate content
+        self.error_handler.validate_content(&source, Some(path))?;
+
+        // Parse with file context
+        self.parse_with_file_context(&source, None, path)
+    }
+
+    /// Parse source code with file context for better error reporting
+    pub fn parse_with_file_context<P: AsRef<Path>>(
+        &mut self,
+        source: &str,
+        old_tree: Option<&SyntaxTree>,
+        file_path: P,
+    ) -> Result<SyntaxTree> {
+        let file_path = file_path.as_ref();
+        let start_time = Instant::now();
+
+        // Validate content before parsing
+        self.error_handler.validate_content(source, Some(file_path))?;
+
+        let mut parser = self.inner.lock()
+            .map_err(|e| Error::concurrency(format!("Failed to acquire parser lock: {}", e)))?;
+
+        // Apply parsing options
+        if let Some(timeout) = self.options.timeout_millis {
+            parser.set_timeout_micros(timeout * 1000);
+        }
+
+        // Convert old tree if provided
+        let old_ts_tree = old_tree.map(|t| t.inner());
+
+        // Parse the source with timeout handling
+        let tree = match parser.parse(source, old_ts_tree) {
+            Some(tree) => tree,
+            None => {
+                let parse_time = start_time.elapsed();
+                self.error_handler.update_metrics(parse_time, false);
+
+                if let Some(timeout) = self.options.timeout_millis {
+                    if parse_time.as_millis() >= timeout as u128 {
+                        return Err(Error::timeout(format!(
+                            "Parsing timed out after {}ms for file: {}",
+                            parse_time.as_millis(),
+                            file_path.display()
+                        )));
+                    }
+                }
+
+                return Err(Error::tree_sitter(format!(
+                    "Failed to parse file: {} - tree-sitter returned None",
+                    file_path.display()
+                )));
+            }
+        };
+
+        let parse_time = start_time.elapsed();
+        let has_errors = tree.root_node().has_error();
+
+        // Handle parsing errors if present
+        if has_errors {
+            let parse_errors = self.error_handler.handle_parse_error(tree.clone(), source, Some(file_path), self.language);
+
+            // Check if we should fail fast or continue with partial results
+            let critical_errors = parse_errors.iter()
+                .any(|e| matches!(e.severity, ErrorSeverity::Critical));
+
+            if critical_errors {
+                self.error_handler.update_metrics(parse_time, false);
+                return Err(Error::syntax_error(
+                    parse_errors[0].line,
+                    parse_errors[0].column,
+                    parse_errors[0].message.clone(),
+                    Some(file_path.display().to_string()),
+                ));
+            }
+        }
+
+        self.error_handler.update_metrics(parse_time, !has_errors);
+        Ok(SyntaxTree::new(tree, source.to_string()))
     }
 
     /// Parse with incremental updates
     pub fn parse_incremental(
-        &self,
+        &mut self,
         source: &str,
         old_tree: &mut SyntaxTree,
         edits: &[InputEdit],

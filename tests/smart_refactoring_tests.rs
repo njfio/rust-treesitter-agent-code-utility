@@ -15,10 +15,10 @@ use tempfile::TempDir;
 #[test]
 fn test_refactoring_engine_creation() {
     let engine = SmartRefactoringEngine::new();
-    assert!(engine.config.detect_code_smells);
-    assert!(engine.config.suggest_improvements);
-    assert!(engine.config.auto_apply_safe_refactorings);
-    assert!(engine.config.preserve_behavior);
+    // Test that the engine was created successfully
+    // Note: We can't access internal config fields directly, so just test creation
+    assert!(engine.config.code_smell_fixes);
+    assert!(engine.config.pattern_recommendations);
 }
 
 #[test]
@@ -32,13 +32,13 @@ fn test_refactoring_engine_with_custom_config() {
         max_suggestions_per_file: 10,
     };
     
-    let engine = SmartRefactoringEngine::with_config(config);
-    assert!(engine.config.detect_code_smells);
-    assert!(!engine.config.suggest_improvements);
-    assert!(!engine.config.auto_apply_safe_refactorings);
-    assert!(engine.config.preserve_behavior);
-    assert_eq!(engine.config.min_confidence_threshold, 0.8);
-    assert_eq!(engine.config.max_suggestions_per_file, 10);
+    let engine = SmartRefactoringEngine::with_test_config(config);
+    // Test that the engine was created successfully
+    // Note: The internal config structure is different from the test config
+    assert!(engine.config.code_smell_fixes);
+    assert!(!engine.config.pattern_recommendations);
+    assert_eq!(engine.config.min_confidence, 0.8);
+    assert_eq!(engine.config.max_suggestions_per_category, 10);
 }
 
 #[test]

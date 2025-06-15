@@ -422,19 +422,7 @@ impl CSyntax {
         structs
     }
 
-    /// Get all union definitions in a syntax tree
-    pub fn find_unions(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
-        let mut unions = Vec::new();
-        let union_nodes = tree.find_nodes_by_kind("union_specifier");
-        
-        for union_node in union_nodes {
-            if let Some(name) = Self::union_name(&union_node, source) {
-                unions.push((name, union_node.start_position()));
-            }
-        }
 
-        unions
-    }
 
     /// Get all enum definitions in a syntax tree with start and end positions
     pub fn find_enums(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
@@ -723,6 +711,214 @@ impl CSyntax {
                 Self::collect_function_calls(&child, calls);
             }
         }
+    }
+
+    /// Find function pointer declarations in a syntax tree
+    pub fn find_function_pointers(tree: &SyntaxTree, source: &str) -> Vec<(String, String, tree_sitter::Point, tree_sitter::Point)> {
+        let mut function_pointers = Vec::new();
+
+        // Look for function pointer declarations in variable declarations
+        let declaration_nodes = tree.find_nodes_by_kind("declaration");
+        for decl_node in declaration_nodes {
+            if let Ok(decl_text) = decl_node.text() {
+                // Check if it contains function pointer syntax: (*name)
+                if decl_text.contains("(*") && decl_text.contains(")") {
+                    // Extract function pointer name and signature
+                    if let Some(start) = decl_text.find("(*") {
+                        if let Some(end) = decl_text[start..].find(")") {
+                            let name_part = &decl_text[start + 2..start + end];
+                            let ts_node = decl_node.inner();
+                            function_pointers.push((
+                                name_part.trim().to_string(),
+                                decl_text.trim().to_string(),
+                                ts_node.start_position(),
+                                ts_node.end_position()
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        function_pointers
+    }
+
+    /// Find union declarations in a syntax tree
+    pub fn find_unions(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
+        let mut unions = Vec::new();
+        let union_nodes = tree.find_nodes_by_kind("union_specifier");
+
+        for union_node in union_nodes {
+            if let Some(name) = Self::union_name(&union_node, source) {
+                let ts_node = union_node.inner();
+                unions.push((name, ts_node.start_position(), ts_node.end_position()));
+            }
+        }
+
+        unions
+    }
+
+    /// Find bit field declarations in structs
+    pub fn find_bit_fields(tree: &SyntaxTree, source: &str) -> Vec<(String, String, u32, tree_sitter::Point, tree_sitter::Point)> {
+        let mut bit_fields = Vec::new();
+        let struct_nodes = tree.find_nodes_by_kind("struct_specifier");
+
+        for struct_node in struct_nodes {
+            if let Some(struct_name) = Self::struct_name(&struct_node, source) {
+                // Look for field declarations with bit field syntax
+                let mut cursor = struct_node.walk();
+                if cursor.goto_first_child() {
+                    loop {
+                        let node = cursor.node();
+                        if node.kind() == "field_declaration" {
+                            if let Ok(field_text) = node.text() {
+                                // Check for bit field syntax: field_name : bit_count
+                                if field_text.contains(" : ") {
+                                    let parts: Vec<&str> = field_text.split(" : ").collect();
+                                    if parts.len() == 2 {
+                                        let field_name = parts[0].trim().split_whitespace().last().unwrap_or("").to_string();
+                                        let bit_count = parts[1].trim().split(';').next().unwrap_or("0");
+                                        if let Ok(bits) = bit_count.parse::<u32>() {
+                                            let ts_node = node.inner();
+                                            bit_fields.push((
+                                                struct_name.clone(),
+                                                field_name,
+                                                bits,
+                                                ts_node.start_position(),
+                                                ts_node.end_position()
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if !cursor.goto_next_sibling() {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        bit_fields
+    }
+
+    /// Find preprocessor macros in a syntax tree
+    pub fn find_preprocessor_macros(tree: &SyntaxTree, source: &str) -> Vec<(String, String, tree_sitter::Point, tree_sitter::Point)> {
+        let mut macros = Vec::new();
+
+        // Find #define directives
+        let preproc_nodes = tree.find_nodes_by_kind("preproc_def");
+        for macro_node in preproc_nodes {
+            if let Some(name) = Self::macro_name(&macro_node, source) {
+                let ts_node = macro_node.inner();
+                if let Ok(macro_text) = macro_node.text() {
+                    macros.push((
+                        name,
+                        macro_text.trim().to_string(),
+                        ts_node.start_position(),
+                        ts_node.end_position()
+                    ));
+                }
+            }
+        }
+
+        // Find function-like macros
+        let func_macro_nodes = tree.find_nodes_by_kind("preproc_function_def");
+        for macro_node in func_macro_nodes {
+            if let Some(name) = Self::function_macro_name(&macro_node, source) {
+                let ts_node = macro_node.inner();
+                if let Ok(macro_text) = macro_node.text() {
+                    macros.push((
+                        name,
+                        macro_text.trim().to_string(),
+                        ts_node.start_position(),
+                        ts_node.end_position()
+                    ));
+                }
+            }
+        }
+
+        macros
+    }
+
+    /// Find static functions in a syntax tree
+    pub fn find_static_functions(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
+        let mut static_functions = Vec::new();
+        let function_nodes = tree.find_nodes_by_kind("function_definition");
+
+        for func_node in function_nodes {
+            // Check if function has static storage class specifier
+            let mut cursor = func_node.walk();
+            let mut is_static = false;
+
+            if cursor.goto_first_child() {
+                loop {
+                    let node = cursor.node();
+                    if node.kind() == "storage_class_specifier" {
+                        if let Ok(specifier_text) = node.text() {
+                            if specifier_text == "static" {
+                                is_static = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if !cursor.goto_next_sibling() {
+                        break;
+                    }
+                }
+            }
+
+            if is_static {
+                if let Some(name) = Self::function_name(&func_node, source) {
+                    let ts_node = func_node.inner();
+                    static_functions.push((name, ts_node.start_position(), ts_node.end_position()));
+                }
+            }
+        }
+
+        static_functions
+    }
+
+    /// Find inline functions in a syntax tree
+    pub fn find_inline_functions(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
+        let mut inline_functions = Vec::new();
+        let function_nodes = tree.find_nodes_by_kind("function_definition");
+
+        for func_node in function_nodes {
+            // Check if function has inline specifier
+            let mut cursor = func_node.walk();
+            let mut is_inline = false;
+
+            if cursor.goto_first_child() {
+                loop {
+                    let node = cursor.node();
+                    if node.kind() == "storage_class_specifier" || node.kind() == "type_qualifier" {
+                        if let Ok(specifier_text) = node.text() {
+                            if specifier_text == "inline" {
+                                is_inline = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if !cursor.goto_next_sibling() {
+                        break;
+                    }
+                }
+            }
+
+            if is_inline {
+                if let Some(name) = Self::function_name(&func_node, source) {
+                    let ts_node = func_node.inner();
+                    inline_functions.push((name, ts_node.start_position(), ts_node.end_position()));
+                }
+            }
+        }
+
+        inline_functions
     }
 }
 

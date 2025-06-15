@@ -83,6 +83,86 @@ pub enum Error {
     /// Anyhow error (for external libraries)
     #[error("External error: {0}")]
     Anyhow(#[from] anyhow::Error),
+
+    /// Syntax errors with detailed location information
+    #[error("Syntax error at line {line}, column {column}: {message}")]
+    SyntaxError {
+        line: usize,
+        column: usize,
+        message: String,
+        file_path: Option<String>,
+    },
+
+    /// Memory allocation or limit errors
+    #[error("Memory error: {0}")]
+    MemoryError(String),
+
+    /// Unsupported language feature errors
+    #[error("Unsupported language feature: {feature} in {language}")]
+    UnsupportedFeature {
+        feature: String,
+        language: String,
+    },
+
+    /// File encoding errors (beyond UTF-8)
+    #[error("Encoding error: {0}")]
+    EncodingError(String),
+
+    /// Tree-sitter specific parsing errors
+    #[error("Tree-sitter error: {0}")]
+    TreeSitterError(String),
+
+    /// Concurrent access errors
+    #[error("Concurrency error: {0}")]
+    ConcurrencyError(String),
+
+    /// Validation errors for input data
+    #[error("Validation error: {0}")]
+    ValidationError(String),
+
+    /// Recovery operation errors
+    #[error("Recovery failed: {0}")]
+    RecoveryError(String),
+
+    /// Semantic analysis errors
+    #[error("Semantic analysis error: {0}")]
+    SemanticError(String),
+
+    /// RDF/Graph related errors
+    #[error("Graph error: {0}")]
+    GraphError(String),
+
+    /// Invalid IRI errors
+    #[error("Invalid IRI: {0}")]
+    InvalidIri(String),
+
+    /// Entity not found errors
+    #[error("Entity not found: {0}")]
+    EntityNotFound(String),
+
+    /// Graph not initialized errors
+    #[error("Graph not initialized: {0}")]
+    GraphNotInitialized(String),
+
+    /// Lock acquisition errors
+    #[error("Lock error: {0}")]
+    LockError(String),
+
+    /// Invalid configuration errors
+    #[error("Invalid configuration: {0}")]
+    InvalidConfiguration(String),
+
+    /// Dimension mismatch errors for embeddings
+    #[error("Dimension mismatch: {0}")]
+    DimensionMismatch(String),
+
+    /// Unsupported language errors
+    #[error("Unsupported language: {0}")]
+    UnsupportedLanguage(String),
+
+    /// File read errors with path context
+    #[error("Failed to read file {0}: {1}")]
+    FileReadError(std::path::PathBuf, String),
 }
 
 impl Error {
@@ -166,6 +246,109 @@ impl Error {
         Self::SerializationError(msg.into())
     }
 
+    /// Create a new syntax error with location information
+    pub fn syntax_error<S: Into<String>>(
+        line: usize,
+        column: usize,
+        message: S,
+        file_path: Option<String>,
+    ) -> Self {
+        Self::SyntaxError {
+            line,
+            column,
+            message: message.into(),
+            file_path,
+        }
+    }
+
+    /// Create a new memory error
+    pub fn memory<S: Into<String>>(msg: S) -> Self {
+        Self::MemoryError(msg.into())
+    }
+
+    /// Create a new unsupported feature error
+    pub fn unsupported_feature<S: Into<String>, T: Into<String>>(feature: S, language: T) -> Self {
+        Self::UnsupportedFeature {
+            feature: feature.into(),
+            language: language.into(),
+        }
+    }
+
+    /// Create a new encoding error
+    pub fn encoding<S: Into<String>>(msg: S) -> Self {
+        Self::EncodingError(msg.into())
+    }
+
+    /// Create a new tree-sitter error
+    pub fn tree_sitter<S: Into<String>>(msg: S) -> Self {
+        Self::TreeSitterError(msg.into())
+    }
+
+    /// Create a new concurrency error
+    pub fn concurrency<S: Into<String>>(msg: S) -> Self {
+        Self::ConcurrencyError(msg.into())
+    }
+
+    /// Create a new validation error
+    pub fn validation<S: Into<String>>(msg: S) -> Self {
+        Self::ValidationError(msg.into())
+    }
+
+    /// Create a new recovery error
+    pub fn recovery<S: Into<String>>(msg: S) -> Self {
+        Self::RecoveryError(msg.into())
+    }
+
+    /// Create a new semantic error
+    pub fn semantic<S: Into<String>>(msg: S) -> Self {
+        Self::SemanticError(msg.into())
+    }
+
+    /// Create a new graph error
+    pub fn graph<S: Into<String>>(msg: S) -> Self {
+        Self::GraphError(msg.into())
+    }
+
+    /// Create a new invalid IRI error
+    pub fn invalid_iri<S: Into<String>>(msg: S) -> Self {
+        Self::InvalidIri(msg.into())
+    }
+
+    /// Create a new entity not found error
+    pub fn entity_not_found<S: Into<String>>(msg: S) -> Self {
+        Self::EntityNotFound(msg.into())
+    }
+
+    /// Create a new graph not initialized error
+    pub fn graph_not_initialized<S: Into<String>>(msg: S) -> Self {
+        Self::GraphNotInitialized(msg.into())
+    }
+
+    /// Create a new lock error
+    pub fn lock<S: Into<String>>(msg: S) -> Self {
+        Self::LockError(msg.into())
+    }
+
+    /// Create a new invalid configuration error
+    pub fn invalid_configuration<S: Into<String>>(msg: S) -> Self {
+        Self::InvalidConfiguration(msg.into())
+    }
+
+    /// Create a new dimension mismatch error
+    pub fn dimension_mismatch<S: Into<String>>(msg: S) -> Self {
+        Self::DimensionMismatch(msg.into())
+    }
+
+    /// Create a new unsupported language error
+    pub fn unsupported_language<S: Into<String>>(msg: S) -> Self {
+        Self::UnsupportedLanguage(msg.into())
+    }
+
+    /// Create a new file read error
+    pub fn file_read_error<S: Into<String>>(path: std::path::PathBuf, msg: S) -> Self {
+        Self::FileReadError(path, msg.into())
+    }
+
     /// Check if this error is recoverable
     pub fn is_recoverable(&self) -> bool {
         match self {
@@ -175,6 +358,11 @@ impl Error {
             Error::ConfigError(_) => true,
             Error::InvalidInput(_) => true,
             Error::InvalidPath(_) => true,
+            Error::SyntaxError { .. } => true,
+            Error::MemoryError(_) => true,
+            Error::EncodingError(_) => true,
+            Error::ValidationError(_) => true,
+            Error::ConcurrencyError(_) => true,
             _ => false,
         }
     }
@@ -212,6 +400,35 @@ impl Error {
             Error::SecurityError(msg) => {
                 format!("Security error: {}. Please review file permissions and security settings.", msg)
             }
+            Error::SyntaxError { line, column, message, file_path } => {
+                let file_info = file_path.as_ref()
+                    .map(|p| format!(" in file {}", p))
+                    .unwrap_or_default();
+                format!("Syntax error at line {}, column {}{}: {}. Please check the source code syntax.",
+                       line, column, file_info, message)
+            }
+            Error::MemoryError(msg) => {
+                format!("Memory error: {}. Try processing smaller files or increasing available memory.", msg)
+            }
+            Error::UnsupportedFeature { feature, language } => {
+                format!("Unsupported feature '{}' in language '{}'. This feature may not be implemented yet.",
+                       feature, language)
+            }
+            Error::EncodingError(msg) => {
+                format!("Encoding error: {}. Please ensure the file is properly encoded.", msg)
+            }
+            Error::TreeSitterError(msg) => {
+                format!("Tree-sitter parsing error: {}. The source code may have syntax issues.", msg)
+            }
+            Error::ConcurrencyError(msg) => {
+                format!("Concurrency error: {}. Try reducing parallel processing or check for resource conflicts.", msg)
+            }
+            Error::ValidationError(msg) => {
+                format!("Validation error: {}. Please check the input data format and requirements.", msg)
+            }
+            Error::RecoveryError(msg) => {
+                format!("Recovery operation failed: {}. Manual intervention may be required.", msg)
+            }
             _ => self.to_string(),
         }
     }
@@ -238,6 +455,24 @@ impl Error {
             Error::ResourceLimitError(_) => "resource",
             Error::SerializationError(_) => "serialization",
             Error::Anyhow(_) => "external",
+            Error::SyntaxError { .. } => "syntax",
+            Error::MemoryError(_) => "memory",
+            Error::UnsupportedFeature { .. } => "unsupported_feature",
+            Error::EncodingError(_) => "encoding",
+            Error::TreeSitterError(_) => "tree_sitter",
+            Error::ConcurrencyError(_) => "concurrency",
+            Error::ValidationError(_) => "validation",
+            Error::RecoveryError(_) => "recovery",
+            Error::SemanticError(_) => "semantic",
+            Error::GraphError(_) => "graph",
+            Error::InvalidIri(_) => "invalid_iri",
+            Error::EntityNotFound(_) => "entity_not_found",
+            Error::GraphNotInitialized(_) => "graph_not_initialized",
+            Error::LockError(_) => "lock",
+            Error::InvalidConfiguration(_) => "invalid_configuration",
+            Error::DimensionMismatch(_) => "dimension_mismatch",
+            Error::UnsupportedLanguage(_) => "unsupported_language",
+            Error::FileReadError(_, _) => "file_read",
         }
     }
 }

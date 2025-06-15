@@ -413,25 +413,153 @@ impl TypeScriptSyntax {
         enums
     }
 
-    /// Get all namespace definitions in a syntax tree
-    pub fn find_namespaces(tree: &SyntaxTree, source: &str) -> Vec<(String, Point)> {
+    /// Get all namespace definitions in a syntax tree with start and end positions
+    pub fn find_namespaces(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut namespaces = Vec::new();
 
+        // Find namespace declarations
         let namespace_nodes = tree.find_nodes_by_kind("namespace_declaration");
-        for ns_node in namespace_nodes {
-            if let Some(name) = Self::namespace_name(&ns_node, source) {
-                namespaces.push((name, ns_node.start_position()));
+        for namespace_node in namespace_nodes {
+            if let Some(name) = Self::namespace_name(&namespace_node, source) {
+                let ts_node = namespace_node.inner();
+                namespaces.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
+        // Find module declarations (which are also namespaces in TypeScript)
         let module_nodes = tree.find_nodes_by_kind("module_declaration");
-        for mod_node in module_nodes {
-            if let Some(name) = Self::namespace_name(&mod_node, source) {
-                namespaces.push((name, mod_node.start_position()));
+        for module_node in module_nodes {
+            if let Some(name) = Self::namespace_name(&module_node, source) {
+                let ts_node = module_node.inner();
+                namespaces.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
         namespaces
+    }
+
+    /// Find generic type definitions and their constraints
+    pub fn find_generic_types(tree: &SyntaxTree, source: &str) -> Vec<(String, Vec<String>, tree_sitter::Point, tree_sitter::Point)> {
+        let mut generic_types = Vec::new();
+
+        // Find type alias declarations with generics
+        let type_alias_nodes = tree.find_nodes_by_kind("type_alias_declaration");
+        for type_node in type_alias_nodes {
+            if let Some(name) = Self::type_alias_name(&type_node, source) {
+                let type_params = Self::generic_type_parameters(&type_node, source);
+                if !type_params.is_empty() {
+                    let ts_node = type_node.inner();
+                    generic_types.push((name, type_params, ts_node.start_position(), ts_node.end_position()));
+                }
+            }
+        }
+
+        // Find interface declarations with generics
+        let interface_nodes = tree.find_nodes_by_kind("interface_declaration");
+        for interface_node in interface_nodes {
+            if let Some(name) = Self::interface_name(&interface_node, source) {
+                let type_params = Self::generic_type_parameters(&interface_node, source);
+                if !type_params.is_empty() {
+                    let ts_node = interface_node.inner();
+                    generic_types.push((name, type_params, ts_node.start_position(), ts_node.end_position()));
+                }
+            }
+        }
+
+        // Find class declarations with generics
+        let class_nodes = tree.find_nodes_by_kind("class_declaration");
+        for class_node in class_nodes {
+            if let Some(name) = Self::class_name(&class_node, source) {
+                let type_params = Self::generic_type_parameters(&class_node, source);
+                if !type_params.is_empty() {
+                    let ts_node = class_node.inner();
+                    generic_types.push((name, type_params, ts_node.start_position(), ts_node.end_position()));
+                }
+            }
+        }
+
+        generic_types
+    }
+
+    /// Find mapped types in a syntax tree
+    pub fn find_mapped_types(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
+        let mut mapped_types = Vec::new();
+
+        // Find mapped type declarations
+        let mapped_type_nodes = tree.find_nodes_by_kind("mapped_type_clause");
+        for mapped_node in mapped_type_nodes {
+            let ts_node = mapped_node.inner();
+            if let Ok(mapped_text) = mapped_node.text() {
+                mapped_types.push((
+                    format!("mapped_type: {}", mapped_text.trim()),
+                    ts_node.start_position(),
+                    ts_node.end_position()
+                ));
+            }
+        }
+
+        mapped_types
+    }
+
+    /// Find decorator usage in classes and methods
+    pub fn find_decorators(tree: &SyntaxTree, source: &str) -> Vec<(String, String, tree_sitter::Point, tree_sitter::Point)> {
+        let mut decorators = Vec::new();
+
+        // Find decorated classes
+        let class_nodes = tree.find_nodes_by_kind("class_declaration");
+        for class_node in class_nodes {
+            if let Some(class_name) = Self::class_name(&class_node, source) {
+                let class_decorators = Self::get_decorators(&class_node, source);
+                for decorator in class_decorators {
+                    let ts_node = class_node.inner();
+                    decorators.push((
+                        class_name.clone(),
+                        decorator,
+                        ts_node.start_position(),
+                        ts_node.end_position()
+                    ));
+                }
+            }
+        }
+
+        // Find decorated methods
+        let method_nodes = tree.find_nodes_by_kind("method_definition");
+        for method_node in method_nodes {
+            if let Some(method_name) = Self::method_name(&method_node, source) {
+                let method_decorators = Self::get_decorators(&method_node, source);
+                for decorator in method_decorators {
+                    let ts_node = method_node.inner();
+                    decorators.push((
+                        method_name.clone(),
+                        decorator,
+                        ts_node.start_position(),
+                        ts_node.end_position()
+                    ));
+                }
+            }
+        }
+
+        decorators
+    }
+
+    /// Find conditional types in a syntax tree
+    pub fn find_conditional_types(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
+        let mut conditional_types = Vec::new();
+
+        // Find conditional type expressions
+        let conditional_nodes = tree.find_nodes_by_kind("conditional_type");
+        for conditional_node in conditional_nodes {
+            let ts_node = conditional_node.inner();
+            if let Ok(conditional_text) = conditional_node.text() {
+                conditional_types.push((
+                    format!("conditional_type: {}", conditional_text.trim()),
+                    ts_node.start_position(),
+                    ts_node.end_position()
+                ));
+            }
+        }
+
+        conditional_types
     }
 
     /// Create a query to find all function declarations

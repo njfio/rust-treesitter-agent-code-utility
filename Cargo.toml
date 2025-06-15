@@ -45,6 +45,11 @@ dirs = "5.0"
 num_cpus = "1.0"
 rayon = "1.8"
 
+# Phase 1: Semantic Knowledge Graph Dependencies
+oxrdf = "0.1"
+petgraph = "0.6"
+lru = "0.12"
+
 [build-dependencies]
 cc = "1.0"
 

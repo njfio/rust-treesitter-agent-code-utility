@@ -7,6 +7,7 @@ use crate::enhanced_error_handling::SafeFileOperations;
 use crate::error::{Error, Result};
 use crate::languages::Language;
 use crate::parser::Parser;
+use crate::parsing_error_handler::ParsingErrorHandler;
 
 use crate::tree::SyntaxTree;
 use std::collections::HashMap;
@@ -165,6 +166,7 @@ pub struct CodebaseAnalyzer {
     config: AnalysisConfig,
     parsers: HashMap<Language, Parser>,
     safe_file_ops: SafeFileOperations,
+    error_handler: ParsingErrorHandler,
 }
 
 impl CodebaseAnalyzer {
@@ -179,6 +181,17 @@ impl CodebaseAnalyzer {
             config,
             parsers: HashMap::new(),
             safe_file_ops: SafeFileOperations::new(),
+            error_handler: ParsingErrorHandler::default(),
+        }
+    }
+
+    /// Create a new analyzer with custom configuration and error handler
+    pub fn with_config_and_error_handler(config: AnalysisConfig, error_handler: ParsingErrorHandler) -> Self {
+        Self {
+            config,
+            parsers: HashMap::new(),
+            safe_file_ops: SafeFileOperations::new(),
+            error_handler,
         }
     }
 
@@ -309,13 +322,13 @@ impl CodebaseAnalyzer {
         }
     }
 
-    /// Get or create a parser for the given language
-    fn get_parser(&mut self, language: Language) -> Result<&Parser> {
+    /// Get or create a parser for the given language with enhanced error handling
+    fn get_parser(&mut self, language: Language) -> Result<&mut Parser> {
         if !self.parsers.contains_key(&language) {
-            let parser = Parser::new(language)?;
+            let parser = Parser::with_error_handler(language, ParsingErrorHandler::default())?;
             self.parsers.insert(language, parser);
         }
-        self.parsers.get(&language)
+        self.parsers.get_mut(&language)
             .ok_or_else(|| Error::internal(format!("Parser for language {:?} not found after creation", language)))
     }
 
@@ -782,11 +795,11 @@ impl CodebaseAnalyzer {
         Ok(())
     }
 
-    /// Extract Python symbols
+    /// Extract Python symbols with comprehensive coverage
     fn extract_python_symbols(&self, tree: &SyntaxTree, content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
         use crate::languages::python::PythonSyntax;
 
-        // Extract functions
+        // Extract functions with enhanced metadata
         let functions = PythonSyntax::find_functions(tree, content);
         for (name, start_pos, end_pos) in functions {
             let is_public = !name.starts_with('_');
@@ -804,7 +817,25 @@ impl CodebaseAnalyzer {
             });
         }
 
-        // Extract classes
+        // Extract async functions separately for better categorization
+        let async_functions = PythonSyntax::find_async_functions(tree, content);
+        for (name, start_pos, end_pos) in async_functions {
+            let is_public = !name.starts_with('_');
+            let documentation = PythonSyntax::extract_docstring(&name, content);
+
+            symbols.push(Symbol {
+                name,
+                kind: "async_function".to_string(),
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
+                documentation,
+                is_public,
+            });
+        }
+
+        // Extract classes with inheritance information
         let classes = PythonSyntax::find_classes(tree, content);
         for (name, start_pos, end_pos) in classes {
             let is_public = !name.starts_with('_');
@@ -822,7 +853,25 @@ impl CodebaseAnalyzer {
             });
         }
 
-        // Extract methods within classes
+        // Extract dataclasses separately
+        let dataclasses = PythonSyntax::find_dataclasses(tree, content);
+        for (name, start_pos, end_pos) in dataclasses {
+            let is_public = !name.starts_with('_');
+            let documentation = PythonSyntax::extract_docstring(&name, content);
+
+            symbols.push(Symbol {
+                name,
+                kind: "dataclass".to_string(),
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
+                documentation,
+                is_public,
+            });
+        }
+
+        // Extract methods within classes with enhanced categorization
         let methods = PythonSyntax::find_methods(tree, content);
         for (class_name, method_name, location) in methods {
             let is_public = !method_name.starts_with('_');
@@ -836,6 +885,104 @@ impl CodebaseAnalyzer {
                 start_column: location.column,
                 end_column: location.column,
                 documentation: PythonSyntax::extract_docstring(&full_name, content),
+                is_public,
+            });
+        }
+
+        // Extract property decorators (properties, static methods, class methods)
+        let property_decorators = PythonSyntax::find_property_decorators(tree, content);
+        for (func_name, decorator, start_pos, end_pos) in property_decorators {
+            let is_public = !func_name.starts_with('_');
+            let kind = if decorator.contains("@property") {
+                "property"
+            } else if decorator.contains("@staticmethod") {
+                "static_method"
+            } else if decorator.contains("@classmethod") {
+                "class_method"
+            } else {
+                "decorated_method"
+            };
+
+            let documentation = PythonSyntax::extract_docstring(&func_name, content);
+
+            symbols.push(Symbol {
+                name: func_name,
+                kind: kind.to_string(),
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
+                documentation,
+                is_public,
+            });
+        }
+
+        // Extract lambda functions
+        let lambdas = PythonSyntax::find_lambda_functions(tree, content);
+        for (lambda_desc, start_pos, end_pos) in lambdas {
+            symbols.push(Symbol {
+                name: lambda_desc,
+                kind: "lambda".to_string(),
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
+                documentation: None,
+                is_public: false, // Lambdas are typically not public symbols
+            });
+        }
+
+        // Extract typed functions with type hints
+        let typed_functions = PythonSyntax::find_typed_functions(tree, content);
+        for (name, param_types, return_type, start_pos, end_pos) in typed_functions {
+            let is_public = !name.starts_with('_');
+            let type_info = format!(
+                "({}) -> {}",
+                param_types.join(", "),
+                return_type.unwrap_or_else(|| "Any".to_string())
+            );
+
+            symbols.push(Symbol {
+                name: format!("{}: {}", name, type_info),
+                kind: "typed_function".to_string(),
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
+                documentation: PythonSyntax::extract_docstring(&name, content),
+                is_public,
+            });
+        }
+
+        // Extract context managers
+        let context_managers = PythonSyntax::find_context_managers(tree, content);
+        for (context_desc, start_pos, end_pos) in context_managers {
+            symbols.push(Symbol {
+                name: context_desc,
+                kind: "context_manager".to_string(),
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
+                documentation: None,
+                is_public: false,
+            });
+        }
+
+        // Extract metaclasses
+        let metaclasses = PythonSyntax::find_metaclasses(tree, content);
+        for (class_name, metaclass_name, start_pos, end_pos) in metaclasses {
+            let is_public = !class_name.starts_with('_');
+            let full_name = format!("{} (metaclass: {})", class_name, metaclass_name);
+
+            symbols.push(Symbol {
+                name: full_name,
+                kind: "metaclass".to_string(),
+                start_line: start_pos.row + 1,
+                end_line: end_pos.row + 1,
+                start_column: start_pos.column,
+                end_column: end_pos.column,
+                documentation: PythonSyntax::extract_docstring(&class_name, content),
                 is_public,
             });
         }
@@ -857,12 +1004,18 @@ impl CodebaseAnalyzer {
             });
         }
 
-        // Extract imports
+        // Extract imports with enhanced categorization
         let imports = PythonSyntax::find_imports(tree, content);
-        for name in imports {
+        for import_stmt in imports {
+            let kind = if import_stmt.starts_with("from ") {
+                "from_import"
+            } else {
+                "import"
+            };
+
             symbols.push(Symbol {
-                name,
-                kind: "import".to_string(),
+                name: import_stmt,
+                kind: kind.to_string(),
                 start_line: 1, // Imports are typically at the top
                 end_line: 1,
                 start_column: 0,

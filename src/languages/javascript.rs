@@ -294,6 +294,155 @@ impl JavaScriptSyntax {
         exports
     }
 
+    /// Find generator functions in a syntax tree
+    pub fn find_generators(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
+        let mut generators = Vec::new();
+
+        // Find generator function declarations
+        let generator_nodes = tree.find_nodes_by_kind("generator_function_declaration");
+        for gen_node in generator_nodes {
+            if let Some(name) = Self::function_name(&gen_node, source) {
+                let ts_node = gen_node.inner();
+                generators.push((name, ts_node.start_position(), ts_node.end_position()));
+            }
+        }
+
+        // Find generator function expressions
+        let gen_expr_nodes = tree.find_nodes_by_kind("generator_function");
+        for gen_node in gen_expr_nodes {
+            if let Some(name) = Self::function_name(&gen_node, source) {
+                let ts_node = gen_node.inner();
+                generators.push((name, ts_node.start_position(), ts_node.end_position()));
+            }
+        }
+
+        generators
+    }
+
+    /// Find async functions in a syntax tree
+    pub fn find_async_functions(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
+        let mut async_functions = Vec::new();
+
+        // Find all function nodes and check if they're async
+        let all_functions = Self::find_functions(tree, source);
+        for (name, start_pos, end_pos) in all_functions {
+            // Check if the function text contains 'async' keyword
+            let start_byte = tree.root_node().inner().start_byte();
+            let end_byte = tree.root_node().inner().end_byte();
+            if let Ok(func_text) = tree.root_node().text() {
+                if func_text.contains("async") {
+                    // More precise check would require examining the actual node
+                    async_functions.push((name, start_pos, end_pos));
+                }
+            }
+        }
+
+        async_functions
+    }
+
+    /// Find closures (arrow functions and function expressions) in a syntax tree
+    pub fn find_closures(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
+        let mut closures = Vec::new();
+
+        // Find arrow functions
+        let arrow_nodes = tree.find_nodes_by_kind("arrow_function");
+        for arrow_node in arrow_nodes {
+            let name = Self::function_name(&arrow_node, source)
+                .unwrap_or_else(|| "anonymous".to_string());
+            let ts_node = arrow_node.inner();
+            closures.push((name, ts_node.start_position(), ts_node.end_position()));
+        }
+
+        // Find function expressions (anonymous functions)
+        let expr_nodes = tree.find_nodes_by_kind("function_expression");
+        for expr_node in expr_nodes {
+            let name = Self::function_name(&expr_node, source)
+                .unwrap_or_else(|| "anonymous".to_string());
+            let ts_node = expr_node.inner();
+            closures.push((name, ts_node.start_position(), ts_node.end_position()));
+        }
+
+        closures
+    }
+
+    /// Find destructuring patterns in a syntax tree
+    pub fn find_destructuring_patterns(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
+        let mut patterns = Vec::new();
+
+        // Find array destructuring patterns
+        let array_patterns = tree.find_nodes_by_kind("array_pattern");
+        for pattern_node in array_patterns {
+            let ts_node = pattern_node.inner();
+            if let Ok(pattern_text) = pattern_node.text() {
+                patterns.push((
+                    format!("array_destructuring: {}", pattern_text.trim()),
+                    ts_node.start_position(),
+                    ts_node.end_position()
+                ));
+            }
+        }
+
+        // Find object destructuring patterns
+        let object_patterns = tree.find_nodes_by_kind("object_pattern");
+        for pattern_node in object_patterns {
+            let ts_node = pattern_node.inner();
+            if let Ok(pattern_text) = pattern_node.text() {
+                patterns.push((
+                    format!("object_destructuring: {}", pattern_text.trim()),
+                    ts_node.start_position(),
+                    ts_node.end_position()
+                ));
+            }
+        }
+
+        patterns
+    }
+
+    /// Find classes with private fields in a syntax tree
+    pub fn find_classes_with_private_fields(tree: &SyntaxTree, source: &str) -> Vec<(String, Vec<String>, tree_sitter::Point, tree_sitter::Point)> {
+        let mut classes_with_private = Vec::new();
+
+        let class_nodes = tree.find_nodes_by_kind("class_declaration");
+        for class_node in class_nodes {
+            if let Some(class_name) = Self::class_name(&class_node, source) {
+                let mut private_fields = Vec::new();
+
+                // Look for private field definitions (starting with #)
+                let mut cursor = class_node.walk();
+                if cursor.goto_first_child() {
+                    loop {
+                        let node = cursor.node();
+                        if node.kind() == "field_definition" {
+                            if let Some(property_node) = node.child_by_field_name("property") {
+                                if let Ok(field_text) = property_node.text() {
+                                    if field_text.starts_with('#') {
+                                        private_fields.push(field_text.to_string());
+                                    }
+                                }
+                            }
+                        }
+
+                        if !cursor.goto_next_sibling() {
+                            break;
+                        }
+                    }
+                }
+
+                if !private_fields.is_empty() {
+                    let ts_node = class_node.inner();
+                    classes_with_private.push((
+                        class_name,
+                        private_fields,
+                        ts_node.start_position(),
+                        ts_node.end_position()
+                    ));
+                }
+            }
+        }
+
+        classes_with_private
+    }
+
     /// Create a query to find all function declarations
     pub fn functions_query() -> Result<Query> {
         let query_str = r#"
