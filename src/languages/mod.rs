@@ -1,6 +1,12 @@
 //! Language support for tree-sitter parsers
 
 pub mod rust;
+pub mod javascript;
+pub mod typescript;
+pub mod python;
+pub mod c;
+pub mod cpp;
+pub mod go;
 
 use crate::error::{Error, Result};
 
