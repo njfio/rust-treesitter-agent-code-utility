@@ -24,11 +24,11 @@ Built for developers and AI code agents who need to understand code structure an
 - **Missing Language Features Detection**: Identifies advanced language constructs
 
 ### Analysis Capabilities
-- **Basic Codebase Analysis**: File counting, symbol extraction, language statistics
-- **Security Scanning**: Pattern-based vulnerability detection (250+ vulnerability types)
-- **Code Explanations**: AI-powered code analysis and explanations
-- **Refactoring Suggestions**: Basic code improvement recommendations
-- **Dependency Analysis**: Basic dependency scanning (limited functionality)
+- **Basic Codebase Analysis**: File counting, symbol extraction, language statistics ✅
+- **Security Scanning**: Pattern-based vulnerability detection ⚠️ *High false positive rate*
+- **Code Explanations**: AI-powered code analysis ⚠️ *Basic implementation, experimental*
+- **Refactoring Suggestions**: Basic code improvement recommendations ⚠️ *Generic suggestions only*
+- **Dependency Analysis**: Basic dependency scanning ⚠️ *Very limited, often returns 0 dependencies*
 
 ### CLI Interface
 - **Multiple Commands**: analyze, explain, security, refactor, dependencies

@@ -1,12 +1,25 @@
 //! Advanced security analysis for source code vulnerability detection
-//! 
-//! This module provides comprehensive static code analysis including:
-//! - OWASP Top 10 vulnerability detection
-//! - Secrets and sensitive data detection
-//! - Input validation analysis
-//! - Injection vulnerability detection
-//! - Security best practices validation
-//! - CWE (Common Weakness Enumeration) mapping
+//!
+//! **⚠️ IMPLEMENTATION STATUS: PATTERN-BASED WITH HIGH FALSE POSITIVES**
+//!
+//! This module implements basic pattern-based security scanning but has significant limitations:
+//!
+//! **What's Actually Implemented:**
+//! - Pattern-based vulnerability detection (250+ patterns)
+//! - Basic secrets detection using regex patterns
+//! - Simple OWASP category classification
+//! - Extensive type definitions for security analysis
+//!
+//! **Major Limitations:**
+//! - **High false positive rate** - Many findings are not actual vulnerabilities
+//! - **No semantic analysis** - Cannot understand code context or data flow
+//! - **No real CVE integration** - Despite infrastructure, no actual vulnerability database lookup
+//! - **Basic pattern matching only** - No sophisticated static analysis
+//! - **Limited language understanding** - Generic patterns across all languages
+//!
+//! **Current Reality:** Suitable for basic security awareness but not for production
+//! security audits. Claims of "enterprise-grade" and "comprehensive" analysis are
+//! not supported by the current implementation quality.
 
 use crate::{AnalysisResult, FileInfo, Result, Error};
 use std::collections::HashMap;

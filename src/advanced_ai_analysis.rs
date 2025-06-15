@@ -1,12 +1,26 @@
 //! Advanced AI code explanations with deep semantic understanding
 //!
-//! This module provides comprehensive AI-powered code analysis including:
-//! - Deep semantic analysis with context understanding
-//! - Architecture pattern recognition (MVC, microservices, etc.)
-//! - Code quality assessment with maintainability scoring
-//! - Learning path recommendations for developers
-//! - Cross-file relationship analysis and dependency mapping
-//! - Intelligent code documentation generation
+//! **⚠️ IMPLEMENTATION STATUS: MOSTLY PLACEHOLDER CODE**
+//!
+//! This module defines extensive type structures and interfaces for advanced AI analysis,
+//! but most implementations are stubs or basic pattern matching. Claims of "deep semantic
+//! understanding" and "comprehensive AI-powered analysis" are aspirational.
+//!
+//! **What's Actually Implemented:**
+//! - Type definitions and data structures (comprehensive)
+//! - Basic pattern matching and simple heuristics
+//! - Placeholder implementations that return mock data
+//!
+//! **What's NOT Implemented:**
+//! - Actual deep semantic analysis
+//! - Real architecture pattern recognition
+//! - Meaningful code quality assessment beyond basic metrics
+//! - Intelligent learning path generation
+//! - Cross-file relationship analysis with semantic understanding
+//! - AI-powered documentation generation
+//!
+//! **Current Reality:** This is a framework for future AI analysis features,
+//! not a working AI analysis system.
 
 use crate::{AnalysisResult, Result};
 use std::collections::HashMap;

@@ -1,18 +1,22 @@
-# 🚀 Tree-sitter CLI - Smart Codebase Analysis
+# Tree-sitter CLI - Codebase Analysis Tool
 
-A powerful command-line interface for intelligent codebase analysis using tree-sitter. Perfect for developers, code reviewers, and AI agents who need deep insights into code structure and quality.
+A command-line interface for basic codebase analysis using tree-sitter. Provides fundamental parsing and analysis capabilities with some experimental features.
 
-## 🌟 Features
+**⚠️ FEATURE STATUS DISCLAIMER:**
+Many features listed below are experimental or have limited functionality. This CLI is suitable for basic analysis but not production-grade code intelligence.
 
-- **🔍 Multi-language Analysis**: Support for Rust, JavaScript, Python, C, C++
-- **📊 Smart Insights**: AI-friendly analysis with actionable recommendations
-- **🎯 Pattern Matching**: Advanced query system for finding code patterns
-- **📈 Statistics & Metrics**: Comprehensive codebase statistics
-- **🔎 Symbol Search**: Find functions, classes, and other symbols with wildcards
-- **🎮 Interactive Mode**: Explore codebases interactively
-- **🗺️ Visual Code Maps**: Generate beautiful project structure visualizations
-- **📋 Multiple Output Formats**: JSON, Markdown, Table, Text, ASCII, Unicode, and Mermaid
-- **Configurable Analysis Depth**: Choose basic, deep, or full scanning
+## Features (With Honest Status)
+
+- **🔍 Multi-language Analysis**: Support for 7 languages (basic parsing level)
+- **📊 Basic Statistics**: File counts, symbol extraction, language detection
+- **🎯 Pattern Matching**: Limited query system (syntax issues in complex patterns)
+- **📈 Statistics & Metrics**: Basic codebase statistics only
+- **🔎 Symbol Search**: Basic symbol finding (limited accuracy)
+- **🎮 Interactive Mode**: Experimental feature with basic commands
+- **🗺️ Visual Code Maps**: Basic tree structure output (limited formatting)
+- **📋 Multiple Output Formats**: JSON, table, summary formats working
+- **⚠️ Security Scanning**: Pattern-based detection with high false positive rate
+- **⚠️ AI Analysis**: Basic implementations, not production-ready
 
 ## 🚀 Quick Start
 
@@ -93,9 +97,9 @@ tree-sitter-cli analyze ./src --include-exts rs
 tree-sitter-cli analyze ./src --max-depth 2 --format summary
 ```
 
-### `insights` - AI-Friendly Intelligence Report
+### `insights` - Basic Code Analysis Report
 
-Generate smart insights and recommendations for AI agents and developers.
+**⚠️ EXPERIMENTAL FEATURE** - Generate basic insights about code structure. Limited analysis depth.
 
 ```bash
 tree-sitter-cli insights <PATH> [OPTIONS]
@@ -107,15 +111,20 @@ Options:
 
 **Examples:**
 ```bash
-# Generate comprehensive insights
+# Generate basic insights (limited analysis)
 tree-sitter-cli insights ./src
 
-# Focus on architecture analysis
+# Focus on architecture analysis (basic pattern detection only)
 tree-sitter-cli insights ./src --focus architecture
 
-# JSON output for AI processing
+# JSON output for processing
 tree-sitter-cli insights ./src --format json
 ```
+
+**Limitations:**
+- Analysis is basic pattern matching, not deep semantic understanding
+- Architecture detection is limited to simple patterns
+- Quality assessment is rudimentary
 
 ### `query` - Advanced Pattern Matching
 
@@ -265,9 +274,9 @@ tree-sitter-cli map ./src --languages rust,javascript
 - **`json`**: Structured data for programmatic use
 - **`mermaid`**: Mermaid diagrams for documentation
 
-### `security` - Vulnerability Scanning
+### `security` - Basic Vulnerability Scanning
 
-Perform full security analysis with CVE lookup and secrets detection.
+**⚠️ HIGH FALSE POSITIVE RATE** - Pattern-based security scanning with limited accuracy.
 
 ```bash
 tree-sitter-cli security <PATH> [OPTIONS]
@@ -288,10 +297,17 @@ tree-sitter-cli security ./src --summary-only
 
 ```text
 🔍 SECURITY REPORT
-Vulnerabilities: 0
-Secrets Detected: 0
-Compliance: 5/5 rules passed
+Vulnerabilities: 216 (many false positives)
+Secrets Detected: 22 (pattern-based detection)
+Compliance: Basic pattern matching only
 ```
+
+**Important Limitations:**
+- **High false positive rate** - Many findings are not actual vulnerabilities
+- **Pattern-based only** - No semantic analysis or context understanding
+- **No CVE integration** - Despite claims, no real vulnerability database lookup
+- **Basic compliance checking** - Simple pattern matching, not comprehensive assessment
+- **Not suitable for production security audits**
 
 ### `languages` - Supported Languages
 
