@@ -1301,7 +1301,7 @@ impl AdvancedAIAnalyzer {
     /// Assess readability
     fn assess_readability(&self, analysis_result: &AnalysisResult) -> ReadabilityAssessment {
         let mut naming_quality = 8.0;
-        let mut comment_quality = 6.0;
+        let comment_quality = 6.0;
 
         // Analyze naming patterns
         for file in &analysis_result.files {

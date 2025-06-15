@@ -667,27 +667,97 @@ impl DependencyAnalyzer {
     /// Extract npm/yarn dependencies
     fn extract_npm_dependencies(&self, pm_info: &PackageManagerInfo) -> Result<Vec<Dependency>> {
         let content = fs::read_to_string(&pm_info.config_file)?;
-
-        // Simple JSON parsing for package.json
-        // In a real implementation, you'd use a proper JSON parser
         let mut dependencies = Vec::new();
 
-        // This is a simplified implementation
-        // In practice, you'd use serde_json to parse the package.json
-        dependencies.push(Dependency {
-            name: "example-dependency".to_string(),
-            version: "1.0.0".to_string(),
-            latest_version: Some("1.2.0".to_string()),
-            manager: pm_info.manager.clone(),
-            dependency_type: DependencyType::Direct,
-            license: Some("MIT".to_string()),
-            repository: None,
-            description: Some("Example dependency for demonstration".to_string()),
-            maintainers: vec!["maintainer@example.com".to_string()],
-            download_count: Some(1000000),
-            last_updated: Some("2024-01-01".to_string()),
-            security_advisories: 0,
-        });
+        // Parse package.json using serde_json
+        let package_json: serde_json::Value = serde_json::from_str(&content)
+            .map_err(|e| crate::error::Error::ParseError(format!("Failed to parse package.json: {}", e)))?;
+
+        // Extract regular dependencies
+        if let Some(deps) = package_json.get("dependencies").and_then(|d| d.as_object()) {
+            for (name, version) in deps {
+                let version_str = version.as_str().unwrap_or("*").to_string();
+                dependencies.push(Dependency {
+                    name: name.clone(),
+                    version: version_str,
+                    latest_version: None,
+                    manager: pm_info.manager.clone(),
+                    dependency_type: DependencyType::Direct,
+                    license: None,
+                    repository: None,
+                    description: None,
+                    maintainers: Vec::new(),
+                    download_count: None,
+                    last_updated: None,
+                    security_advisories: 0,
+                });
+            }
+        }
+
+        // Extract dev dependencies if configured
+        if self.config.include_dev_dependencies {
+            if let Some(dev_deps) = package_json.get("devDependencies").and_then(|d| d.as_object()) {
+                for (name, version) in dev_deps {
+                    let version_str = version.as_str().unwrap_or("*").to_string();
+                    dependencies.push(Dependency {
+                        name: name.clone(),
+                        version: version_str,
+                        latest_version: None,
+                        manager: pm_info.manager.clone(),
+                        dependency_type: DependencyType::Development,
+                        license: None,
+                        repository: None,
+                        description: None,
+                        maintainers: Vec::new(),
+                        download_count: None,
+                        last_updated: None,
+                        security_advisories: 0,
+                    });
+                }
+            }
+        }
+
+        // Extract peer dependencies
+        if let Some(peer_deps) = package_json.get("peerDependencies").and_then(|d| d.as_object()) {
+            for (name, version) in peer_deps {
+                let version_str = version.as_str().unwrap_or("*").to_string();
+                dependencies.push(Dependency {
+                    name: name.clone(),
+                    version: version_str,
+                    latest_version: None,
+                    manager: pm_info.manager.clone(),
+                    dependency_type: DependencyType::Peer,
+                    license: None,
+                    repository: None,
+                    description: None,
+                    maintainers: Vec::new(),
+                    download_count: None,
+                    last_updated: None,
+                    security_advisories: 0,
+                });
+            }
+        }
+
+        // Extract optional dependencies
+        if let Some(opt_deps) = package_json.get("optionalDependencies").and_then(|d| d.as_object()) {
+            for (name, version) in opt_deps {
+                let version_str = version.as_str().unwrap_or("*").to_string();
+                dependencies.push(Dependency {
+                    name: name.clone(),
+                    version: version_str,
+                    latest_version: None,
+                    manager: pm_info.manager.clone(),
+                    dependency_type: DependencyType::Optional,
+                    license: None,
+                    repository: None,
+                    description: None,
+                    maintainers: Vec::new(),
+                    download_count: None,
+                    last_updated: None,
+                    security_advisories: 0,
+                });
+            }
+        }
 
         Ok(dependencies)
     }
@@ -722,22 +792,19 @@ impl DependencyAnalyzer {
                     }
                 }
             }
+            PackageManager::Poetry => {
+                // Parse pyproject.toml for Poetry dependencies
+                self.parse_poetry_dependencies(&content, &mut dependencies)?;
+            }
+            PackageManager::Pipenv => {
+                // Parse Pipfile for Pipenv dependencies
+                self.parse_pipfile_dependencies(&content, &mut dependencies)?;
+            }
             _ => {
-                // Simplified implementation for Poetry/Pipenv
-                dependencies.push(Dependency {
-                    name: "example-python-package".to_string(),
-                    version: "2.0.0".to_string(),
-                    latest_version: Some("2.1.0".to_string()),
-                    manager: pm_info.manager.clone(),
-                    dependency_type: DependencyType::Direct,
-                    license: Some("Apache-2.0".to_string()),
-                    repository: None,
-                    description: Some("Example Python package".to_string()),
-                    maintainers: Vec::new(),
-                    download_count: Some(500000),
-                    last_updated: Some("2024-01-15".to_string()),
-                    security_advisories: 1,
-                });
+                // Fallback for other Python package managers
+                return Err(crate::error::Error::ParseError(
+                    format!("Unsupported Python package manager: {:?}", pm_info.manager)
+                ));
             }
         }
 
@@ -1065,6 +1132,173 @@ impl DependencyAnalyzer {
         });
 
         Ok(recommendations)
+    }
+
+    /// Parse Poetry dependencies from pyproject.toml
+    fn parse_poetry_dependencies(&self, content: &str, dependencies: &mut Vec<Dependency>) -> Result<()> {
+        let toml_value: toml::Value = toml::from_str(content)
+            .map_err(|e| crate::error::Error::ParseError(format!("Failed to parse pyproject.toml: {}", e)))?;
+
+        // Extract dependencies from [tool.poetry.dependencies]
+        if let Some(poetry) = toml_value.get("tool").and_then(|t| t.get("poetry")) {
+            if let Some(deps) = poetry.get("dependencies").and_then(|d| d.as_table()) {
+                for (name, version_spec) in deps {
+                    // Skip Python itself
+                    if name == "python" {
+                        continue;
+                    }
+
+                    let version = match version_spec {
+                        toml::Value::String(v) => v.clone(),
+                        toml::Value::Table(t) => {
+                            // Handle complex version specifications like { version = "^1.0", optional = true }
+                            t.get("version")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("*")
+                                .to_string()
+                        }
+                        _ => "*".to_string(),
+                    };
+
+                    let dependency_type = if let toml::Value::Table(t) = version_spec {
+                        if t.get("optional").and_then(|v| v.as_bool()).unwrap_or(false) {
+                            DependencyType::Optional
+                        } else {
+                            DependencyType::Direct
+                        }
+                    } else {
+                        DependencyType::Direct
+                    };
+
+                    dependencies.push(Dependency {
+                        name: name.clone(),
+                        version,
+                        latest_version: None,
+                        manager: PackageManager::Poetry,
+                        dependency_type,
+                        license: None,
+                        repository: None,
+                        description: None,
+                        maintainers: Vec::new(),
+                        download_count: None,
+                        last_updated: None,
+                        security_advisories: 0,
+                    });
+                }
+            }
+
+            // Extract dev dependencies if configured
+            if self.config.include_dev_dependencies {
+                if let Some(dev_deps) = poetry.get("group")
+                    .and_then(|g| g.get("dev"))
+                    .and_then(|d| d.get("dependencies"))
+                    .and_then(|d| d.as_table())
+                {
+                    for (name, version_spec) in dev_deps {
+                        let version = match version_spec {
+                            toml::Value::String(v) => v.clone(),
+                            toml::Value::Table(t) => {
+                                t.get("version")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("*")
+                                    .to_string()
+                            }
+                            _ => "*".to_string(),
+                        };
+
+                        dependencies.push(Dependency {
+                            name: name.clone(),
+                            version,
+                            latest_version: None,
+                            manager: PackageManager::Poetry,
+                            dependency_type: DependencyType::Development,
+                            license: None,
+                            repository: None,
+                            description: None,
+                            maintainers: Vec::new(),
+                            download_count: None,
+                            last_updated: None,
+                            security_advisories: 0,
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Parse Pipenv dependencies from Pipfile
+    fn parse_pipfile_dependencies(&self, content: &str, dependencies: &mut Vec<Dependency>) -> Result<()> {
+        let toml_value: toml::Value = toml::from_str(content)
+            .map_err(|e| crate::error::Error::ParseError(format!("Failed to parse Pipfile: {}", e)))?;
+
+        // Extract dependencies from [packages]
+        if let Some(packages) = toml_value.get("packages").and_then(|p| p.as_table()) {
+            for (name, version_spec) in packages {
+                let version = match version_spec {
+                    toml::Value::String(v) => v.clone(),
+                    toml::Value::Table(t) => {
+                        // Handle complex specifications like { version = "*", index = "pypi" }
+                        t.get("version")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("*")
+                            .to_string()
+                    }
+                    _ => "*".to_string(),
+                };
+
+                dependencies.push(Dependency {
+                    name: name.clone(),
+                    version,
+                    latest_version: None,
+                    manager: PackageManager::Pipenv,
+                    dependency_type: DependencyType::Direct,
+                    license: None,
+                    repository: None,
+                    description: None,
+                    maintainers: Vec::new(),
+                    download_count: None,
+                    last_updated: None,
+                    security_advisories: 0,
+                });
+            }
+        }
+
+        // Extract dev dependencies if configured
+        if self.config.include_dev_dependencies {
+            if let Some(dev_packages) = toml_value.get("dev-packages").and_then(|p| p.as_table()) {
+                for (name, version_spec) in dev_packages {
+                    let version = match version_spec {
+                        toml::Value::String(v) => v.clone(),
+                        toml::Value::Table(t) => {
+                            t.get("version")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("*")
+                                .to_string()
+                        }
+                        _ => "*".to_string(),
+                    };
+
+                    dependencies.push(Dependency {
+                        name: name.clone(),
+                        version,
+                        latest_version: None,
+                        manager: PackageManager::Pipenv,
+                        dependency_type: DependencyType::Development,
+                        license: None,
+                        repository: None,
+                        description: None,
+                        maintainers: Vec::new(),
+                        download_count: None,
+                        last_updated: None,
+                        security_advisories: 0,
+                    });
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 

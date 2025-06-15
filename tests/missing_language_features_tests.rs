@@ -1,4 +1,3 @@
-use rust_tree_sitter::analyzer::CodebaseAnalyzer;
 use rust_tree_sitter::error::Result;
 use rust_tree_sitter::languages::{
     javascript::JavaScriptSyntax,
@@ -58,7 +57,7 @@ class Counter {
     
     fs::write(&js_file, js_code).unwrap();
     
-    let mut parser = Parser::new(rust_tree_sitter::Language::JavaScript).unwrap();
+    let parser = Parser::new(rust_tree_sitter::Language::JavaScript).unwrap();
     let tree = parser.parse(js_code, None).unwrap();
     
     // Test generator functions
@@ -138,7 +137,7 @@ class UserComponent {
     
     fs::write(&ts_file, ts_code).unwrap();
     
-    let mut parser = Parser::new(rust_tree_sitter::Language::TypeScript).unwrap();
+    let parser = Parser::new(rust_tree_sitter::Language::TypeScript).unwrap();
     let tree = parser.parse(ts_code, None).unwrap();
     
     // Test generic types
@@ -243,7 +242,7 @@ filter_even = lambda lst: [x for x in lst if x % 2 == 0]
     
     fs::write(&py_file, py_code).unwrap();
     
-    let mut parser = Parser::new(rust_tree_sitter::Language::Python).unwrap();
+    let parser = Parser::new(rust_tree_sitter::Language::Python).unwrap();
     let tree = parser.parse(py_code, None).unwrap();
     
     // Test async functions
@@ -336,7 +335,7 @@ int multiply(int a, int b) { return a * b; }
     
     fs::write(&c_file, c_code).unwrap();
     
-    let mut parser = Parser::new(rust_tree_sitter::Language::C).unwrap();
+    let parser = Parser::new(rust_tree_sitter::Language::C).unwrap();
     let tree = parser.parse(c_code, None).unwrap();
     
     // Test function pointers
@@ -455,7 +454,7 @@ func main() {
 
     fs::write(&go_file, go_code).unwrap();
 
-    let mut parser = Parser::new(rust_tree_sitter::Language::Go).unwrap();
+    let parser = Parser::new(rust_tree_sitter::Language::Go).unwrap();
     let tree = parser.parse(go_code, None).unwrap();
 
     // Test interfaces
@@ -565,7 +564,7 @@ where
 
     fs::write(&rust_file, rust_code).unwrap();
 
-    let mut parser = Parser::new(rust_tree_sitter::Language::Rust).unwrap();
+    let parser = Parser::new(rust_tree_sitter::Language::Rust).unwrap();
     let tree = parser.parse(rust_code, None).unwrap();
 
     // Test traits

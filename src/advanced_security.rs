@@ -667,7 +667,7 @@ impl AdvancedSecurityAnalyzer {
     }
 
     /// Detect access control issues
-    fn detect_access_control_issues(&self, content: &str, lines: &[&str], file: &FileInfo) -> Result<Vec<SecurityVulnerability>> {
+    fn detect_access_control_issues(&self, _content: &str, lines: &[&str], file: &FileInfo) -> Result<Vec<SecurityVulnerability>> {
         let mut vulnerabilities = Vec::new();
 
         // Check for missing authorization checks
@@ -723,7 +723,7 @@ impl AdvancedSecurityAnalyzer {
     }
 
     /// Detect cryptographic failures
-    fn detect_cryptographic_failures(&self, content: &str, lines: &[&str], file: &FileInfo) -> Result<Vec<SecurityVulnerability>> {
+    fn detect_cryptographic_failures(&self, _content: &str, lines: &[&str], file: &FileInfo) -> Result<Vec<SecurityVulnerability>> {
         let mut vulnerabilities = Vec::new();
 
         // Check for weak cryptographic algorithms
@@ -830,7 +830,7 @@ impl AdvancedSecurityAnalyzer {
     }
 
     /// Detect injection issues
-    fn detect_injection_issues(&self, content: &str, lines: &[&str], file: &FileInfo) -> Result<Vec<SecurityVulnerability>> {
+    fn detect_injection_issues(&self, _content: &str, lines: &[&str], file: &FileInfo) -> Result<Vec<SecurityVulnerability>> {
         let mut vulnerabilities = Vec::new();
 
         // Check for SQL injection patterns
@@ -1455,7 +1455,7 @@ impl AdvancedSecurityAnalyzer {
     /// Calculate overall security score
     fn calculate_security_score(
         &self,
-        total_vulnerabilities: usize,
+        _total_vulnerabilities: usize,
         severity_counts: &HashMap<SecuritySeverity, usize>,
         compliance: &ComplianceAssessment,
     ) -> u8 {
@@ -1625,7 +1625,7 @@ impl AdvancedSecurityAnalyzer {
     }
 
     /// Check if arguments contain string concatenation
-    fn has_string_concatenation_in_args(&self, args_node: &Node, content: &str) -> bool {
+    fn has_string_concatenation_in_args(&self, args_node: &Node, _content: &str) -> bool {
         // Look for binary expressions with + operator or string interpolation
         for child in args_node.children() {
             if child.kind() == "binary_expression" {
@@ -1646,7 +1646,7 @@ impl AdvancedSecurityAnalyzer {
     }
 
     /// Calculate confidence level for SQL injection detection
-    fn calculate_sql_injection_confidence(&self, node: &Node, content: &str, context: &SecurityContext) -> ConfidenceLevel {
+    fn calculate_sql_injection_confidence(&self, node: &Node, _content: &str, context: &SecurityContext) -> ConfidenceLevel {
         let mut confidence_score = 0;
 
         // Higher confidence if in a non-test file
@@ -1769,7 +1769,7 @@ impl AdvancedSecurityAnalyzer {
     }
 
     /// Calculate confidence level for command injection detection
-    fn calculate_command_injection_confidence(&self, node: &Node, content: &str, context: &SecurityContext) -> ConfidenceLevel {
+    fn calculate_command_injection_confidence(&self, node: &Node, _content: &str, context: &SecurityContext) -> ConfidenceLevel {
         let mut confidence_score = 0;
 
         // Higher confidence if in a non-test file

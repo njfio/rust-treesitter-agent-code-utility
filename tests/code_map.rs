@@ -46,7 +46,10 @@ fn cli_generates_symbol_map_json() -> Result<(), Box<dyn std::error::Error>> {
     assert!(output.status.success());
     let json = parse_json_from_output(&output.stdout);
     assert!(json.as_object().map(|o| !o.is_empty()).unwrap_or(false));
+    Ok(())
+}
 
+#[test]
 fn module_graph_simple() -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
     fs::write(temp.path().join("moda.rs"), "pub fn a() {}")?;

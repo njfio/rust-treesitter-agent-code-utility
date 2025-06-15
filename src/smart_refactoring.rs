@@ -1209,7 +1209,7 @@ impl SmartRefactoringEngine {
 
         // Analyze project structure for modularization opportunities
         if analysis_result.total_files > 20 {
-            let mut has_clear_modules = false;
+            let _has_clear_modules = false;
             let mut module_dirs = 0;
 
             for file in &analysis_result.files {

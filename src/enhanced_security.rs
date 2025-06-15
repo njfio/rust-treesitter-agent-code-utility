@@ -401,7 +401,7 @@ impl EnhancedSecurityScanner {
 
     /// Parse file and analyze for OWASP vulnerabilities
     fn parse_and_analyze_owasp(&self, content: &str, file_path: &str, language: Language) -> Result<Vec<OwaspFinding>> {
-        let mut parser = Parser::new(language)?;
+        let parser = Parser::new(language)?;
         let tree = parser.parse(content, None)?;
         self.owasp_detector.detect_vulnerabilities(&tree, content, file_path)
             .map_err(|e| crate::error::Error::Anyhow(e))
