@@ -32,6 +32,7 @@ pub mod advanced_ai_analysis;
 pub mod advanced_security;
 pub mod ai_analysis;
 pub mod analyzer;
+pub mod cross_language_analysis;
 pub mod dependency_analysis;
 pub mod enhanced_security;
 pub mod enhanced_error_handling;
@@ -57,6 +58,11 @@ pub use advanced_ai_analysis::{AdvancedAIAnalyzer, AdvancedAIResult, AdvancedAIC
 pub use advanced_security::{AdvancedSecurityAnalyzer, AdvancedSecurityResult, AdvancedSecurityConfig, SecurityVulnerability as AdvancedSecurityVulnerability};
 pub use ai_analysis::{AIAnalyzer, AIAnalysisResult, AIConfig, CodebaseExplanation, FileExplanation, SymbolExplanation};
 pub use analyzer::{CodebaseAnalyzer, AnalysisConfig, AnalysisResult, FileInfo, Symbol};
+pub use cross_language_analysis::{
+    CrossLanguageAnalyzer, CrossLanguageAnalysisResult, CrossLanguageConfig,
+    FfiAnalysisResult, DependencyAnalysisResult as CrossLanguageDependencyAnalysisResult,
+    ArchitectureAnalysisResult, CrossLanguageSymbol, FfiBinding, LanguageBoundary
+};
 pub use dependency_analysis::{DependencyAnalyzer, DependencyAnalysisResult, DependencyConfig, Dependency, PackageManager};
 pub use enhanced_error_handling::{ErrorHandler, ErrorContext, RecoveryStrategy, SafeFileOperations};
 pub use error::{Error, Result};

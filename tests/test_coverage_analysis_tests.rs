@@ -12,68 +12,342 @@ use std::path::{Path, PathBuf};
 use std::fs;
 use tempfile::TempDir;
 
-// Helper function to create a mock analysis result for a directory
+// Helper function to create a real analysis result for a directory by actually parsing files
 fn create_mock_analysis_result_for_directory(dir_path: &Path) -> AnalysisResult {
+    let mut files = Vec::new();
     let mut languages = std::collections::HashMap::new();
-    languages.insert("Rust".to_string(), 2);
+    let mut total_lines = 0;
+    let mut total_files = 0;
+    let mut parsed_files = 0;
+
+    // Recursively find all source and test files
+    if let Ok(entries) = std::fs::read_dir(dir_path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                    // Determine if this is a source file we should analyze
+                    let language = match path.extension().and_then(|ext| ext.to_str()) {
+                        Some("rs") => "Rust",
+                        Some("js") => "JavaScript",
+                        Some("py") => "Python",
+                        Some("c") => "C",
+                        Some("cpp") | Some("cc") | Some("cxx") => "C++",
+                        Some("go") => "Go",
+                        _ => continue, // Skip unknown file types
+                    };
+
+                    total_files += 1;
+
+                    // Read file content
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        let lines = content.lines().count();
+                        let size = content.len();
+                        total_lines += lines;
+                        parsed_files += 1;
+
+                        // Extract symbols from the file
+                        let symbols = extract_symbols_from_content(&content, language);
+
+                        // Update language count
+                        *languages.entry(language.to_string()).or_insert(0) += 1;
+
+                        files.push(FileInfo {
+                            path: path.clone(),
+                            language: language.to_string(),
+                            lines,
+                            size,
+                            parsed_successfully: true,
+                            parse_errors: vec![],
+                            symbols,
+                            imports: vec![],
+                            exports: vec![],
+                        });
+                    }
+                }
+            }
+        }
+    }
 
     AnalysisResult {
         root_path: dir_path.to_path_buf(),
-        total_files: 2,
-        parsed_files: 2,
-        error_files: 0,
-        total_lines: 100,
+        total_files,
+        parsed_files,
+        error_files: total_files - parsed_files,
+        total_lines,
         languages,
-        files: vec![
-            FileInfo {
-                path: dir_path.join("src/lib.rs"),
-                language: "Rust".to_string(),
-                lines: 50,
-                size: 1024,
-                parsed_successfully: true,
-                parse_errors: vec![],
-                symbols: vec![
-                    Symbol {
-                        name: "add".to_string(),
-                        kind: "function".to_string(),
-                        start_line: 1,
-                        end_line: 3,
-                        start_column: 0,
-                        end_column: 1,
-                        documentation: None,
-                        is_public: true,
-                    },
-                ],
-                imports: vec![],
-                exports: vec![],
-            },
-            FileInfo {
-                path: dir_path.join("tests/test_lib.rs"),
-                language: "Rust".to_string(),
-                lines: 50,
-                size: 1024,
-                parsed_successfully: true,
-                parse_errors: vec![],
-                symbols: vec![
-                    Symbol {
-                        name: "test_add".to_string(),
-                        kind: "function".to_string(),
-                        start_line: 1,
-                        end_line: 5,
-                        start_column: 0,
-                        end_column: 1,
-                        documentation: None,
-                        is_public: true,
-                    },
-                ],
-                imports: vec![],
-                exports: vec![],
-            },
-        ],
+        files,
         config: AnalysisConfig::default(),
         symbols: vec![],
         dependencies: vec![],
     }
+}
+
+// Extract symbols from file content using simple regex patterns
+fn extract_symbols_from_content(content: &str, language: &str) -> Vec<Symbol> {
+    let mut symbols = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+
+    match language {
+        "Rust" => {
+            for (line_num, line) in lines.iter().enumerate() {
+                // Extract functions
+                if let Some(func_name) = extract_rust_function_name(line) {
+                    symbols.push(Symbol {
+                        name: func_name,
+                        kind: "function".to_string(),
+                        start_line: line_num + 1,
+                        end_line: line_num + 10, // Estimate
+                        start_column: 0,
+                        end_column: line.len(),
+                        documentation: None,
+                        is_public: line.trim_start().starts_with("pub"),
+                    });
+                }
+                // Extract structs
+                if let Some(struct_name) = extract_rust_struct_name(line) {
+                    symbols.push(Symbol {
+                        name: struct_name,
+                        kind: "struct".to_string(),
+                        start_line: line_num + 1,
+                        end_line: line_num + 5, // Estimate
+                        start_column: 0,
+                        end_column: line.len(),
+                        documentation: None,
+                        is_public: line.trim_start().starts_with("pub"),
+                    });
+                }
+                // Extract impl blocks
+                if let Some(impl_name) = extract_rust_impl_name(line) {
+                    symbols.push(Symbol {
+                        name: impl_name,
+                        kind: "impl".to_string(),
+                        start_line: line_num + 1,
+                        end_line: line_num + 20, // Estimate
+                        start_column: 0,
+                        end_column: line.len(),
+                        documentation: None,
+                        is_public: true,
+                    });
+                }
+            }
+        },
+        "JavaScript" => {
+            for (line_num, line) in lines.iter().enumerate() {
+                if let Some(func_name) = extract_js_function_name(line) {
+                    symbols.push(Symbol {
+                        name: func_name,
+                        kind: "function".to_string(),
+                        start_line: line_num + 1,
+                        end_line: line_num + 10, // Estimate
+                        start_column: 0,
+                        end_column: line.len(),
+                        documentation: None,
+                        is_public: true,
+                    });
+                }
+                // Extract test functions
+                if let Some(test_name) = extract_js_test_name(line) {
+                    symbols.push(Symbol {
+                        name: test_name,
+                        kind: "test".to_string(),
+                        start_line: line_num + 1,
+                        end_line: line_num + 10, // Estimate
+                        start_column: 0,
+                        end_column: line.len(),
+                        documentation: None,
+                        is_public: true,
+                    });
+                }
+            }
+        },
+        "Python" => {
+            for (line_num, line) in lines.iter().enumerate() {
+                if let Some(func_name) = extract_python_function_name(line) {
+                    let is_public = !func_name.starts_with('_');
+                    symbols.push(Symbol {
+                        name: func_name,
+                        kind: "function".to_string(),
+                        start_line: line_num + 1,
+                        end_line: line_num + 10, // Estimate
+                        start_column: 0,
+                        end_column: line.len(),
+                        documentation: None,
+                        is_public,
+                    });
+                }
+                // Extract classes
+                if let Some(class_name) = extract_python_class_name(line) {
+                    symbols.push(Symbol {
+                        name: class_name,
+                        kind: "class".to_string(),
+                        start_line: line_num + 1,
+                        end_line: line_num + 20, // Estimate
+                        start_column: 0,
+                        end_column: line.len(),
+                        documentation: None,
+                        is_public: true,
+                    });
+                }
+                // Extract test methods
+                if let Some(test_name) = extract_python_test_name(line) {
+                    symbols.push(Symbol {
+                        name: test_name,
+                        kind: "test".to_string(),
+                        start_line: line_num + 1,
+                        end_line: line_num + 10, // Estimate
+                        start_column: 0,
+                        end_column: line.len(),
+                        documentation: None,
+                        is_public: true,
+                    });
+                }
+            }
+        },
+        _ => {
+            // For unknown languages, create a generic symbol
+            symbols.push(Symbol {
+                name: "unknown_function".to_string(),
+                kind: "function".to_string(),
+                start_line: 1,
+                end_line: 10,
+                start_column: 0,
+                end_column: 1,
+                documentation: None,
+                is_public: true,
+            });
+        }
+    }
+
+    symbols
+}
+
+// Helper functions for extracting symbols from different languages
+
+// Extract Rust function names from a line
+fn extract_rust_function_name(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if trimmed.starts_with("fn ") || trimmed.starts_with("pub fn ") {
+        let start = if trimmed.starts_with("pub fn ") { 7 } else { 3 };
+        if let Some(paren_pos) = trimmed[start..].find('(') {
+            let name = trimmed[start..start + paren_pos].trim();
+            if !name.is_empty() {
+                return Some(name.to_string());
+            }
+        }
+    }
+    None
+}
+
+// Extract Rust struct names from a line
+fn extract_rust_struct_name(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if trimmed.starts_with("struct ") || trimmed.starts_with("pub struct ") {
+        let start = if trimmed.starts_with("pub struct ") { 11 } else { 7 };
+        if let Some(space_or_brace) = trimmed[start..].find(|c: char| c.is_whitespace() || c == '{') {
+            let name = trimmed[start..start + space_or_brace].trim();
+            if !name.is_empty() {
+                return Some(name.to_string());
+            }
+        }
+    }
+    None
+}
+
+// Extract Rust impl names from a line
+fn extract_rust_impl_name(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if trimmed.starts_with("impl ") {
+        let start = 5; // "impl ".len()
+        if let Some(space_or_brace) = trimmed[start..].find(|c: char| c.is_whitespace() || c == '{') {
+            let name = trimmed[start..start + space_or_brace].trim();
+            if !name.is_empty() {
+                return Some(format!("impl_{}", name));
+            }
+        }
+    }
+    None
+}
+
+// Extract JavaScript function names from a line
+fn extract_js_function_name(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if trimmed.starts_with("function ") {
+        let start = 9; // "function ".len()
+        if let Some(paren_pos) = trimmed[start..].find('(') {
+            let name = trimmed[start..start + paren_pos].trim();
+            if !name.is_empty() {
+                return Some(name.to_string());
+            }
+        }
+    }
+    None
+}
+
+// Extract JavaScript test names from a line
+fn extract_js_test_name(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if trimmed.contains("test(") || trimmed.contains("it(") {
+        // Extract test name from test('name') or it('name')
+        if let Some(quote_start) = trimmed.find('\'') {
+            if let Some(quote_end) = trimmed[quote_start + 1..].find('\'') {
+                let name = &trimmed[quote_start + 1..quote_start + 1 + quote_end];
+                return Some(format!("test_{}", name.replace(' ', "_")));
+            }
+        }
+        if let Some(quote_start) = trimmed.find('"') {
+            if let Some(quote_end) = trimmed[quote_start + 1..].find('"') {
+                let name = &trimmed[quote_start + 1..quote_start + 1 + quote_end];
+                return Some(format!("test_{}", name.replace(' ', "_")));
+            }
+        }
+    }
+    None
+}
+
+// Extract Python function names from a line
+fn extract_python_function_name(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if trimmed.starts_with("def ") {
+        let start = 4; // "def ".len()
+        if let Some(paren_pos) = trimmed[start..].find('(') {
+            let name = trimmed[start..start + paren_pos].trim();
+            if !name.is_empty() {
+                return Some(name.to_string());
+            }
+        }
+    }
+    None
+}
+
+// Extract Python class names from a line
+fn extract_python_class_name(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if trimmed.starts_with("class ") {
+        let start = 6; // "class ".len()
+        if let Some(colon_or_paren) = trimmed[start..].find(|c: char| c == ':' || c == '(') {
+            let name = trimmed[start..start + colon_or_paren].trim();
+            if !name.is_empty() {
+                return Some(name.to_string());
+            }
+        }
+    }
+    None
+}
+
+// Extract Python test names from a line
+fn extract_python_test_name(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if trimmed.starts_with("def test_") {
+        let start = 4; // "def ".len()
+        if let Some(paren_pos) = trimmed[start..].find('(') {
+            let name = trimmed[start..start + paren_pos].trim();
+            if !name.is_empty() {
+                return Some(name.to_string());
+            }
+        }
+    }
+    None
 }
 
 #[test]

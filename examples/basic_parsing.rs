@@ -69,7 +69,7 @@ fn main() {
     
     println!("Root node kind: {}", root_node.kind());
     println!("Number of children: {}", root_node.child_count());
-    println!("Source code range: {}..{}", root_node.start_byte(), root_node.end_byte());
+    println!("Source code range: {}..{}", root_node.inner().start_byte(), root_node.inner().end_byte());
     
     // Walk through top-level items
     println!("\nTop-level items:");
@@ -85,7 +85,7 @@ fn main() {
     
     // Find all function definitions
     println!("\nFunction definitions:");
-    find_functions_recursive(&root_node, rust_code);
+    find_functions_recursive(&root_node.inner(), rust_code);
     
     println!();
     Ok(())
@@ -155,7 +155,7 @@ console.log(`Created ${manager.getAllUsers().length} users`);
     
     // Find all method definitions
     println!("\nMethod definitions:");
-    find_methods_recursive(&root_node, js_code);
+    find_methods_recursive(&root_node.inner(), js_code);
     
     println!();
     Ok(())
@@ -229,7 +229,7 @@ if __name__ == "__main__":
     
     // Find all function definitions
     println!("\nFunction definitions:");
-    find_python_functions_recursive(&root_node, python_code);
+    find_python_functions_recursive(&root_node.inner(), python_code);
     
     println!();
     Ok(())
@@ -258,7 +258,7 @@ fn auto_detect_and_parse_example() -> Result<(), Box<dyn Error>> {
             println!("  Children: {}", root_node.child_count());
             
             // Find the main function/method
-            if let Some(main_node) = find_main_function(&root_node, code) {
+            if let Some(main_node) = find_main_function(&root_node.inner(), code) {
                 let start_pos = main_node.start_position();
                 println!("  Main function found at line {}, column {}", 
                          start_pos.row + 1, start_pos.column + 1);
@@ -321,9 +321,9 @@ fn find_python_functions_recursive(node: &tree_sitter::Node, source: &str) {
     }
 }
 
-fn find_main_function(node: &tree_sitter::Node, source: &str) -> Option<tree_sitter::Node> {
+fn find_main_function<'a>(node: &tree_sitter::Node<'a>, source: &str) -> Option<tree_sitter::Node<'a>> {
     // Check if this node is a main function
-    if (node.kind() == "function_item" || node.kind() == "function_declaration" || node.kind() == "function_definition") {
+    if node.kind() == "function_item" || node.kind() == "function_declaration" || node.kind() == "function_definition" {
         if let Some(name_node) = node.child_by_field_name("name") {
             let name = &source[name_node.start_byte()..name_node.end_byte()];
             if name == "main" {

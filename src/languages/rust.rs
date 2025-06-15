@@ -228,19 +228,28 @@ impl RustSyntax {
             if let Some(name) = Self::trait_name(&ts_node, source) {
                 let mut methods = Vec::new();
 
-                // Extract trait methods
-                let mut cursor = trait_node.walk();
-                if cursor.goto_first_child() {
-                    loop {
-                        let node = cursor.node();
-                        if node.kind() == "function_signature_item" || node.kind() == "function_item" {
-                            if let Some(method_name) = Self::function_name(&node.inner(), source) {
-                                methods.push(method_name);
+                // Extract trait methods from declaration_list
+                if let Some(decl_list) = ts_node.child_by_field_name("body") {
+                    let mut cursor = decl_list.walk();
+                    if cursor.goto_first_child() {
+                        loop {
+                            let node = cursor.node();
+                            if node.kind() == "function_signature_item" {
+                                // For function signatures, get the name directly
+                                if let Some(name_node) = node.child_by_field_name("name") {
+                                    if let Ok(method_name) = name_node.utf8_text(source.as_bytes()) {
+                                        methods.push(method_name.to_string());
+                                    }
+                                }
+                            } else if node.kind() == "function_item" {
+                                if let Some(method_name) = Self::function_name(&node, source) {
+                                    methods.push(method_name);
+                                }
                             }
-                        }
 
-                        if !cursor.goto_next_sibling() {
-                            break;
+                            if !cursor.goto_next_sibling() {
+                                break;
+                            }
                         }
                     }
                 }
@@ -266,30 +275,44 @@ impl RustSyntax {
             // Extract type being implemented
             if let Some(type_node) = ts_node.child_by_field_name("type") {
                 if let Ok(type_text) = type_node.utf8_text(source.as_bytes()) {
-                    type_name = Some(type_text.to_string());
+                    // Extract just the base type name (e.g., "Array" from "Array<T, N>")
+                    let base_type = if let Some(angle_pos) = type_text.find('<') {
+                        type_text[..angle_pos].trim()
+                    } else {
+                        type_text.trim()
+                    };
+                    type_name = Some(base_type.to_string());
                 }
             }
 
             // Check if it's a trait implementation
             if let Some(trait_node) = ts_node.child_by_field_name("trait") {
                 if let Ok(trait_text) = trait_node.utf8_text(source.as_bytes()) {
-                    trait_name = Some(trait_text.to_string());
+                    // Extract just the trait name (e.g., "Display" from "std::fmt::Display")
+                    let base_trait = if let Some(colon_pos) = trait_text.rfind("::") {
+                        &trait_text[colon_pos + 2..]
+                    } else {
+                        trait_text.trim()
+                    };
+                    trait_name = Some(base_trait.to_string());
                 }
             }
 
-            // Extract methods in the impl block
-            let mut cursor = impl_node.walk();
-            if cursor.goto_first_child() {
-                loop {
-                    let node = cursor.node();
-                    if node.kind() == "function_item" {
-                        if let Some(method_name) = Self::function_name(&node.inner(), source) {
-                            methods.push(method_name);
+            // Extract methods from the impl block's declaration_list
+            if let Some(decl_list) = ts_node.child_by_field_name("body") {
+                let mut cursor = decl_list.walk();
+                if cursor.goto_first_child() {
+                    loop {
+                        let node = cursor.node();
+                        if node.kind() == "function_item" {
+                            if let Some(method_name) = Self::function_name(&node, source) {
+                                methods.push(method_name);
+                            }
                         }
-                    }
 
-                    if !cursor.goto_next_sibling() {
-                        break;
+                        if !cursor.goto_next_sibling() {
+                            break;
+                        }
                     }
                 }
             }
@@ -400,26 +423,28 @@ impl RustSyntax {
         for trait_node in trait_nodes {
             let ts_node = trait_node.inner();
             if let Some(trait_name) = Self::trait_name(&ts_node, source) {
-                // Look for associated type declarations
-                let mut cursor = trait_node.walk();
-                if cursor.goto_first_child() {
-                    loop {
-                        let node = cursor.node();
-                        if node.kind() == "type_item" {
-                            if let Some(type_name_node) = node.child_by_field_name("name") {
-                                if let Ok(type_name) = type_name_node.inner().utf8_text(source.as_bytes()) {
-                                    associated_types.push((
-                                        trait_name.clone(),
-                                        type_name.to_string(),
-                                        trait_node.start_position(),
-                                        trait_node.end_position()
-                                    ));
+                // Look for associated type declarations in declaration_list
+                if let Some(decl_list) = ts_node.child_by_field_name("body") {
+                    let mut cursor = decl_list.walk();
+                    if cursor.goto_first_child() {
+                        loop {
+                            let node = cursor.node();
+                            if node.kind() == "associated_type" {
+                                if let Some(type_name_node) = node.child_by_field_name("name") {
+                                    if let Ok(type_name) = type_name_node.utf8_text(source.as_bytes()) {
+                                        associated_types.push((
+                                            trait_name.clone(),
+                                            type_name.to_string(),
+                                            trait_node.start_position(),
+                                            trait_node.end_position()
+                                        ));
+                                    }
                                 }
                             }
-                        }
 
-                        if !cursor.goto_next_sibling() {
-                            break;
+                            if !cursor.goto_next_sibling() {
+                                break;
+                            }
                         }
                     }
                 }

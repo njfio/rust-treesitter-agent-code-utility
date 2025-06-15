@@ -694,9 +694,10 @@ impl TestCoverageAnalyzer {
 
     /// Estimate coverage for a single file
     fn estimate_file_coverage(&self, file: &FileInfo, test_files: &[&FileInfo]) -> Result<FileCoverage> {
-        let total_functions = file.symbols.iter()
+        let source_functions: Vec<_> = file.symbols.iter()
             .filter(|s| s.kind == "function" && s.is_public)
-            .count();
+            .collect();
+        let total_functions = source_functions.len();
 
         // Simple heuristic: look for test functions that might test this file
         let file_stem = file.path.file_stem()
@@ -712,16 +713,31 @@ impl TestCoverageAnalyzer {
                 .unwrap_or("");
 
             // Check if test file might be testing this source file
-            if test_file_name.contains(file_stem) ||
-               test_file.symbols.iter().any(|s| s.name.contains(file_stem)) {
+            let is_related_test_file = test_file_name.contains(file_stem) ||
+                test_file.symbols.iter().any(|s| s.name.contains(file_stem));
+
+            if is_related_test_file {
                 related_test_files.push(test_file.path.clone());
 
-                // Count test functions that might test functions in this file
-                let relevant_tests = test_file.symbols.iter()
-                    .filter(|s| self.is_test_function(s) && s.name.contains(file_stem))
-                    .count();
+                // For each source function, check if there's a corresponding test
+                for source_func in &source_functions {
+                    let has_test = test_file.symbols.iter().any(|test_symbol| {
+                        self.is_test_function(test_symbol) && (
+                            // Test function name contains source function name
+                            test_symbol.name.to_lowercase().contains(&source_func.name.to_lowercase()) ||
+                            // Test function name follows test_<function_name> pattern
+                            test_symbol.name.to_lowercase() == format!("test_{}", source_func.name.to_lowercase()) ||
+                            // Test function name follows <function_name>_test pattern
+                            test_symbol.name.to_lowercase() == format!("{}_test", source_func.name.to_lowercase()) ||
+                            // Test function name contains file stem (for broader matching)
+                            (test_symbol.name.contains(file_stem) && test_symbol.name.contains("test"))
+                        )
+                    });
 
-                tested_functions += relevant_tests.min(total_functions);
+                    if has_test {
+                        tested_functions += 1;
+                    }
+                }
             }
         }
 
@@ -783,12 +799,23 @@ impl TestCoverageAnalyzer {
     }
 
     /// Check if a function has tests
-    fn function_has_test(&self, symbol: &crate::Symbol, _file: &FileInfo, test_files: &[&FileInfo]) -> bool {
+    fn function_has_test(&self, symbol: &crate::Symbol, file: &FileInfo, test_files: &[&FileInfo]) -> bool {
+        let file_stem = file.path.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+
         for test_file in test_files {
             for test_symbol in &test_file.symbols {
-                if self.is_test_function(test_symbol) &&
-                   test_symbol.name.to_lowercase().contains(&symbol.name.to_lowercase()) {
-                    return true;
+                if self.is_test_function(test_symbol) {
+                    // Enhanced matching logic
+                    let matches = test_symbol.name.to_lowercase().contains(&symbol.name.to_lowercase()) ||
+                        test_symbol.name.to_lowercase() == format!("test_{}", symbol.name.to_lowercase()) ||
+                        test_symbol.name.to_lowercase() == format!("{}_test", symbol.name.to_lowercase()) ||
+                        (test_symbol.name.contains(file_stem) && test_symbol.name.contains("test"));
+
+                    if matches {
+                        return true;
+                    }
                 }
             }
         }

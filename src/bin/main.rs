@@ -2426,7 +2426,10 @@ fn security_command(
         "medium" => rust_tree_sitter::SecuritySeverity::Medium,
         "low" => rust_tree_sitter::SecuritySeverity::Low,
         "info" => rust_tree_sitter::SecuritySeverity::Info,
-        _ => rust_tree_sitter::SecuritySeverity::Low,
+        _ => {
+            eprintln!("Error: Invalid severity level '{}'. Valid options are: critical, high, medium, low, info", min_severity);
+            std::process::exit(1);
+        }
     };
 
     // Configure security scanner

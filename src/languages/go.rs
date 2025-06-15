@@ -646,10 +646,28 @@ impl GoSyntax {
                             if cursor.goto_first_child() {
                                 loop {
                                     let node = cursor.node();
-                                    if node.kind() == "method_spec" {
+                                    if node.kind() == "method_elem" {
+                                        // Look for field_identifier child which contains the method name
                                         if let Some(method_name_node) = node.child_by_field_name("name") {
                                             if let Ok(method_name) = method_name_node.text() {
                                                 methods.push(method_name.to_string());
+                                            }
+                                        } else {
+                                            // Fallback: look for first field_identifier child
+                                            let mut method_cursor = node.walk();
+                                            if method_cursor.goto_first_child() {
+                                                loop {
+                                                    let child = method_cursor.node();
+                                                    if child.kind() == "field_identifier" {
+                                                        if let Ok(method_name) = child.text() {
+                                                            methods.push(method_name.to_string());
+                                                            break;
+                                                        }
+                                                    }
+                                                    if !method_cursor.goto_next_sibling() {
+                                                        break;
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -752,18 +770,33 @@ impl GoSyntax {
                             let mut embedded_types = Vec::new();
 
                             // Look for field declarations without field names (embedded types)
+                            // First find the field_declaration_list
                             let mut cursor = struct_node.walk();
                             if cursor.goto_first_child() {
                                 loop {
                                     let node = cursor.node();
-                                    if node.kind() == "field_declaration" {
-                                        // Check if it's an embedded field (no field name, just type)
-                                        let children: Vec<_> = node.children().into_iter().collect();
-                                        if children.len() == 1 && children[0].kind() != "field_identifier" {
-                                            if let Ok(embedded_type) = children[0].text() {
-                                                embedded_types.push(embedded_type.to_string());
+                                    if node.kind() == "field_declaration_list" {
+                                        // Now look for field_declaration nodes inside the list
+                                        let mut field_cursor = node.walk();
+                                        if field_cursor.goto_first_child() {
+                                            loop {
+                                                let field_node = field_cursor.node();
+                                                if field_node.kind() == "field_declaration" {
+                                                    // Check if it's an embedded field (no field name, just type)
+                                                    let children: Vec<_> = field_node.children().into_iter().collect();
+                                                    if children.len() == 1 && children[0].kind() == "type_identifier" {
+                                                        if let Ok(embedded_type) = children[0].text() {
+                                                            embedded_types.push(embedded_type.to_string());
+                                                        }
+                                                    }
+                                                }
+
+                                                if !field_cursor.goto_next_sibling() {
+                                                    break;
+                                                }
                                             }
                                         }
+                                        break; // Found the field_declaration_list, no need to continue
                                     }
 
                                     if !cursor.goto_next_sibling() {

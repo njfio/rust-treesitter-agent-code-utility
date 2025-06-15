@@ -12,6 +12,7 @@ use crate::error::{Error, Result};
 
 /// Supported programming languages
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Language {
     /// Rust programming language
     Rust,

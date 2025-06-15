@@ -717,24 +717,70 @@ impl CSyntax {
     pub fn find_function_pointers(tree: &SyntaxTree, source: &str) -> Vec<(String, String, tree_sitter::Point, tree_sitter::Point)> {
         let mut function_pointers = Vec::new();
 
-        // Look for function pointer declarations in variable declarations
-        let declaration_nodes = tree.find_nodes_by_kind("declaration");
-        for decl_node in declaration_nodes {
-            if let Ok(decl_text) = decl_node.text() {
-                // Check if it contains function pointer syntax: (*name)
-                if decl_text.contains("(*") && decl_text.contains(")") {
-                    // Extract function pointer name and signature
-                    if let Some(start) = decl_text.find("(*") {
-                        if let Some(end) = decl_text[start..].find(")") {
-                            let name_part = &decl_text[start + 2..start + end];
-                            let ts_node = decl_node.inner();
-                            function_pointers.push((
-                                name_part.trim().to_string(),
-                                decl_text.trim().to_string(),
-                                ts_node.start_position(),
-                                ts_node.end_position()
-                            ));
+        // Look for function pointer typedefs
+        let typedef_nodes = tree.find_nodes_by_kind("type_definition");
+        for typedef_node in typedef_nodes {
+            // Check if this typedef contains a function_declarator (function pointer)
+            let mut cursor = typedef_node.walk();
+            if cursor.goto_first_child() {
+                loop {
+                    let node = cursor.node();
+                    if node.kind() == "function_declarator" {
+                        // This is a function pointer typedef
+                        // Extract the name from the parenthesized_declarator
+                        let mut func_cursor = node.walk();
+                        if func_cursor.goto_first_child() {
+                            loop {
+                                let func_node = func_cursor.node();
+                                if func_node.kind() == "parenthesized_declarator" {
+                                    // Look for the pointer_declarator inside
+                                    let mut ptr_cursor = func_node.walk();
+                                    if ptr_cursor.goto_first_child() {
+                                        loop {
+                                            let ptr_node = ptr_cursor.node();
+                                            if ptr_node.kind() == "pointer_declarator" {
+                                                // Find the type_identifier (the name)
+                                                let mut name_cursor = ptr_node.walk();
+                                                if name_cursor.goto_first_child() {
+                                                    loop {
+                                                        let name_node = name_cursor.node();
+                                                        if name_node.kind() == "type_identifier" {
+                                                            if let Ok(name) = name_node.text() {
+                                                                if let Ok(signature) = typedef_node.text() {
+                                                                    let ts_node = typedef_node.inner();
+                                                                    function_pointers.push((
+                                                                        name.to_string(),
+                                                                        signature.trim().to_string(),
+                                                                        ts_node.start_position(),
+                                                                        ts_node.end_position()
+                                                                    ));
+                                                                }
+                                                            }
+                                                            break;
+                                                        }
+                                                        if !name_cursor.goto_next_sibling() {
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                                break;
+                                            }
+                                            if !ptr_cursor.goto_next_sibling() {
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    break;
+                                }
+                                if !func_cursor.goto_next_sibling() {
+                                    break;
+                                }
+                            }
                         }
+                        break;
+                    }
+                    if !cursor.goto_next_sibling() {
+                        break;
                     }
                 }
             }
@@ -765,34 +811,76 @@ impl CSyntax {
 
         for struct_node in struct_nodes {
             if let Some(struct_name) = Self::struct_name(&struct_node, source) {
-                // Look for field declarations with bit field syntax
+                // Look for field declarations with bitfield_clause
                 let mut cursor = struct_node.walk();
                 if cursor.goto_first_child() {
                     loop {
                         let node = cursor.node();
-                        if node.kind() == "field_declaration" {
-                            if let Ok(field_text) = node.text() {
-                                // Check for bit field syntax: field_name : bit_count
-                                if field_text.contains(" : ") {
-                                    let parts: Vec<&str> = field_text.split(" : ").collect();
-                                    if parts.len() == 2 {
-                                        let field_name = parts[0].trim().split_whitespace().last().unwrap_or("").to_string();
-                                        let bit_count = parts[1].trim().split(';').next().unwrap_or("0");
-                                        if let Ok(bits) = bit_count.parse::<u32>() {
-                                            let ts_node = node.inner();
+                        if node.kind() == "field_declaration_list" {
+                            // Look inside the field declaration list
+                            let mut field_cursor = node.walk();
+                            if field_cursor.goto_first_child() {
+                                loop {
+                                    let field_node = field_cursor.node();
+                                    if field_node.kind() == "field_declaration" {
+                                        // Look for field_identifier and bitfield_clause
+                                        let mut decl_cursor = field_node.walk();
+                                        let mut field_name = String::new();
+                                        let mut bit_count = 0u32;
+                                        let mut has_bitfield = false;
+
+                                        if decl_cursor.goto_first_child() {
+                                            loop {
+                                                let decl_child = decl_cursor.node();
+                                                if decl_child.kind() == "field_identifier" {
+                                                    if let Ok(name) = decl_child.text() {
+                                                        field_name = name.to_string();
+                                                    }
+                                                } else if decl_child.kind() == "bitfield_clause" {
+                                                    has_bitfield = true;
+                                                    // Look for the number_literal inside bitfield_clause
+                                                    let mut bit_cursor = decl_child.walk();
+                                                    if bit_cursor.goto_first_child() {
+                                                        loop {
+                                                            let bit_child = bit_cursor.node();
+                                                            if bit_child.kind() == "number_literal" {
+                                                                if let Ok(bits_text) = bit_child.text() {
+                                                                    if let Ok(bits) = bits_text.parse::<u32>() {
+                                                                        bit_count = bits;
+                                                                    }
+                                                                }
+                                                                break;
+                                                            }
+                                                            if !bit_cursor.goto_next_sibling() {
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                if !decl_cursor.goto_next_sibling() {
+                                                    break;
+                                                }
+                                            }
+                                        }
+
+                                        if has_bitfield && !field_name.is_empty() {
+                                            let ts_node = field_node.inner();
                                             bit_fields.push((
                                                 struct_name.clone(),
                                                 field_name,
-                                                bits,
+                                                bit_count,
                                                 ts_node.start_position(),
                                                 ts_node.end_position()
                                             ));
                                         }
                                     }
+                                    if !field_cursor.goto_next_sibling() {
+                                        break;
+                                    }
                                 }
                             }
+                            break;
                         }
-
                         if !cursor.goto_next_sibling() {
                             break;
                         }

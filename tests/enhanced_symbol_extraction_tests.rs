@@ -363,9 +363,9 @@ _internal_counter = 0
         assert!(!var.is_public);
     }
 
-    // Check imports
+    // Check imports (both import and from_import)
     let imports: Vec<_> = file_info.symbols.iter()
-        .filter(|s| s.kind == "import")
+        .filter(|s| s.kind == "import" || s.kind == "from_import")
         .collect();
     assert!(imports.len() >= 3); // os, sys, typing, datetime
     

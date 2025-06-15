@@ -29,9 +29,32 @@ impl JavaScriptSyntax {
 
     /// Check if a node represents any kind of function
     pub fn is_function(node: &Node) -> bool {
-        Self::is_function_declaration(node) 
-            || Self::is_function_expression(node) 
+        Self::is_function_declaration(node)
+            || Self::is_function_expression(node)
             || Self::is_arrow_function(node)
+            || Self::is_generator_function_declaration(node)
+            || Self::is_generator_function_expression(node)
+    }
+
+    /// Check if a node represents a generator function declaration
+    pub fn is_generator_function_declaration(node: &Node) -> bool {
+        node.kind() == "generator_function_declaration"
+    }
+
+    /// Check if a node represents a generator function expression
+    pub fn is_generator_function_expression(node: &Node) -> bool {
+        node.kind() == "generator_function"
+    }
+
+    /// Check if a node represents an async function
+    pub fn is_async_function(node: &Node) -> bool {
+        // Check if the function has an "async" modifier
+        for child in node.children() {
+            if child.kind() == "async" {
+                return true;
+            }
+        }
+        false
     }
 
     /// Check if a node represents a class declaration
@@ -142,19 +165,7 @@ impl JavaScriptSyntax {
         names
     }
 
-    /// Check if a function is async
-    pub fn is_async_function(node: &Node) -> bool {
-        if !Self::is_function(node) {
-            return false;
-        }
 
-        for child in node.children() {
-            if child.kind() == "async" {
-                return true;
-            }
-        }
-        false
-    }
 
     /// Check if a function is a generator
     pub fn is_generator_function(node: &Node) -> bool {
@@ -323,17 +334,36 @@ impl JavaScriptSyntax {
     pub fn find_async_functions(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut async_functions = Vec::new();
 
-        // Find all function nodes and check if they're async
-        let all_functions = Self::find_functions(tree, source);
-        for (name, start_pos, end_pos) in all_functions {
-            // Check if the function text contains 'async' keyword
-            let start_byte = tree.root_node().inner().start_byte();
-            let end_byte = tree.root_node().inner().end_byte();
-            if let Ok(func_text) = tree.root_node().text() {
-                if func_text.contains("async") {
-                    // More precise check would require examining the actual node
-                    async_functions.push((name, start_pos, end_pos));
+        // Find async function declarations
+        let function_nodes = tree.find_nodes_by_kind("function_declaration");
+        for func_node in function_nodes {
+            if Self::is_async_function(&func_node) {
+                if let Some(name) = Self::function_name(&func_node, source) {
+                    let ts_node = func_node.inner();
+                    async_functions.push((name, ts_node.start_position(), ts_node.end_position()));
                 }
+            }
+        }
+
+        // Find async function expressions
+        let expr_nodes = tree.find_nodes_by_kind("function_expression");
+        for func_node in expr_nodes {
+            if Self::is_async_function(&func_node) {
+                if let Some(name) = Self::function_name(&func_node, source) {
+                    let ts_node = func_node.inner();
+                    async_functions.push((name, ts_node.start_position(), ts_node.end_position()));
+                }
+            }
+        }
+
+        // Find async arrow functions
+        let arrow_nodes = tree.find_nodes_by_kind("arrow_function");
+        for func_node in arrow_nodes {
+            if Self::is_async_function(&func_node) {
+                let name = Self::function_name(&func_node, source)
+                    .unwrap_or_else(|| "anonymous".to_string());
+                let ts_node = func_node.inner();
+                async_functions.push((name, ts_node.start_position(), ts_node.end_position()));
             }
         }
 
@@ -407,24 +437,24 @@ impl JavaScriptSyntax {
             if let Some(class_name) = Self::class_name(&class_node, source) {
                 let mut private_fields = Vec::new();
 
-                // Look for private field definitions (starting with #)
-                let mut cursor = class_node.walk();
-                if cursor.goto_first_child() {
-                    loop {
-                        let node = cursor.node();
-                        if node.kind() == "field_definition" {
-                            if let Some(property_node) = node.child_by_field_name("property") {
-                                if let Ok(field_text) = property_node.text() {
-                                    if field_text.starts_with('#') {
-                                        private_fields.push(field_text.to_string());
+                // Look for private field definitions in the class body
+                // Find the class_body node first
+                for child in class_node.children() {
+                    if child.kind() == "class_body" {
+                        // Now look for field_definition nodes within the class body
+                        for body_child in child.children() {
+                            if body_child.kind() == "field_definition" {
+                                // Look for private_property_identifier child nodes
+                                for field_child in body_child.children() {
+                                    if field_child.kind() == "private_property_identifier" {
+                                        if let Ok(field_text) = field_child.text() {
+                                            private_fields.push(field_text.to_string());
+                                        }
                                     }
                                 }
                             }
                         }
-
-                        if !cursor.goto_next_sibling() {
-                            break;
-                        }
+                        break; // Found the class body, no need to continue
                     }
                 }
 

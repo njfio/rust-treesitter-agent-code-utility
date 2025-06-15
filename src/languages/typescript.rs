@@ -56,7 +56,7 @@ impl TypeScriptSyntax {
 
     /// Check if a node represents a namespace declaration
     pub fn is_namespace_declaration(node: &Node) -> bool {
-        node.kind() == "namespace_declaration" || node.kind() == "module_declaration"
+        node.kind() == "namespace_declaration" || node.kind() == "module_declaration" || node.kind() == "internal_module"
     }
 
     /// Check if a node represents a method signature
@@ -159,6 +159,16 @@ impl TypeScriptSyntax {
             return None;
         }
 
+        // For internal_module nodes, the name is the second child (after "namespace" keyword)
+        if node.kind() == "internal_module" {
+            if let Some(name_node) = node.child(1) {
+                if name_node.kind() == "identifier" {
+                    return name_node.text().ok().map(|s| s.to_string());
+                }
+            }
+        }
+
+        // For other namespace types, try the field name approach
         node.child_by_field_name("name")
             .and_then(|name_node| name_node.text().ok())
             .map(|s| s.to_string())
@@ -435,6 +445,15 @@ impl TypeScriptSyntax {
             }
         }
 
+        // Find internal_module nodes (TypeScript namespaces)
+        let internal_module_nodes = tree.find_nodes_by_kind("internal_module");
+        for module_node in internal_module_nodes {
+            if let Some(name) = Self::namespace_name(&module_node, source) {
+                let ts_node = module_node.inner();
+                namespaces.push((name, ts_node.start_position(), ts_node.end_position()));
+            }
+        }
+
         namespaces
     }
 
@@ -531,6 +550,44 @@ impl TypeScriptSyntax {
                     let ts_node = method_node.inner();
                     decorators.push((
                         method_name.clone(),
+                        decorator,
+                        ts_node.start_position(),
+                        ts_node.end_position()
+                    ));
+                }
+            }
+        }
+
+        // Find decorated properties/fields
+        let property_nodes = tree.find_nodes_by_kind("property_declaration");
+        for property_node in property_nodes {
+            if let Some(property_name) = property_node.child_by_field_name("name")
+                .and_then(|n| n.text().ok())
+                .map(|s| s.to_string()) {
+                let property_decorators = Self::get_decorators(&property_node, source);
+                for decorator in property_decorators {
+                    let ts_node = property_node.inner();
+                    decorators.push((
+                        property_name.clone(),
+                        decorator,
+                        ts_node.start_position(),
+                        ts_node.end_position()
+                    ));
+                }
+            }
+        }
+
+        // Find decorated public field definitions (another way properties can be defined)
+        let public_field_nodes = tree.find_nodes_by_kind("public_field_definition");
+        for field_node in public_field_nodes {
+            if let Some(field_name) = field_node.child_by_field_name("name")
+                .and_then(|n| n.text().ok())
+                .map(|s| s.to_string()) {
+                let field_decorators = Self::get_decorators(&field_node, source);
+                for decorator in field_decorators {
+                    let ts_node = field_node.inner();
+                    decorators.push((
+                        field_name.clone(),
                         decorator,
                         ts_node.start_position(),
                         ts_node.end_position()

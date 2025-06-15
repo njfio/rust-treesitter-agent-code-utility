@@ -686,12 +686,20 @@ impl PythonSyntax {
         let function_nodes = tree.find_nodes_by_kind("function_definition");
 
         for func_node in function_nodes {
-            // Check if function has 'async' keyword
-            if let Some(async_node) = func_node.child_by_field_name("async") {
-                if async_node.kind() == "async" {
-                    if let Some(name) = Self::function_name(&func_node, source) {
-                        let ts_node = func_node.inner();
-                        async_functions.push((name, ts_node.start_position(), ts_node.end_position()));
+            // Check if function has 'async' keyword as a child node
+            let mut cursor = func_node.walk();
+            if cursor.goto_first_child() {
+                loop {
+                    let node = cursor.node();
+                    if node.kind() == "async" {
+                        if let Some(name) = Self::function_name(&func_node, source) {
+                            let ts_node = func_node.inner();
+                            async_functions.push((name, ts_node.start_position(), ts_node.end_position()));
+                        }
+                        break;
+                    }
+                    if !cursor.goto_next_sibling() {
+                        break;
                     }
                 }
             }
