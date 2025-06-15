@@ -261,6 +261,8 @@ fn create_mock_rust_analysis_result() -> AnalysisResult {
             ]),
         ],
         config: AnalysisConfig::default(),
+        symbols: vec![],
+        dependencies: vec![],
     }
 }
 
@@ -288,6 +290,8 @@ fn create_mock_mvc_analysis_result() -> AnalysisResult {
             ]),
         ],
         config: AnalysisConfig::default(),
+        symbols: vec![],
+        dependencies: vec![],
     }
 }
 
@@ -338,6 +342,8 @@ fn create_mock_complex_analysis_result() -> AnalysisResult {
             ]),
         ],
         config: AnalysisConfig::default(),
+        symbols: vec![],
+        dependencies: vec![],
     }
 }
 
@@ -358,6 +364,8 @@ fn create_mock_beginner_analysis_result() -> AnalysisResult {
             ]),
         ],
         config: AnalysisConfig::default(),
+        symbols: vec![],
+        dependencies: vec![],
     }
 }
 
@@ -384,6 +392,8 @@ fn create_mock_web_app_analysis_result() -> AnalysisResult {
             ]),
         ],
         config: AnalysisConfig::default(),
+        symbols: vec![],
+        dependencies: vec![],
     }
 }
 
@@ -410,6 +420,8 @@ fn create_mock_oop_analysis_result() -> AnalysisResult {
             ]),
         ],
         config: AnalysisConfig::default(),
+        symbols: vec![],
+        dependencies: vec![],
     }
 }
 
@@ -439,6 +451,8 @@ fn create_mock_clustered_analysis_result() -> AnalysisResult {
             ]),
         ],
         config: AnalysisConfig::default(),
+        symbols: vec![],
+        dependencies: vec![],
     }
 }
 
@@ -460,6 +474,8 @@ fn create_mock_analysis_with_issues() -> AnalysisResult {
             ]),
         ],
         config: AnalysisConfig::default(),
+        symbols: vec![],
+        dependencies: vec![],
     }
 }
 
@@ -481,6 +497,8 @@ fn create_mock_debt_heavy_analysis_result() -> AnalysisResult {
             ]),
         ],
         config: AnalysisConfig::default(),
+        symbols: vec![],
+        dependencies: vec![],
     }
 }
 
@@ -502,5 +520,7 @@ fn create_mock_undocumented_analysis_result() -> AnalysisResult {
             ]),
         ],
         config: AnalysisConfig::default(),
+        symbols: vec![],
+        dependencies: vec![],
     }
 }

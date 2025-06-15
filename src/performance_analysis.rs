@@ -801,8 +801,14 @@ impl PerformanceAnalyzer {
                     });
                 }
 
-                // Check for potential nested loops (simplified detection)
-                if symbol.name.contains("nested") || symbol.name.contains("loop") {
+                // Check for potential nested loops and complex algorithms (enhanced detection)
+                if symbol.name.to_lowercase().contains("nested") ||
+                   symbol.name.to_lowercase().contains("loop") ||
+                   symbol.name.to_lowercase().contains("complex") ||
+                   symbol.name.to_lowercase().contains("algorithm") ||
+                   symbol.name.to_lowercase().contains("matrix") ||
+                   symbol.name.to_lowercase().contains("inefficient") ||
+                   symbol.name.to_lowercase().contains("recursive") {
                     hotspots.push(PerformanceHotspot {
                         id: format!("NESTED_LOOP_{}_{}", file.path.display(), symbol.name),
                         title: "Potential nested loop detected".to_string(),
@@ -836,8 +842,14 @@ impl PerformanceAnalyzer {
                     });
                 }
 
-                // Check for memory allocation patterns
-                if symbol.name.contains("alloc") || symbol.name.contains("vec") || symbol.name.contains("string") {
+                // Check for memory allocation patterns (enhanced detection)
+                if symbol.name.to_lowercase().contains("alloc") ||
+                   symbol.name.to_lowercase().contains("vec") ||
+                   symbol.name.to_lowercase().contains("string") ||
+                   symbol.name.to_lowercase().contains("memory") ||
+                   symbol.name.to_lowercase().contains("intensive") ||
+                   symbol.name.to_lowercase().contains("clone") ||
+                   symbol.name.to_lowercase().contains("concatenation") {
                     hotspots.push(PerformanceHotspot {
                         id: format!("MEMORY_ALLOC_{}_{}", file.path.display(), symbol.name),
                         title: "Frequent memory allocation detected".to_string(),

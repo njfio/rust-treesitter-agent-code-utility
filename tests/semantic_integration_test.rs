@@ -38,8 +38,8 @@ pub fn main() {
     fs::write(&test_file, test_code).unwrap();
     
     // Analyze the codebase
-    let mut analyzer = CodebaseAnalyzer::new(AnalysisConfig::default()).unwrap();
-    let analysis_result = analyzer.analyze_path(&test_file).await.unwrap();
+    let mut analyzer = CodebaseAnalyzer::new();
+    let analysis_result = analyzer.analyze_file(&test_file).unwrap();
     
     // Create semantic analyzer
     let config = SemanticConfig::default();
@@ -170,8 +170,8 @@ impl UtilStruct {
     fs::write(&utils_file, utils_code).unwrap();
     
     // Analyze the codebase
-    let mut analyzer = CodebaseAnalyzer::new(AnalysisConfig::default()).unwrap();
-    let analysis_result = analyzer.analyze_directory(temp_dir.path()).await.unwrap();
+    let mut analyzer = CodebaseAnalyzer::new();
+    let analysis_result = analyzer.analyze_directory(temp_dir.path()).unwrap();
     
     // Create semantic analyzer
     let config = SemanticConfig::default();
@@ -190,13 +190,16 @@ impl UtilStruct {
 async fn test_semantic_analysis_error_handling() {
     // Test with empty analysis result
     let analysis_result = rust_tree_sitter::AnalysisResult {
-        files: vec![],
+        root_path: std::path::PathBuf::new(),
         total_files: 0,
+        parsed_files: 0,
+        error_files: 0,
         total_lines: 0,
-        total_size: 0,
         languages: std::collections::HashMap::new(),
-        analysis_time: std::time::Duration::from_millis(0),
-        errors: vec![],
+        files: vec![],
+        config: rust_tree_sitter::AnalysisConfig::default(),
+        symbols: vec![],
+        dependencies: vec![],
     };
     
     let config = SemanticConfig::default();
@@ -236,8 +239,8 @@ fn simple_function() {
     fs::write(&test_file, test_code).unwrap();
     
     // Analyze the codebase
-    let mut analyzer = CodebaseAnalyzer::new(AnalysisConfig::default()).unwrap();
-    let analysis_result = analyzer.analyze_path(&test_file).await.unwrap();
+    let mut analyzer = CodebaseAnalyzer::new();
+    let analysis_result = analyzer.analyze_file(&test_file).unwrap();
     
     // Create semantic analyzer
     let config = SemanticConfig::default();

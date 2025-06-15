@@ -7,7 +7,7 @@
 //! - Dependency graph analysis
 //! - Outdated dependency detection
 
-use crate::{AnalysisResult, Result};
+use crate::{AnalysisResult, Result, Error};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::fs;
@@ -655,10 +655,29 @@ impl DependencyAnalyzer {
             let name = line[..eq_pos].trim().to_string();
             let version_part = line[eq_pos + 1..].trim();
 
-            // Handle simple version strings
+            // Handle simple version strings: name = "version"
             if version_part.starts_with('"') && version_part.ends_with('"') {
                 let version = version_part[1..version_part.len() - 1].to_string();
                 return Some((name, version));
+            }
+
+            // Handle complex dependency specifications: name = { version = "1.0", features = ["full"] }
+            if version_part.starts_with('{') {
+                // Extract version from complex specification
+                if let Some(version_start) = version_part.find("version") {
+                    let after_version = &version_part[version_start + 7..]; // Skip "version"
+                    if let Some(eq_pos) = after_version.find('=') {
+                        let version_value = after_version[eq_pos + 1..].trim();
+                        // Find the version string within quotes
+                        if let Some(quote_start) = version_value.find('"') {
+                            let after_quote = &version_value[quote_start + 1..];
+                            if let Some(quote_end) = after_quote.find('"') {
+                                let version = after_quote[..quote_end].to_string();
+                                return Some((name, version));
+                            }
+                        }
+                    }
+                }
             }
         }
         None
@@ -667,27 +686,57 @@ impl DependencyAnalyzer {
     /// Extract npm/yarn dependencies
     fn extract_npm_dependencies(&self, pm_info: &PackageManagerInfo) -> Result<Vec<Dependency>> {
         let content = fs::read_to_string(&pm_info.config_file)?;
-
-        // Simple JSON parsing for package.json
-        // In a real implementation, you'd use a proper JSON parser
         let mut dependencies = Vec::new();
 
-        // This is a simplified implementation
-        // In practice, you'd use serde_json to parse the package.json
-        dependencies.push(Dependency {
-            name: "example-dependency".to_string(),
-            version: "1.0.0".to_string(),
-            latest_version: Some("1.2.0".to_string()),
-            manager: pm_info.manager.clone(),
-            dependency_type: DependencyType::Direct,
-            license: Some("MIT".to_string()),
-            repository: None,
-            description: Some("Example dependency for demonstration".to_string()),
-            maintainers: vec!["maintainer@example.com".to_string()],
-            download_count: Some(1000000),
-            last_updated: Some("2024-01-01".to_string()),
-            security_advisories: 0,
-        });
+        // Parse package.json using serde_json
+        let package_json: serde_json::Value = serde_json::from_str(&content)
+            .map_err(|e| Error::ParseError(format!("Failed to parse package.json: {}", e)))?;
+
+        // Extract regular dependencies
+        if let Some(deps) = package_json.get("dependencies").and_then(|d| d.as_object()) {
+            for (name, version) in deps {
+                if let Some(version_str) = version.as_str() {
+                    dependencies.push(Dependency {
+                        name: name.clone(),
+                        version: version_str.to_string(),
+                        latest_version: None,
+                        manager: pm_info.manager.clone(),
+                        dependency_type: DependencyType::Direct,
+                        license: None,
+                        repository: None,
+                        description: None,
+                        maintainers: Vec::new(),
+                        download_count: None,
+                        last_updated: None,
+                        security_advisories: 0,
+                    });
+                }
+            }
+        }
+
+        // Extract dev dependencies if configured
+        if self.config.include_dev_dependencies {
+            if let Some(dev_deps) = package_json.get("devDependencies").and_then(|d| d.as_object()) {
+                for (name, version) in dev_deps {
+                    if let Some(version_str) = version.as_str() {
+                        dependencies.push(Dependency {
+                            name: name.clone(),
+                            version: version_str.to_string(),
+                            latest_version: None,
+                            manager: pm_info.manager.clone(),
+                            dependency_type: DependencyType::Development,
+                            license: None,
+                            repository: None,
+                            description: None,
+                            maintainers: Vec::new(),
+                            download_count: None,
+                            last_updated: None,
+                            security_advisories: 0,
+                        });
+                    }
+                }
+            }
+        }
 
         Ok(dependencies)
     }

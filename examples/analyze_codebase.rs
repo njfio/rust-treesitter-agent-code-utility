@@ -36,6 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         follow_symlinks: false,
         max_depth: Some(10),
         include_hidden: false,
+        use_enhanced_error_handling: true,
     };
 
     let mut analyzer = CodebaseAnalyzer::with_config(config);

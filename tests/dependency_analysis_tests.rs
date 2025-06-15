@@ -21,6 +21,8 @@ fn create_mock_analysis_result(temp_dir: &TempDir) -> AnalysisResult {
         languages: std::collections::HashMap::new(),
         files: vec![],
         config: AnalysisConfig::default(),
+        symbols: vec![],
+        dependencies: vec![],
     }
 }
 
