@@ -6,6 +6,7 @@
 use crate::error::{Error, Result};
 use crate::languages::Language;
 use crate::parser::Parser;
+use crate::advanced_security::{AdvancedSecurityAnalyzer, SecurityVulnerability};
 
 use crate::tree::SyntaxTree;
 use std::collections::HashMap;
@@ -106,6 +107,8 @@ pub struct FileInfo {
     pub parse_errors: Vec<String>,
     /// Extracted symbols (functions, classes, etc.)
     pub symbols: Vec<Symbol>,
+    /// Security vulnerabilities found in this file
+    pub security_vulnerabilities: Vec<SecurityVulnerability>,
 }
 
 /// A code symbol (function, class, struct, etc.)
@@ -156,6 +159,7 @@ pub struct AnalysisResult {
 pub struct CodebaseAnalyzer {
     config: AnalysisConfig,
     parsers: HashMap<Language, Parser>,
+    security_analyzer: AdvancedSecurityAnalyzer,
 }
 
 impl CodebaseAnalyzer {
@@ -169,6 +173,7 @@ impl CodebaseAnalyzer {
         Self {
             config,
             parsers: HashMap::new(),
+            security_analyzer: AdvancedSecurityAnalyzer::new().expect("Failed to create security analyzer"),
         }
     }
 
@@ -323,6 +328,7 @@ impl CodebaseAnalyzer {
                 parsed_successfully: false,
                 parse_errors: Vec::new(),
                 symbols: Vec::new(),
+                security_vulnerabilities: Vec::new(),
             };
             result.files.push(file_info);
             return Ok(());
@@ -331,13 +337,14 @@ impl CodebaseAnalyzer {
         // Parse the file
         let parser = self.get_parser(language)?;
         let mut file_info = FileInfo {
-            path: relative_path,
+            path: relative_path.clone(),
             language: lang_name,
             size: file_size,
             lines: line_count,
             parsed_successfully: false,
             parse_errors: Vec::new(),
             symbols: Vec::new(),
+            security_vulnerabilities: Vec::new(),
         };
 
         match parser.parse(&content, None) {
@@ -362,6 +369,35 @@ impl CodebaseAnalyzer {
                 // Extract symbols only for Full depth
                 if matches!(self.config.depth, AnalysisDepth::Full) {
                     file_info.symbols = self.extract_symbols(&tree, &content, language)?;
+                }
+
+                // Perform security analysis for Deep and Full depth
+                if matches!(self.config.depth, AnalysisDepth::Deep | AnalysisDepth::Full) {
+                    // Create a temporary FileInfo for security analysis with full path
+                    let temp_file_info = FileInfo {
+                        path: file_path.to_path_buf(), // Use full path for security analysis
+                        language: file_info.language.clone(),
+                        size: file_info.size,
+                        lines: file_info.lines,
+                        parsed_successfully: file_info.parsed_successfully,
+                        parse_errors: file_info.parse_errors.clone(),
+                        symbols: file_info.symbols.clone(),
+                        security_vulnerabilities: Vec::new(),
+                    };
+
+                    match self.security_analyzer.detect_owasp_vulnerabilities(&temp_file_info) {
+                        Ok(vulnerabilities) => {
+                            // Update the vulnerabilities to use relative paths for consistency
+                            let mut updated_vulnerabilities = vulnerabilities;
+                            for vuln in &mut updated_vulnerabilities {
+                                vuln.location.file = relative_path.clone();
+                            }
+                            file_info.security_vulnerabilities = updated_vulnerabilities;
+                        }
+                        Err(e) => {
+                            eprintln!("Warning: Security analysis failed for {}: {}", file_path.display(), e);
+                        }
+                    }
                 }
             }
             Err(e) => {

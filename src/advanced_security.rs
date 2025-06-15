@@ -22,6 +22,9 @@
 //! not supported by the current implementation quality.
 
 use crate::{AnalysisResult, FileInfo, Result, Error};
+use crate::parser::Parser;
+use crate::tree::{SyntaxTree, Node};
+use crate::languages::{Language, detect_language_from_path};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use regex::Regex;
@@ -68,6 +71,27 @@ struct SecurityPatterns {
     insecure_functions: HashMap<String, Regex>,
     /// Patterns for hardcoded credentials
     credentials: HashMap<String, Regex>,
+}
+
+/// AST-based security analyzer for context-aware vulnerability detection
+struct AstSecurityAnalyzer {
+    /// Language-specific parsers cache
+    parsers: HashMap<Language, Parser>,
+}
+
+/// Context information for AST-based analysis
+#[derive(Debug, Clone)]
+struct SecurityContext {
+    /// Current function name
+    function_name: Option<String>,
+    /// Whether we're in a test file
+    is_test_file: bool,
+    /// Whether we're in a comment
+    is_comment: bool,
+    /// Variable assignments in current scope
+    variable_assignments: HashMap<String, String>,
+    /// Function calls in current scope
+    function_calls: Vec<String>,
 }
 
 /// Results of advanced security analysis
@@ -246,12 +270,12 @@ pub enum RemediationEffort {
 }
 
 /// Confidence level of vulnerability detection
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum ConfidenceLevel {
-    High,
-    Medium,
     Low,
+    Medium,
+    High,
 }
 
 /// Detected secret or sensitive data
@@ -555,8 +579,69 @@ impl AdvancedSecurityAnalyzer {
         }
     }
 
-    /// Detect OWASP Top 10 vulnerabilities
-    fn detect_owasp_vulnerabilities(&self, file: &FileInfo) -> Result<Vec<SecurityVulnerability>> {
+    /// Detect OWASP Top 10 vulnerabilities using AST-based analysis
+    pub fn detect_owasp_vulnerabilities(&self, file: &FileInfo) -> Result<Vec<SecurityVulnerability>> {
+        let mut vulnerabilities = Vec::new();
+
+        // Try AST-based analysis first
+        match self.analyze_with_ast(file) {
+            Ok(ast_vulnerabilities) => {
+                vulnerabilities.extend(ast_vulnerabilities);
+            }
+            Err(_) => {
+                // AST analysis failed, will rely on string-based analysis
+            }
+        }
+
+        // Always run string-based analysis as well to catch patterns AST might miss
+        match self.analyze_with_string_matching(file) {
+            Ok(string_vulnerabilities) => {
+                // Deduplicate vulnerabilities by checking if similar ones already exist
+                for vuln in string_vulnerabilities {
+                    let is_duplicate = vulnerabilities.iter().any(|existing| {
+                        existing.location.start_line == vuln.location.start_line &&
+                        existing.owasp_category == vuln.owasp_category
+                    });
+
+                    if !is_duplicate {
+                        vulnerabilities.push(vuln);
+                    }
+                }
+            }
+            Err(_) => {
+                // String-based analysis failed, continue with AST results only
+            }
+        }
+
+        Ok(vulnerabilities)
+    }
+
+    /// AST-based vulnerability analysis
+    fn analyze_with_ast(&self, file: &FileInfo) -> Result<Vec<SecurityVulnerability>> {
+        let mut vulnerabilities = Vec::new();
+
+        // Detect language and create parser
+        let language = detect_language_from_path(&file.path)
+            .ok_or_else(|| Error::language("Unable to detect language for AST analysis".to_string()))?;
+
+        let parser = Parser::new(language)?;
+        let content = std::fs::read_to_string(&file.path)?;
+        let tree = parser.parse(&content, None)?;
+
+        // Create security context
+        let context = self.build_security_context(&tree, file);
+
+        // Analyze different vulnerability types using AST
+        vulnerabilities.extend(self.detect_sql_injection_ast(&tree, &content, file, &context)?);
+        vulnerabilities.extend(self.detect_command_injection_ast(&tree, &content, file, &context)?);
+        vulnerabilities.extend(self.detect_hardcoded_secrets_ast(&tree, &content, file, &context)?);
+        vulnerabilities.extend(self.detect_weak_crypto_ast(&tree, &content, file, &context)?);
+
+        Ok(vulnerabilities)
+    }
+
+    /// Fallback string-based analysis
+    fn analyze_with_string_matching(&self, file: &FileInfo) -> Result<Vec<SecurityVulnerability>> {
         let mut vulnerabilities = Vec::new();
 
         // Read file content for analysis
@@ -1395,6 +1480,529 @@ impl AdvancedSecurityAnalyzer {
 
         score.max(0.0).min(100.0) as u8
     }
+    /// Build security context from AST
+    fn build_security_context(&self, tree: &SyntaxTree, file: &FileInfo) -> SecurityContext {
+        let root = tree.root_node();
+        let mut context = SecurityContext {
+            function_name: None,
+            is_test_file: file.path.to_string_lossy().contains("test"),
+            is_comment: false,
+            variable_assignments: HashMap::new(),
+            function_calls: Vec::new(),
+        };
+
+        // Walk the tree to build context
+        self.walk_node_for_context(&root, &mut context);
+        context
+    }
+
+    /// Walk AST node to build security context
+    fn walk_node_for_context(&self, node: &Node, context: &mut SecurityContext) {
+        match node.kind() {
+            "function_item" | "function_declaration" | "method_definition" => {
+                // Extract function name if available
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    if let Ok(name) = name_node.text() {
+                        context.function_name = Some(name.to_string());
+                    }
+                }
+            }
+            "assignment_expression" | "variable_declaration" => {
+                // Track variable assignments for taint analysis
+                // This is a simplified version - real implementation would be more complex
+            }
+            "call_expression" => {
+                // Track function calls
+                if let Some(function_node) = node.child_by_field_name("function") {
+                    if let Ok(function_name) = function_node.text() {
+                        context.function_calls.push(function_name.to_string());
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        // Recursively process children
+        for child in node.children() {
+            self.walk_node_for_context(&child, context);
+        }
+    }
+
+    /// Detect SQL injection using AST analysis
+    fn detect_sql_injection_ast(&self, tree: &SyntaxTree, content: &str, file: &FileInfo, context: &SecurityContext) -> Result<Vec<SecurityVulnerability>> {
+        let mut vulnerabilities = Vec::new();
+        let root = tree.root_node();
+
+        self.analyze_node_for_sql_injection(&root, content, file, context, &mut vulnerabilities)?;
+        Ok(vulnerabilities)
+    }
+
+    /// Analyze node for SQL injection patterns
+    fn analyze_node_for_sql_injection(&self, node: &Node, content: &str, file: &FileInfo, context: &SecurityContext, vulnerabilities: &mut Vec<SecurityVulnerability>) -> Result<()> {
+        // Look for call expressions that might be database operations
+        if node.kind() == "call_expression" {
+            if let Some(function_node) = node.child_by_field_name("function") {
+                if let Ok(function_name) = function_node.text() {
+                    let function_name_lower = function_name.to_lowercase();
+
+                    // Check if this is a database function
+                    if self.is_database_function(&function_name_lower) {
+                        // Analyze arguments for potential injection
+                        if let Some(args_node) = node.child_by_field_name("arguments") {
+                            if self.has_string_concatenation_in_args(&args_node, content) {
+                                // Only flag if we're confident this is a real SQL operation
+                                let confidence = self.calculate_sql_injection_confidence(node, content, context);
+
+                                if confidence >= ConfidenceLevel::Medium {
+                                    vulnerabilities.push(SecurityVulnerability {
+                                        id: format!("AST_SQL_{}", node.start_position().row),
+                                        title: "SQL injection vulnerability detected".to_string(),
+                                        description: "Database operation uses string concatenation which may allow SQL injection".to_string(),
+                                        severity: SecuritySeverity::High,
+                                        owasp_category: OwaspCategory::Injection,
+                                        cwe_id: Some("CWE-89".to_string()),
+                                        location: VulnerabilityLocation {
+                                            file: file.path.clone(),
+                                            function: context.function_name.clone(),
+                                            start_line: node.start_position().row + 1,
+                                            end_line: node.end_position().row + 1,
+                                            column: node.start_position().column,
+                                        },
+                                        code_snippet: node.text().unwrap_or("").to_string(),
+                                        impact: SecurityImpact {
+                                            confidentiality: ImpactLevel::High,
+                                            integrity: ImpactLevel::High,
+                                            availability: ImpactLevel::Medium,
+                                            overall_score: 8.0,
+                                        },
+                                        remediation: RemediationGuidance {
+                                            summary: "Use parameterized queries to prevent SQL injection".to_string(),
+                                            steps: vec![
+                                                "Replace string concatenation with parameterized queries".to_string(),
+                                                "Use prepared statements".to_string(),
+                                                "Validate and sanitize all user inputs".to_string(),
+                                            ],
+                                            code_examples: vec![
+                                                CodeExample {
+                                                    description: "Use parameterized query".to_string(),
+                                                    vulnerable_code: "query = \"SELECT * FROM users WHERE id = \" + user_id".to_string(),
+                                                    secure_code: "query = \"SELECT * FROM users WHERE id = ?\"; execute(query, [user_id])".to_string(),
+                                                    language: "sql".to_string(),
+                                                }
+                                            ],
+                                            references: vec![
+                                                "https://owasp.org/Top10/A03_2021-Injection/".to_string(),
+                                            ],
+                                            effort: RemediationEffort::Medium,
+                                        },
+                                        confidence,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Recursively analyze children
+        for child in node.children() {
+            self.analyze_node_for_sql_injection(&child, content, file, context, vulnerabilities)?;
+        }
+
+        Ok(())
+    }
+
+    /// Check if function name indicates database operation
+    fn is_database_function(&self, function_name: &str) -> bool {
+        let db_functions = [
+            "query", "execute", "exec", "prepare", "select", "insert", "update", "delete",
+            "find", "findone", "findall", "save", "create", "destroy", "remove",
+            "sql", "raw", "rawquery", "executesql", "runsql"
+        ];
+
+        db_functions.iter().any(|&db_func| function_name.contains(db_func))
+    }
+
+    /// Check if arguments contain string concatenation
+    fn has_string_concatenation_in_args(&self, args_node: &Node, content: &str) -> bool {
+        // Look for binary expressions with + operator or string interpolation
+        for child in args_node.children() {
+            if child.kind() == "binary_expression" {
+                if let Some(operator_node) = child.child_by_field_name("operator") {
+                    if let Ok(operator) = operator_node.text() {
+                        if operator == "+" {
+                            return true;
+                        }
+                    }
+                }
+            }
+            // Check for template literals or string interpolation
+            if child.kind() == "template_string" || child.kind() == "formatted_string" {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Calculate confidence level for SQL injection detection
+    fn calculate_sql_injection_confidence(&self, node: &Node, content: &str, context: &SecurityContext) -> ConfidenceLevel {
+        let mut confidence_score = 0;
+
+        // Higher confidence if in a non-test file
+        if !context.is_test_file {
+            confidence_score += 2;
+        }
+
+        // Higher confidence if function name clearly indicates database operation
+        if let Some(function_node) = node.child_by_field_name("function") {
+            if let Ok(function_name) = function_node.text() {
+                let function_name_lower = function_name.to_lowercase();
+                if function_name_lower.contains("sql") || function_name_lower.contains("query") {
+                    confidence_score += 3;
+                }
+            }
+        }
+
+        // Lower confidence if in comments or documentation
+        if context.is_comment {
+            confidence_score -= 2;
+        }
+
+        match confidence_score {
+            5.. => ConfidenceLevel::High,
+            3..=4 => ConfidenceLevel::Medium,
+            _ => ConfidenceLevel::Low,
+        }
+    }
+
+    /// Detect command injection using AST analysis
+    fn detect_command_injection_ast(&self, tree: &SyntaxTree, content: &str, file: &FileInfo, context: &SecurityContext) -> Result<Vec<SecurityVulnerability>> {
+        let mut vulnerabilities = Vec::new();
+        let root = tree.root_node();
+
+        self.analyze_node_for_command_injection(&root, content, file, context, &mut vulnerabilities)?;
+        Ok(vulnerabilities)
+    }
+
+    /// Analyze node for command injection patterns
+    fn analyze_node_for_command_injection(&self, node: &Node, content: &str, file: &FileInfo, context: &SecurityContext, vulnerabilities: &mut Vec<SecurityVulnerability>) -> Result<()> {
+        if node.kind() == "call_expression" {
+            if let Some(function_node) = node.child_by_field_name("function") {
+                if let Ok(function_name) = function_node.text() {
+                    let function_name_lower = function_name.to_lowercase();
+
+                    // Check if this is a command execution function
+                    if self.is_command_execution_function(&function_name_lower) {
+                        if let Some(args_node) = node.child_by_field_name("arguments") {
+                            if self.has_string_concatenation_in_args(&args_node, content) {
+                                let confidence = self.calculate_command_injection_confidence(node, content, context);
+
+                                if confidence >= ConfidenceLevel::Medium {
+                                    vulnerabilities.push(SecurityVulnerability {
+                                        id: format!("AST_CMD_{}", node.start_position().row),
+                                        title: "Command injection vulnerability detected".to_string(),
+                                        description: "Command execution with user input may allow command injection".to_string(),
+                                        severity: SecuritySeverity::Critical,
+                                        owasp_category: OwaspCategory::Injection,
+                                        cwe_id: Some("CWE-78".to_string()),
+                                        location: VulnerabilityLocation {
+                                            file: file.path.clone(),
+                                            function: context.function_name.clone(),
+                                            start_line: node.start_position().row + 1,
+                                            end_line: node.end_position().row + 1,
+                                            column: node.start_position().column,
+                                        },
+                                        code_snippet: node.text().unwrap_or("").to_string(),
+                                        impact: SecurityImpact {
+                                            confidentiality: ImpactLevel::Critical,
+                                            integrity: ImpactLevel::Critical,
+                                            availability: ImpactLevel::Critical,
+                                            overall_score: 9.5,
+                                        },
+                                        remediation: RemediationGuidance {
+                                            summary: "Avoid command execution with user input".to_string(),
+                                            steps: vec![
+                                                "Use safe APIs instead of shell commands".to_string(),
+                                                "Validate and whitelist allowed commands".to_string(),
+                                                "Escape shell metacharacters".to_string(),
+                                            ],
+                                            code_examples: vec![
+                                                CodeExample {
+                                                    description: "Use safe API instead of shell".to_string(),
+                                                    vulnerable_code: "os.system('ls ' + user_input)".to_string(),
+                                                    secure_code: "subprocess.run(['ls', user_input], check=True)".to_string(),
+                                                    language: "python".to_string(),
+                                                }
+                                            ],
+                                            references: vec![
+                                                "https://owasp.org/Top10/A03_2021-Injection/".to_string(),
+                                            ],
+                                            effort: RemediationEffort::High,
+                                        },
+                                        confidence,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Recursively analyze children
+        for child in node.children() {
+            self.analyze_node_for_command_injection(&child, content, file, context, vulnerabilities)?;
+        }
+
+        Ok(())
+    }
+
+    /// Check if function name indicates command execution
+    fn is_command_execution_function(&self, function_name: &str) -> bool {
+        let cmd_functions = [
+            "exec", "system", "shell", "cmd", "spawn", "popen", "run", "call",
+            "execute", "eval", "subprocess", "process", "command"
+        ];
+
+        cmd_functions.iter().any(|&cmd_func| function_name.contains(cmd_func))
+    }
+
+    /// Calculate confidence level for command injection detection
+    fn calculate_command_injection_confidence(&self, node: &Node, content: &str, context: &SecurityContext) -> ConfidenceLevel {
+        let mut confidence_score = 0;
+
+        // Higher confidence if in a non-test file
+        if !context.is_test_file {
+            confidence_score += 2;
+        }
+
+        // Higher confidence if function name clearly indicates command execution
+        if let Some(function_node) = node.child_by_field_name("function") {
+            if let Ok(function_name) = function_node.text() {
+                let function_name_lower = function_name.to_lowercase();
+                if function_name_lower.contains("exec") || function_name_lower.contains("system") {
+                    confidence_score += 3;
+                }
+            }
+        }
+
+        // Lower confidence if in comments
+        if context.is_comment {
+            confidence_score -= 2;
+        }
+
+        match confidence_score {
+            5.. => ConfidenceLevel::High,
+            3..=4 => ConfidenceLevel::Medium,
+            _ => ConfidenceLevel::Low,
+        }
+    }
+
+    /// Detect hardcoded secrets using AST analysis
+    fn detect_hardcoded_secrets_ast(&self, tree: &SyntaxTree, content: &str, file: &FileInfo, context: &SecurityContext) -> Result<Vec<SecurityVulnerability>> {
+        let mut vulnerabilities = Vec::new();
+        let root = tree.root_node();
+
+        self.analyze_node_for_hardcoded_secrets(&root, content, file, context, &mut vulnerabilities)?;
+        Ok(vulnerabilities)
+    }
+
+    /// Analyze node for hardcoded secrets
+    fn analyze_node_for_hardcoded_secrets(&self, node: &Node, content: &str, file: &FileInfo, context: &SecurityContext, vulnerabilities: &mut Vec<SecurityVulnerability>) -> Result<()> {
+        // Look for string literals that might contain secrets
+        if node.kind() == "string_literal" || node.kind() == "string" {
+            if let Ok(string_value) = node.text() {
+                if self.looks_like_secret(string_value) && !context.is_test_file {
+                    let confidence = self.calculate_secret_confidence(string_value, context);
+
+                    if confidence >= ConfidenceLevel::Medium {
+                        vulnerabilities.push(SecurityVulnerability {
+                            id: format!("AST_SECRET_{}", node.start_position().row),
+                            title: "Hardcoded secret detected".to_string(),
+                            description: "Potential secret or credential hardcoded in source code".to_string(),
+                            severity: SecuritySeverity::Critical,
+                            owasp_category: OwaspCategory::CryptographicFailures,
+                            cwe_id: Some("CWE-798".to_string()),
+                            location: VulnerabilityLocation {
+                                file: file.path.clone(),
+                                function: context.function_name.clone(),
+                                start_line: node.start_position().row + 1,
+                                end_line: node.end_position().row + 1,
+                                column: node.start_position().column,
+                            },
+                            code_snippet: string_value.to_string(),
+                            impact: SecurityImpact {
+                                confidentiality: ImpactLevel::Critical,
+                                integrity: ImpactLevel::High,
+                                availability: ImpactLevel::Medium,
+                                overall_score: 9.0,
+                            },
+                            remediation: RemediationGuidance {
+                                summary: "Move secrets to secure configuration".to_string(),
+                                steps: vec![
+                                    "Remove hardcoded secrets from source code".to_string(),
+                                    "Use environment variables or secure key management".to_string(),
+                                    "Implement secret rotation policies".to_string(),
+                                ],
+                                code_examples: vec![
+                                    CodeExample {
+                                        description: "Use environment variable for secret".to_string(),
+                                        vulnerable_code: "api_key = 'hardcoded_key_123'".to_string(),
+                                        secure_code: "api_key = os.getenv('API_KEY')".to_string(),
+                                        language: "python".to_string(),
+                                    }
+                                ],
+                                references: vec![
+                                    "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/".to_string(),
+                                ],
+                                effort: RemediationEffort::Medium,
+                            },
+                            confidence,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Recursively analyze children
+        for child in node.children() {
+            self.analyze_node_for_hardcoded_secrets(&child, content, file, context, vulnerabilities)?;
+        }
+
+        Ok(())
+    }
+
+    /// Check if string looks like a secret
+    fn looks_like_secret(&self, value: &str) -> bool {
+        // Remove quotes
+        let clean_value = value.trim_matches('"').trim_matches('\'');
+
+        // Skip very short strings
+        if clean_value.len() < 8 {
+            return false;
+        }
+
+        // Check for high entropy (likely random string)
+        let entropy = self.calculate_entropy(clean_value);
+        if entropy > 4.5 {
+            return true;
+        }
+
+        // Check for common secret patterns
+        let secret_patterns = [
+            "key", "secret", "token", "password", "pass", "pwd", "api", "auth"
+        ];
+
+        secret_patterns.iter().any(|&pattern| clean_value.to_lowercase().contains(pattern))
+    }
+
+
+
+    /// Calculate confidence level for secret detection
+    fn calculate_secret_confidence(&self, value: &str, context: &SecurityContext) -> ConfidenceLevel {
+        let mut confidence_score = 0;
+
+        // Higher confidence for high entropy strings
+        let entropy = self.calculate_entropy(value);
+        if entropy > 5.0 {
+            confidence_score += 3;
+        } else if entropy > 4.0 {
+            confidence_score += 2;
+        }
+
+        // Higher confidence if not in test file
+        if !context.is_test_file {
+            confidence_score += 2;
+        }
+
+        // Lower confidence for common test values
+        let test_values = ["test", "example", "demo", "sample", "placeholder"];
+        if test_values.iter().any(|&test_val| value.to_lowercase().contains(test_val)) {
+            confidence_score -= 3;
+        }
+
+        match confidence_score {
+            5.. => ConfidenceLevel::High,
+            3..=4 => ConfidenceLevel::Medium,
+            _ => ConfidenceLevel::Low,
+        }
+    }
+
+    /// Detect weak cryptography using AST analysis
+    fn detect_weak_crypto_ast(&self, tree: &SyntaxTree, content: &str, file: &FileInfo, context: &SecurityContext) -> Result<Vec<SecurityVulnerability>> {
+        let mut vulnerabilities = Vec::new();
+        let root = tree.root_node();
+
+        self.analyze_node_for_weak_crypto(&root, content, file, context, &mut vulnerabilities)?;
+        Ok(vulnerabilities)
+    }
+
+    /// Analyze node for weak cryptography
+    fn analyze_node_for_weak_crypto(&self, node: &Node, content: &str, file: &FileInfo, context: &SecurityContext, vulnerabilities: &mut Vec<SecurityVulnerability>) -> Result<()> {
+        if node.kind() == "call_expression" {
+            if let Some(function_node) = node.child_by_field_name("function") {
+                if let Ok(function_name) = function_node.text() {
+                    let function_name_lower = function_name.to_lowercase();
+
+                    // Check for weak hash functions
+                    if function_name_lower.contains("md5") || function_name_lower.contains("sha1") {
+                        vulnerabilities.push(SecurityVulnerability {
+                            id: format!("AST_CRYPTO_{}", node.start_position().row),
+                            title: "Weak cryptographic algorithm detected".to_string(),
+                            description: "Use of MD5 or SHA1 which are cryptographically weak".to_string(),
+                            severity: SecuritySeverity::Medium,
+                            owasp_category: OwaspCategory::CryptographicFailures,
+                            cwe_id: Some("CWE-327".to_string()),
+                            location: VulnerabilityLocation {
+                                file: file.path.clone(),
+                                function: context.function_name.clone(),
+                                start_line: node.start_position().row + 1,
+                                end_line: node.end_position().row + 1,
+                                column: node.start_position().column,
+                            },
+                            code_snippet: node.text().unwrap_or("").to_string(),
+                            impact: SecurityImpact {
+                                confidentiality: ImpactLevel::Medium,
+                                integrity: ImpactLevel::High,
+                                availability: ImpactLevel::Low,
+                                overall_score: 6.0,
+                            },
+                            remediation: RemediationGuidance {
+                                summary: "Replace with stronger cryptographic algorithms".to_string(),
+                                steps: vec![
+                                    "Replace MD5/SHA1 with SHA-256 or better".to_string(),
+                                    "Use bcrypt for password hashing".to_string(),
+                                    "Consider using authenticated encryption".to_string(),
+                                ],
+                                code_examples: vec![
+                                    CodeExample {
+                                        description: "Replace weak hash with strong one".to_string(),
+                                        vulnerable_code: "hash = md5(password)".to_string(),
+                                        secure_code: "hash = bcrypt.hashpw(password, bcrypt.gensalt())".to_string(),
+                                        language: "python".to_string(),
+                                    }
+                                ],
+                                references: vec![
+                                    "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/".to_string(),
+                                ],
+                                effort: RemediationEffort::Low,
+                            },
+                            confidence: ConfidenceLevel::High,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Recursively analyze children
+        for child in node.children() {
+            self.analyze_node_for_weak_crypto(&child, content, file, context, vulnerabilities)?;
+        }
+
+        Ok(())
+    }
+
 }
 
 impl SecurityPatterns {
