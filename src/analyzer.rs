@@ -155,6 +155,22 @@ pub struct AnalysisResult {
     pub config: AnalysisConfig,
 }
 
+impl AnalysisResult {
+    /// Create a new empty analysis result
+    pub fn new() -> Self {
+        Self {
+            root_path: PathBuf::new(),
+            total_files: 0,
+            parsed_files: 0,
+            error_files: 0,
+            total_lines: 0,
+            languages: HashMap::new(),
+            files: Vec::new(),
+            config: AnalysisConfig::default(),
+        }
+    }
+}
+
 /// Main analyzer for processing codebases
 pub struct CodebaseAnalyzer {
     config: AnalysisConfig,
@@ -185,6 +201,27 @@ impl CodebaseAnalyzer {
         }
         self.parsers.get(&language)
             .ok_or_else(|| Error::internal(format!("Parser for {} should exist after insertion", language.name())))
+    }
+
+    /// Analyze a single file and return structured results
+    pub fn analyze_single_file<P: AsRef<Path>>(&mut self, file_path: P) -> Result<AnalysisResult> {
+        let file_path = file_path.as_ref();
+
+        if !file_path.exists() {
+            return Err(Error::invalid_input(format!("File does not exist: {}", file_path.display())));
+        }
+
+        if !file_path.is_file() {
+            return Err(Error::invalid_input(format!("Path is not a file: {}", file_path.display())));
+        }
+
+        let mut result = AnalysisResult::new();
+        let root_path = file_path.parent().unwrap_or(Path::new("."));
+        result.root_path = root_path.to_path_buf();
+
+        self.analyze_file(file_path, root_path, &mut result)?;
+
+        Ok(result)
     }
 
     /// Analyze a directory and return structured results
@@ -500,7 +537,7 @@ impl CodebaseAnalyzer {
                     } else {
                         "private"
                     };
-                    
+
                     symbols.push(Symbol {
                         name: name.to_string(),
                         kind: "enum".to_string(),
@@ -509,6 +546,33 @@ impl CodebaseAnalyzer {
                         start_column: enum_node.start_position().column,
                         end_column: enum_node.end_position().column,
                         visibility: visibility.to_string(),
+                        documentation: None,
+                    });
+                }
+            }
+        }
+
+        // Extract impl blocks
+        let impl_blocks = tree.find_nodes_by_kind("impl_item");
+        for impl_node in impl_blocks {
+            // Extract the type being implemented
+            if let Some(type_node) = impl_node.child_by_field_name("type") {
+                if let Ok(type_text) = type_node.text() {
+                    // Extract just the base type name (e.g., "Array" from "Array<T, N>")
+                    let base_type = if let Some(angle_pos) = type_text.find('<') {
+                        type_text[..angle_pos].trim()
+                    } else {
+                        type_text.trim()
+                    };
+
+                    symbols.push(Symbol {
+                        name: base_type.to_string(),
+                        kind: "impl".to_string(),
+                        start_line: impl_node.start_position().row + 1,
+                        end_line: impl_node.end_position().row + 1,
+                        start_column: impl_node.start_position().column,
+                        end_column: impl_node.end_position().column,
+                        visibility: "public".to_string(),
                         documentation: None,
                     });
                 }
