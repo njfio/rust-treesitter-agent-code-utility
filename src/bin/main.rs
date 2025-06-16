@@ -1625,7 +1625,8 @@ impl DirectoryTree {
                 }
             });
 
-            current = current.children.get_mut(component).unwrap();
+            current = current.children.get_mut(component)
+                .expect("Directory structure should be consistent after insertion");
         }
     }
 }

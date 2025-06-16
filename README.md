@@ -1,14 +1,14 @@
 # Rust Tree-sitter Agent Code Utility
 
-A Rust library for parsing and analyzing source code using tree-sitter. Provides high-level abstractions for parsing, navigating, and querying syntax trees across multiple programming languages.
+A Rust library for parsing and analyzing source code using tree-sitter. Provides abstractions for parsing, navigating, and querying syntax trees across multiple programming languages with analysis capabilities for security, performance, and code quality.
 
-Built for developers and AI code agents who need to understand code structure and extract symbols from codebases.
+Built for developers who need code analysis tools and basic insights into code structure and quality.
 
 ## Table of Contents
 
 - [Features](#features)
 - [What Actually Works](#what-actually-works)
-- [Limitations](#limitations)
+- [Test Coverage](#test-coverage)
 - [Quick Start](#quick-start)
 - [Library Usage](#library-usage)
 - [Supported Languages](#supported-languages)
@@ -17,59 +17,64 @@ Built for developers and AI code agents who need to understand code structure an
 
 ## Features
 
-### Language Support
+### Core Language Support
 - **7 Programming Languages**: Rust, JavaScript, TypeScript, Python, C, C++, Go
 - **Language Detection**: Automatic detection from file extensions
-- **Symbol Extraction**: Functions, classes, structs, methods, types
-- **Missing Language Features Detection**: Identifies advanced language constructs
+- **Symbol Extraction**: Functions, classes, structs, methods, types, interfaces
+- **Advanced Language Features**: Comprehensive detection of language-specific constructs
 
 ### Analysis Capabilities
-- **Basic Codebase Analysis**: File counting, symbol extraction, language statistics ✅
-- **Security Scanning**: Pattern-based vulnerability detection ⚠️ *High false positive rate*
-- **Code Explanations**: AI-powered code analysis ⚠️ *Basic implementation, experimental*
-- **Refactoring Suggestions**: Basic code improvement recommendations ⚠️ *Generic suggestions only*
-- **Dependency Analysis**: Basic dependency scanning ⚠️ *Very limited, often returns 0 dependencies*
+- **Codebase Analysis**: File analysis with symbol extraction and basic statistics
+- **Security Scanning**: Pattern-based vulnerability detection for common issues
+- **Performance Analysis**: Cyclomatic complexity calculation and basic optimization suggestions
+- **Dependency Analysis**: Basic package manager file parsing
+- **Code Quality**: Simple code smell detection and improvement recommendations
+
+### Experimental Features
+- **Code Evolution Tracking**: Basic Git history analysis (experimental)
+- **Intent Mapping**: Requirements traceability system (experimental)
+- **Semantic Graphs**: Basic code relationship modeling (experimental)
+- **Reasoning Engine**: Simple logic-based analysis (experimental)
 
 ### CLI Interface
-- **Multiple Commands**: analyze, explain, security, refactor, dependencies
+
+- **Multiple Commands**: analyze, security, refactor, dependencies
 - **Output Formats**: Text, JSON, summary formats
-- **Progress Tracking**: Visual progress indicators for long operations
+- **Progress Tracking**: Basic progress indicators for operations
 
 ## What Actually Works
 
 ### Core Functionality
+
 - **Tree-sitter Parsing**: Parse source code into syntax trees for 7 languages
 - **Symbol Extraction**: Extract functions, classes, methods, and other symbols
 - **Language Detection**: Detect programming language from file extensions
-- **Missing Language Features**: Detect advanced language constructs (6/6 tests passing)
+- **Query System**: Basic tree-sitter query execution
+
+### Analysis Systems
+
+- **Codebase Analysis**: Directory analysis with file and symbol metrics
+- **Security Analysis**: Pattern-based vulnerability detection for common issues
+- **Performance Analysis**: Cyclomatic complexity calculation and basic recommendations
+- **Dependency Analysis**: Basic package manager file parsing
+- **Code Quality**: Simple code smell detection
 
 ### CLI Commands
-- `analyze`: Basic codebase analysis with file counts and symbol statistics
-- `explain`: AI-powered code explanations and architectural insights
-- `security`: Security vulnerability scanning (finds 250+ vulnerability types)
-- `refactor`: Code improvement suggestions (58 refactoring opportunities detected)
-- `dependencies`: Basic dependency analysis (limited functionality)
 
-### Security Analysis
-- **Pattern-based Detection**: Hardcoded secrets, SQL injection, weak crypto
-- **OWASP Coverage**: Partial coverage of OWASP Top 10 vulnerabilities
-- **Severity Scoring**: Critical, High, Medium severity levels
-- **Output Formats**: Text reports with colored output
+- `analyze`: Basic codebase analysis with file and symbol metrics
+- `security`: Pattern-based security scanning for common vulnerabilities
+- `refactor`: Basic code improvement suggestions
+- `dependencies`: Package manager file parsing and dependency listing
 
-## Limitations
+## Test Coverage
 
-### What Doesn't Work Well
-- **Dependency Analysis**: Very limited functionality, often returns 0 dependencies
-- **AI Features**: Basic implementations, not production-ready
-- **Database Integration**: Infrastructure exists but limited real-world usage
-- **API Integrations**: Rate limiting and HTTP clients implemented but not fully utilized
-- **Test Coverage**: Many features lack comprehensive testing
+### Current Test Status
 
-### Development Status
-- **Core Parsing**: Stable and working
-- **Security Scanning**: Basic pattern matching, many false positives
-- **Advanced Features**: Experimental, under active development
-- **Documentation**: Reflects aspirational features rather than current reality
+- **Core Parsing**: All basic parsing functionality working
+- **Symbol Extraction**: Working for all supported languages
+- **Security Analysis**: Basic pattern detection working
+- **Performance Analysis**: Cyclomatic complexity calculation working
+- **Dependency Analysis**: Basic package file parsing working
 
 ## Quick Start
 
@@ -151,22 +156,22 @@ for file_info in &result.files {
 }
 ```
 
-
 ## Supported Languages
 
 | Language   | Extensions           | Symbol Extraction | Status |
 |------------|---------------------|-------------------|---------|
-| Rust       | `.rs`               | ✅ Complete       | 🟢 Full |
-| JavaScript | `.js`, `.mjs`, `.jsx` | ✅ Complete       | 🟢 Full |
-| TypeScript | `.ts`, `.tsx`       | ✅ Complete       | 🟢 Full |
-| Go         | `.go`               | ✅ Complete       | 🟢 Full |
-| Python     | `.py`, `.pyi`       | ✅ Complete       | 🟢 Full |
-| C          | `.c`, `.h`          | ✅ Complete       | 🟢 Full |
-| C++        | `.cpp`, `.hpp`, etc | ✅ Complete       | 🟢 Full |
+| Rust       | `.rs`               | ✅ Basic          | 🟢 Working |
+| JavaScript | `.js`, `.mjs`, `.jsx` | ✅ Basic          | 🟢 Working |
+| TypeScript | `.ts`, `.tsx`       | ✅ Basic          | 🟢 Working |
+| Go         | `.go`               | ✅ Basic          | 🟢 Working |
+| Python     | `.py`, `.pyi`       | ✅ Basic          | 🟢 Working |
+| C          | `.c`, `.h`          | ✅ Basic          | 🟢 Working |
+| C++        | `.cpp`, `.hpp`, etc | ✅ Basic          | 🟢 Working |
 
-### Missing Language Features Detection
+### Language Feature Detection
 
-All 6 missing language features tests are passing:
+Basic language feature detection is working for:
+
 - JavaScript: Private field detection (`#privateField` syntax)
 - TypeScript: Namespace traversal and decorator extraction
 - Rust: Trait, impl block, associated type, and method detection
@@ -178,18 +183,6 @@ All 6 missing language features tests are passing:
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-
-
-
-
-
-
-

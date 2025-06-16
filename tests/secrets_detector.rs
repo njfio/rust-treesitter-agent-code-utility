@@ -1,6 +1,5 @@
 use rust_tree_sitter::infrastructure::{DatabaseConfig, DatabaseManager};
 use rust_tree_sitter::security::SecretsDetector;
-use tempfile::NamedTempFile;
 
 #[tokio::test]
 async fn detects_real_secret() {

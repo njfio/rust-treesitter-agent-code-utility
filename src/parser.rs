@@ -198,7 +198,7 @@ mod tests {
 
     #[test]
     fn test_basic_parsing() {
-        let mut parser = Parser::new(Language::Rust).unwrap();
+        let parser = Parser::new(Language::Rust).unwrap();
         let source = "fn main() { println!(\"Hello, world!\"); }";
         
         let tree = parser.parse(source, None);

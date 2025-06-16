@@ -9,7 +9,7 @@ use tree_sitter::{Point, InputEdit};
 
 #[test]
 fn test_parser_creation_and_basic_parsing() {
-    let mut parser = Parser::new(Language::Rust).unwrap();
+    let parser = Parser::new(Language::Rust).unwrap();
     assert_eq!(parser.language(), Language::Rust);
 
     let source = "fn main() { println!(\"Hello, world!\"); }";
@@ -33,7 +33,7 @@ fn test_multiple_languages() {
 
 #[test]
 fn test_rust_specific_parsing() {
-    let mut parser = Parser::new(Language::Rust).unwrap();
+    let parser = Parser::new(Language::Rust).unwrap();
     let source = r#"
         struct Point {
             x: i32,
@@ -69,7 +69,7 @@ fn test_rust_specific_parsing() {
 
 #[test]
 fn test_javascript_parsing() {
-    let mut parser = Parser::new(Language::JavaScript).unwrap();
+    let parser = Parser::new(Language::JavaScript).unwrap();
     let source = r#"
         class Calculator {
             constructor() {
@@ -102,7 +102,7 @@ fn test_javascript_parsing() {
 
 #[test]
 fn test_python_parsing() {
-    let mut parser = Parser::new(Language::Python).unwrap();
+    let parser = Parser::new(Language::Python).unwrap();
     let source = r#"
 class Calculator:
     def __init__(self):
@@ -131,7 +131,7 @@ def main():
 
 #[test]
 fn test_query_system() {
-    let mut parser = Parser::new(Language::Rust).unwrap();
+    let parser = Parser::new(Language::Rust).unwrap();
     let source = r#"
         pub fn public_function() {}
         fn private_function() {}
@@ -175,7 +175,7 @@ fn test_query_builder() {
         .build()
         .unwrap();
     
-    let mut parser = Parser::new(Language::Rust).unwrap();
+    let parser = Parser::new(Language::Rust).unwrap();
     let source = r#"
         struct Point { x: i32, y: i32 }
         impl Point {
@@ -193,7 +193,7 @@ fn test_query_builder() {
 
 #[test]
 fn test_predefined_queries() {
-    let mut parser = Parser::new(Language::Rust).unwrap();
+    let parser = Parser::new(Language::Rust).unwrap();
     let source = r#"
         pub struct Point { x: i32, y: i32 }
         impl Point {
@@ -217,7 +217,7 @@ fn test_predefined_queries() {
 
 #[test]
 fn test_incremental_parsing() {
-    let mut parser = Parser::new(Language::Rust).unwrap();
+    let parser = Parser::new(Language::Rust).unwrap();
     let mut source = "fn hello() {}".to_string();
     
     // Initial parse
@@ -271,7 +271,7 @@ fn test_supported_languages() {
 
 #[test]
 fn test_tree_navigation() {
-    let mut parser = Parser::new(Language::Rust).unwrap();
+    let parser = Parser::new(Language::Rust).unwrap();
     let source = r#"
         fn main() {
             let x = 42;
@@ -308,7 +308,7 @@ fn test_error_handling() {
     assert!(invalid_query.is_err());
     
     // Test parsing invalid code (should still create a tree but with errors)
-    let mut parser = Parser::new(Language::Rust).unwrap();
+    let parser = Parser::new(Language::Rust).unwrap();
     let invalid_source = "fn main( { invalid syntax }";
     let tree = parser.parse(invalid_source, None).unwrap();
     assert!(tree.has_error());
@@ -319,7 +319,7 @@ fn test_error_handling() {
 
 #[test]
 fn test_node_search() {
-    let mut parser = Parser::new(Language::Rust).unwrap();
+    let parser = Parser::new(Language::Rust).unwrap();
     let source = r#"
         struct Point { x: i32, y: i32 }
         struct Line { start: Point, end: Point }

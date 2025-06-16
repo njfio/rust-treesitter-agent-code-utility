@@ -7,7 +7,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Rust Tree-sitter Library - Incremental Parsing Example ===\n");
 
     // Create a parser for Rust
-    let mut parser = Parser::new(Language::Rust)?;
+    let parser = Parser::new(Language::Rust)?;
     println!("Created parser for {}", parser.language().name());
 
     // Initial source code
@@ -178,7 +178,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         new_end_position: Point::new(0, 1),
     };
     
-    let mut temp_source = " ".to_string() + &source_code;
+    let temp_source = " ".to_string() + &source_code;
     tree.edit(&small_edit);
     
     let start = std::time::Instant::now();

@@ -333,7 +333,7 @@ mod tests {
 
     #[test]
     fn test_syntax_tree_basic() {
-        let mut parser = Parser::new(Language::Rust).unwrap();
+        let parser = Parser::new(Language::Rust).unwrap();
         let source = "fn main() { println!(\"Hello, world!\"); }";
         let tree = parser.parse(source, None).unwrap();
 
@@ -344,7 +344,7 @@ mod tests {
 
     #[test]
     fn test_node_navigation() {
-        let mut parser = Parser::new(Language::Rust).unwrap();
+        let parser = Parser::new(Language::Rust).unwrap();
         let source = "fn main() { let x = 42; }";
         let tree = parser.parse(source, None).unwrap();
 
@@ -360,7 +360,7 @@ mod tests {
 
     #[test]
     fn test_find_nodes_by_kind() {
-        let mut parser = Parser::new(Language::Rust).unwrap();
+        let parser = Parser::new(Language::Rust).unwrap();
         let source = "fn foo() {} fn bar() {}";
         let tree = parser.parse(source, None).unwrap();
 

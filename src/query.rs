@@ -334,7 +334,7 @@ mod tests {
 
     #[test]
     fn test_query_execution() {
-        let mut parser = Parser::new(Language::Rust).unwrap();
+        let parser = Parser::new(Language::Rust).unwrap();
         let source = "fn main() {} fn test() {}";
         let tree = parser.parse(source, None).unwrap();
 

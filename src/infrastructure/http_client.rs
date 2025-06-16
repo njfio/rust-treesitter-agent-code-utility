@@ -230,7 +230,10 @@ impl RateLimiter {
         use governor::{Quota, RateLimiter as GovRateLimiter};
         use std::num::NonZeroU32;
 
-        let quota = Quota::per_minute(NonZeroU32::new(requests_per_minute).unwrap());
+        let quota = Quota::per_minute(
+            NonZeroU32::new(requests_per_minute.max(1))
+                .expect("Rate limit should be at least 1 request per minute")
+        );
         let limiter = GovRateLimiter::direct(quota);
 
         Self { limiter }

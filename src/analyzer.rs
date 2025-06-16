@@ -7,6 +7,7 @@ use crate::error::{Error, Result};
 use crate::languages::Language;
 use crate::parser::Parser;
 use crate::advanced_security::{AdvancedSecurityAnalyzer, SecurityVulnerability};
+use crate::semantic_graph::SemanticGraphQuery;
 
 use crate::tree::SyntaxTree;
 use std::collections::HashMap;
@@ -155,11 +156,28 @@ pub struct AnalysisResult {
     pub config: AnalysisConfig,
 }
 
+impl AnalysisResult {
+    /// Create a new empty analysis result
+    pub fn new() -> Self {
+        Self {
+            root_path: PathBuf::new(),
+            total_files: 0,
+            parsed_files: 0,
+            error_files: 0,
+            total_lines: 0,
+            languages: HashMap::new(),
+            files: Vec::new(),
+            config: AnalysisConfig::default(),
+        }
+    }
+}
+
 /// Main analyzer for processing codebases
 pub struct CodebaseAnalyzer {
     config: AnalysisConfig,
     parsers: HashMap<Language, Parser>,
     security_analyzer: AdvancedSecurityAnalyzer,
+    semantic_graph: Option<SemanticGraphQuery>,
 }
 
 impl CodebaseAnalyzer {
@@ -174,6 +192,7 @@ impl CodebaseAnalyzer {
             config,
             parsers: HashMap::new(),
             security_analyzer: AdvancedSecurityAnalyzer::new().expect("Failed to create security analyzer"),
+            semantic_graph: None,
         }
     }
 
@@ -183,7 +202,29 @@ impl CodebaseAnalyzer {
             let parser = Parser::new(language)?;
             self.parsers.insert(language, parser);
         }
-        Ok(self.parsers.get(&language).unwrap())
+        self.parsers.get(&language)
+            .ok_or_else(|| Error::internal(format!("Parser for {} should exist after insertion", language.name())))
+    }
+
+    /// Analyze a single file and return structured results
+    pub fn analyze_single_file<P: AsRef<Path>>(&mut self, file_path: P) -> Result<AnalysisResult> {
+        let file_path = file_path.as_ref();
+
+        if !file_path.exists() {
+            return Err(Error::invalid_input(format!("File does not exist: {}", file_path.display())));
+        }
+
+        if !file_path.is_file() {
+            return Err(Error::invalid_input(format!("Path is not a file: {}", file_path.display())));
+        }
+
+        let mut result = AnalysisResult::new();
+        let root_path = file_path.parent().unwrap_or(Path::new("."));
+        result.root_path = root_path.to_path_buf();
+
+        self.analyze_file(file_path, root_path, &mut result)?;
+
+        Ok(result)
     }
 
     /// Analyze a directory and return structured results
@@ -210,6 +251,15 @@ impl CodebaseAnalyzer {
         };
 
         self.analyze_directory_recursive(&root_path, &root_path, &mut result, 0)?;
+
+        // Build semantic graph if enabled
+        if self.semantic_graph.is_some() {
+            if let Some(ref mut graph) = self.semantic_graph {
+                if let Err(e) = graph.build_from_analysis(&result) {
+                    eprintln!("Warning: Failed to build semantic graph: {}", e);
+                }
+            }
+        }
 
         Ok(result)
     }
@@ -499,7 +549,7 @@ impl CodebaseAnalyzer {
                     } else {
                         "private"
                     };
-                    
+
                     symbols.push(Symbol {
                         name: name.to_string(),
                         kind: "enum".to_string(),
@@ -514,16 +564,44 @@ impl CodebaseAnalyzer {
             }
         }
 
+        // Extract impl blocks
+        let impl_blocks = tree.find_nodes_by_kind("impl_item");
+        for impl_node in impl_blocks {
+            // Extract the type being implemented
+            if let Some(type_node) = impl_node.child_by_field_name("type") {
+                if let Ok(type_text) = type_node.text() {
+                    // Extract just the base type name (e.g., "Array" from "Array<T, N>")
+                    let base_type = if let Some(angle_pos) = type_text.find('<') {
+                        type_text[..angle_pos].trim()
+                    } else {
+                        type_text.trim()
+                    };
+
+                    symbols.push(Symbol {
+                        name: base_type.to_string(),
+                        kind: "impl".to_string(),
+                        start_line: impl_node.start_position().row + 1,
+                        end_line: impl_node.end_position().row + 1,
+                        start_column: impl_node.start_position().column,
+                        end_column: impl_node.end_position().column,
+                        visibility: "public".to_string(),
+                        documentation: None,
+                    });
+                }
+            }
+        }
+
         Ok(())
     }
 
     /// Extract JavaScript symbols
-    fn extract_javascript_symbols(&self, tree: &SyntaxTree, _content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
+    fn extract_javascript_symbols(&self, tree: &SyntaxTree, content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
         // Extract function declarations
         let functions = tree.find_nodes_by_kind("function_declaration");
         for func in functions {
             if let Some(name_node) = func.child_by_field_name("name") {
                 if let Ok(name) = name_node.text() {
+                    let docs = self.extract_js_doc_comments(content, func.start_position().row);
                     symbols.push(Symbol {
                         name: name.to_string(),
                         kind: "function".to_string(),
@@ -532,8 +610,36 @@ impl CodebaseAnalyzer {
                         start_column: func.start_position().column,
                         end_column: func.end_position().column,
                         visibility: "public".to_string(),
-                        documentation: None,
+                        documentation: docs,
                     });
+                }
+            }
+        }
+
+        // Extract arrow functions assigned to variables
+        let variable_declarations = tree.find_nodes_by_kind("variable_declaration");
+        for var_decl in variable_declarations {
+            for child in var_decl.children() {
+                if child.kind() == "variable_declarator" {
+                    if let Some(name_node) = child.child_by_field_name("name") {
+                        if let Some(value_node) = child.child_by_field_name("value") {
+                            if value_node.kind() == "arrow_function" {
+                                if let Ok(name) = name_node.text() {
+                                    let docs = self.extract_js_doc_comments(content, var_decl.start_position().row);
+                                    symbols.push(Symbol {
+                                        name: name.to_string(),
+                                        kind: "function".to_string(),
+                                        start_line: var_decl.start_position().row + 1,
+                                        end_line: var_decl.end_position().row + 1,
+                                        start_column: var_decl.start_position().column,
+                                        end_column: var_decl.end_position().column,
+                                        visibility: "public".to_string(),
+                                        documentation: docs,
+                                    });
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -543,6 +649,7 @@ impl CodebaseAnalyzer {
         for class in classes {
             if let Some(name_node) = class.child_by_field_name("name") {
                 if let Ok(name) = name_node.text() {
+                    let docs = self.extract_js_doc_comments(content, class.start_position().row);
                     symbols.push(Symbol {
                         name: name.to_string(),
                         kind: "class".to_string(),
@@ -551,7 +658,27 @@ impl CodebaseAnalyzer {
                         start_column: class.start_position().column,
                         end_column: class.end_position().column,
                         visibility: "public".to_string(),
-                        documentation: None,
+                        documentation: docs,
+                    });
+                }
+            }
+        }
+
+        // Extract method definitions within classes
+        let method_definitions = tree.find_nodes_by_kind("method_definition");
+        for method in method_definitions {
+            if let Some(name_node) = method.child_by_field_name("name") {
+                if let Ok(name) = name_node.text() {
+                    let docs = self.extract_js_doc_comments(content, method.start_position().row);
+                    symbols.push(Symbol {
+                        name: name.to_string(),
+                        kind: "method".to_string(),
+                        start_line: method.start_position().row + 1,
+                        end_line: method.end_position().row + 1,
+                        start_column: method.start_position().column,
+                        end_column: method.end_position().column,
+                        visibility: "public".to_string(),
+                        documentation: docs,
                     });
                 }
             }
@@ -561,14 +688,15 @@ impl CodebaseAnalyzer {
     }
 
     /// Extract Python symbols
-    fn extract_python_symbols(&self, tree: &SyntaxTree, _content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
+    fn extract_python_symbols(&self, tree: &SyntaxTree, content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
         // Extract function definitions
         let functions = tree.find_nodes_by_kind("function_definition");
         for func in functions {
             if let Some(name_node) = func.child_by_field_name("name") {
                 if let Ok(name) = name_node.text() {
                     let visibility = if name.starts_with('_') { "private" } else { "public" };
-                    
+                    let docs = self.extract_python_docstring(content, &func);
+
                     symbols.push(Symbol {
                         name: name.to_string(),
                         kind: "function".to_string(),
@@ -577,7 +705,7 @@ impl CodebaseAnalyzer {
                         start_column: func.start_position().column,
                         end_column: func.end_position().column,
                         visibility: visibility.to_string(),
-                        documentation: None,
+                        documentation: docs,
                     });
                 }
             }
@@ -589,7 +717,8 @@ impl CodebaseAnalyzer {
             if let Some(name_node) = class.child_by_field_name("name") {
                 if let Ok(name) = name_node.text() {
                     let visibility = if name.starts_with('_') { "private" } else { "public" };
-                    
+                    let docs = self.extract_python_docstring(content, &class);
+
                     symbols.push(Symbol {
                         name: name.to_string(),
                         kind: "class".to_string(),
@@ -598,8 +727,33 @@ impl CodebaseAnalyzer {
                         start_column: class.start_position().column,
                         end_column: class.end_position().column,
                         visibility: visibility.to_string(),
-                        documentation: None,
+                        documentation: docs,
                     });
+                }
+            }
+        }
+
+        // Extract global variable assignments
+        let assignments = tree.find_nodes_by_kind("assignment");
+        for assignment in assignments {
+            if let Some(left) = assignment.child_by_field_name("left") {
+                if left.kind() == "identifier" {
+                    if let Ok(name) = left.text() {
+                        // Only include if it looks like a constant (ALL_CAPS)
+                        if name.chars().all(|c| c.is_uppercase() || c == '_' || c.is_numeric()) {
+                            let visibility = if name.starts_with('_') { "private" } else { "public" };
+                            symbols.push(Symbol {
+                                name: name.to_string(),
+                                kind: "constant".to_string(),
+                                start_line: assignment.start_position().row + 1,
+                                end_line: assignment.end_position().row + 1,
+                                start_column: assignment.start_position().column,
+                                end_column: assignment.end_position().column,
+                                visibility: visibility.to_string(),
+                                documentation: None,
+                            });
+                        }
+                    }
                 }
             }
         }
@@ -608,7 +762,7 @@ impl CodebaseAnalyzer {
     }
 
     /// Extract C/C++ symbols
-    fn extract_c_symbols(&self, tree: &SyntaxTree, _content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
+    fn extract_c_symbols(&self, tree: &SyntaxTree, content: &str, symbols: &mut Vec<Symbol>) -> Result<()> {
         // Extract function definitions
         let functions = tree.find_nodes_by_kind("function_definition");
         for func in functions {
@@ -617,6 +771,7 @@ impl CodebaseAnalyzer {
                     .find(|child| child.kind() == "function_declarator") {
                     if let Some(name_node) = func_declarator.child_by_field_name("declarator") {
                         if let Ok(name) = name_node.text() {
+                            let docs = self.extract_c_doc_comments(content, func.start_position().row);
                             symbols.push(Symbol {
                                 name: name.to_string(),
                                 kind: "function".to_string(),
@@ -625,10 +780,70 @@ impl CodebaseAnalyzer {
                                 start_column: func.start_position().column,
                                 end_column: func.end_position().column,
                                 visibility: "public".to_string(),
-                                documentation: None,
+                                documentation: docs,
                             });
                         }
                     }
+                }
+            }
+        }
+
+        // Extract struct declarations
+        let structs = tree.find_nodes_by_kind("struct_specifier");
+        for struct_node in structs {
+            if let Some(name_node) = struct_node.child_by_field_name("name") {
+                if let Ok(name) = name_node.text() {
+                    let docs = self.extract_c_doc_comments(content, struct_node.start_position().row);
+                    symbols.push(Symbol {
+                        name: name.to_string(),
+                        kind: "struct".to_string(),
+                        start_line: struct_node.start_position().row + 1,
+                        end_line: struct_node.end_position().row + 1,
+                        start_column: struct_node.start_position().column,
+                        end_column: struct_node.end_position().column,
+                        visibility: "public".to_string(),
+                        documentation: docs,
+                    });
+                }
+            }
+        }
+
+        // Extract enum declarations
+        let enums = tree.find_nodes_by_kind("enum_specifier");
+        for enum_node in enums {
+            if let Some(name_node) = enum_node.child_by_field_name("name") {
+                if let Ok(name) = name_node.text() {
+                    let docs = self.extract_c_doc_comments(content, enum_node.start_position().row);
+                    symbols.push(Symbol {
+                        name: name.to_string(),
+                        kind: "enum".to_string(),
+                        start_line: enum_node.start_position().row + 1,
+                        end_line: enum_node.end_position().row + 1,
+                        start_column: enum_node.start_position().column,
+                        end_column: enum_node.end_position().column,
+                        visibility: "public".to_string(),
+                        documentation: docs,
+                    });
+                }
+            }
+        }
+
+        // Extract typedef declarations
+        let typedefs = tree.find_nodes_by_kind("type_definition");
+        for typedef_node in typedefs {
+            if let Some(declarator) = typedef_node.child_by_field_name("declarator") {
+                if let Ok(name) = declarator.text() {
+                    let docs = self.extract_c_doc_comments(content, typedef_node.start_position().row);
+                    symbols.push(Symbol {
+                        name: name.to_string(),
+                        kind: "typedef".to_string(),
+                        start_line: typedef_node.start_position().row + 1,
+                        end_line: typedef_node.end_position().row + 1,
+                        start_column: typedef_node.start_position().column,
+                        end_column: typedef_node.end_position().column,
+                        visibility: "public".to_string(),
+                        documentation: docs,
+                    });
                 }
             }
         }
@@ -755,6 +970,192 @@ impl CodebaseAnalyzer {
             docs.reverse();
             Some(docs.join("\n"))
         }
+    }
+
+    /// Extract JSDoc comments preceding a JavaScript item start line
+    fn extract_js_doc_comments(&self, content: &str, start_row: usize) -> Option<String> {
+        let lines: Vec<&str> = content.lines().collect();
+        if start_row == 0 {
+            return None;
+        }
+
+        let mut docs = Vec::new();
+        let mut line_idx = start_row as isize - 1;
+        let mut in_block_comment = false;
+
+        while line_idx >= 0 {
+            let line = lines[line_idx as usize].trim();
+
+            if line.ends_with("*/") && line.contains("/**") {
+                // Single line JSDoc comment
+                let doc_content = line.trim_start_matches("/**").trim_end_matches("*/").trim();
+                if !doc_content.is_empty() {
+                    docs.push(doc_content);
+                }
+                break;
+            } else if line.ends_with("*/") {
+                in_block_comment = true;
+                let doc_content = line.trim_end_matches("*/").trim();
+                if !doc_content.is_empty() && !doc_content.starts_with('*') {
+                    docs.push(doc_content);
+                } else if doc_content.starts_with('*') {
+                    docs.push(doc_content.trim_start_matches('*').trim());
+                }
+            } else if in_block_comment {
+                if line.starts_with("/**") {
+                    let doc_content = line.trim_start_matches("/**").trim();
+                    if !doc_content.is_empty() {
+                        docs.push(doc_content);
+                    }
+                    break;
+                } else if line.starts_with('*') {
+                    let doc_content = line.trim_start_matches('*').trim();
+                    if !doc_content.is_empty() {
+                        docs.push(doc_content);
+                    }
+                } else if !line.is_empty() {
+                    docs.push(line);
+                }
+            } else if line.starts_with("//") {
+                // Single line comment
+                docs.push(line.trim_start_matches("//").trim());
+            } else if line.is_empty() {
+                line_idx -= 1;
+                continue;
+            } else {
+                break;
+            }
+            line_idx -= 1;
+        }
+
+        if docs.is_empty() {
+            None
+        } else {
+            docs.reverse();
+            Some(docs.join("\n"))
+        }
+    }
+
+    /// Extract Python docstring from function or class definition
+    fn extract_python_docstring(&self, content: &str, node: &crate::Node) -> Option<String> {
+        // Look for the first string literal in the body
+        if let Some(body) = node.child_by_field_name("body") {
+            for child in body.children() {
+                if child.kind() == "expression_statement" {
+                    for expr_child in child.children() {
+                        if expr_child.kind() == "string" {
+                            if let Ok(docstring) = expr_child.text() {
+                                // Clean up the docstring
+                                let cleaned = docstring
+                                    .trim_start_matches("\"\"\"")
+                                    .trim_end_matches("\"\"\"")
+                                    .trim_start_matches("'''")
+                                    .trim_end_matches("'''")
+                                    .trim_start_matches('"')
+                                    .trim_end_matches('"')
+                                    .trim_start_matches('\'')
+                                    .trim_end_matches('\'')
+                                    .trim();
+
+                                if !cleaned.is_empty() {
+                                    return Some(cleaned.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Extract C/C++ doc comments (/* */ or //) preceding an item start line
+    fn extract_c_doc_comments(&self, content: &str, start_row: usize) -> Option<String> {
+        let lines: Vec<&str> = content.lines().collect();
+        if start_row == 0 {
+            return None;
+        }
+
+        let mut docs = Vec::new();
+        let mut line_idx = start_row as isize - 1;
+        let mut in_block_comment = false;
+
+        while line_idx >= 0 {
+            let line = lines[line_idx as usize].trim();
+
+            if line.ends_with("*/") && line.contains("/*") {
+                // Single line block comment
+                let doc_content = line.trim_start_matches("/*").trim_end_matches("*/").trim();
+                if !doc_content.is_empty() {
+                    docs.push(doc_content);
+                }
+                break;
+            } else if line.ends_with("*/") {
+                in_block_comment = true;
+                let doc_content = line.trim_end_matches("*/").trim();
+                if !doc_content.is_empty() && !doc_content.starts_with('*') {
+                    docs.push(doc_content);
+                } else if doc_content.starts_with('*') {
+                    docs.push(doc_content.trim_start_matches('*').trim());
+                }
+            } else if in_block_comment {
+                if line.starts_with("/*") {
+                    let doc_content = line.trim_start_matches("/*").trim();
+                    if !doc_content.is_empty() {
+                        docs.push(doc_content);
+                    }
+                    break;
+                } else if line.starts_with('*') {
+                    let doc_content = line.trim_start_matches('*').trim();
+                    if !doc_content.is_empty() {
+                        docs.push(doc_content);
+                    }
+                } else if !line.is_empty() {
+                    docs.push(line);
+                }
+            } else if line.starts_with("//") {
+                // Single line comment
+                docs.push(line.trim_start_matches("//").trim());
+            } else if line.is_empty() {
+                line_idx -= 1;
+                continue;
+            } else {
+                break;
+            }
+            line_idx -= 1;
+        }
+
+        if docs.is_empty() {
+            None
+        } else {
+            docs.reverse();
+            Some(docs.join("\n"))
+        }
+    }
+
+    /// Enable semantic graph analysis
+    pub fn enable_semantic_graph(&mut self) {
+        self.semantic_graph = Some(SemanticGraphQuery::new());
+    }
+
+    /// Disable semantic graph analysis
+    pub fn disable_semantic_graph(&mut self) {
+        self.semantic_graph = None;
+    }
+
+    /// Get a reference to the semantic graph (if enabled)
+    pub fn semantic_graph(&self) -> Option<&SemanticGraphQuery> {
+        self.semantic_graph.as_ref()
+    }
+
+    /// Get a mutable reference to the semantic graph (if enabled)
+    pub fn semantic_graph_mut(&mut self) -> Option<&mut SemanticGraphQuery> {
+        self.semantic_graph.as_mut()
+    }
+
+    /// Check if semantic graph analysis is enabled
+    pub fn is_semantic_graph_enabled(&self) -> bool {
+        self.semantic_graph.is_some()
     }
 }
 

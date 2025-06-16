@@ -6,7 +6,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Rust Tree-sitter Library - Basic Usage Example ===\n");
 
     // Create a parser for Rust
-    let mut parser = Parser::new(Language::Rust)?;
+    let parser = Parser::new(Language::Rust)?;
     println!("Created parser for {}", parser.language().name());
 
     // Sample Rust code to parse
