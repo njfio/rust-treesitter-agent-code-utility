@@ -502,27 +502,65 @@ impl AdvancedSecurityAnalyzer {
         let mut input_validation_issues = Vec::new();
         let mut injection_vulnerabilities = Vec::new();
         let mut best_practice_violations = Vec::new();
-        
+
         // Analyze each file for security issues
         for file in &analysis_result.files {
+            // Create a file info with absolute path for security analysis
+            let absolute_path = analysis_result.root_path.join(&file.path);
+            let file_with_absolute_path = FileInfo {
+                path: absolute_path,
+                language: file.language.clone(),
+                size: file.size,
+                lines: file.lines,
+                parsed_successfully: file.parsed_successfully,
+                parse_errors: file.parse_errors.clone(),
+                symbols: file.symbols.clone(),
+                security_vulnerabilities: file.security_vulnerabilities.clone(),
+            };
+
             if self.config.owasp_analysis {
-                vulnerabilities.extend(self.detect_owasp_vulnerabilities(file)?);
+                let mut file_vulnerabilities = self.detect_owasp_vulnerabilities(&file_with_absolute_path)?;
+                // Update paths to use relative paths for consistency
+                for vuln in &mut file_vulnerabilities {
+                    vuln.location.file = file.path.clone();
+                }
+                vulnerabilities.extend(file_vulnerabilities);
             }
-            
+
             if self.config.secrets_detection {
-                secrets.extend(self.detect_secrets(file)?);
+                let mut file_secrets = self.detect_secrets(&file_with_absolute_path)?;
+                // Update paths to use relative paths for consistency
+                for secret in &mut file_secrets {
+                    secret.location.file = file.path.clone();
+                }
+                secrets.extend(file_secrets);
             }
-            
+
             if self.config.input_validation {
-                input_validation_issues.extend(self.detect_input_validation_issues(file)?);
+                let mut file_input_issues = self.detect_input_validation_issues(&file_with_absolute_path)?;
+                // Update paths to use relative paths for consistency
+                for issue in &mut file_input_issues {
+                    issue.location.file = file.path.clone();
+                }
+                input_validation_issues.extend(file_input_issues);
             }
-            
+
             if self.config.injection_analysis {
-                injection_vulnerabilities.extend(self.detect_injection_vulnerabilities(file)?);
+                let mut file_injection_vulns = self.detect_injection_vulnerabilities(&file_with_absolute_path)?;
+                // Update paths to use relative paths for consistency
+                for vuln in &mut file_injection_vulns {
+                    vuln.location.file = file.path.clone();
+                }
+                injection_vulnerabilities.extend(file_injection_vulns);
             }
-            
+
             if self.config.best_practices {
-                best_practice_violations.extend(self.detect_best_practice_violations(file)?);
+                let mut file_best_practices = self.detect_best_practice_violations(&file_with_absolute_path)?;
+                // Update paths to use relative paths for consistency
+                for violation in &mut file_best_practices {
+                    violation.location.file = file.path.clone();
+                }
+                best_practice_violations.extend(file_best_practices);
             }
         }
         
@@ -1190,7 +1228,7 @@ impl AdvancedSecurityAnalyzer {
     }
 
     /// Calculate entropy of a string
-    fn calculate_entropy(&self, s: &str) -> f64 {
+    pub fn calculate_entropy(&self, s: &str) -> f64 {
         let mut char_counts = HashMap::new();
         for c in s.chars() {
             *char_counts.entry(c).or_insert(0) += 1;
@@ -1497,7 +1535,7 @@ impl AdvancedSecurityAnalyzer {
             is_comment: false,
             variable_assignments: HashMap::new(),
             function_calls: Vec::new(),
-            has_user_input: false, // TODO: Implement user input detection
+            has_user_input: false, // Will be set during AST traversal
             is_web_context: file.path.to_string_lossy().contains("web") ||
                            file.path.to_string_lossy().contains("http") ||
                            file.path.to_string_lossy().contains("api"),
@@ -1521,15 +1559,31 @@ impl AdvancedSecurityAnalyzer {
             }
             "assignment_expression" | "variable_declaration" => {
                 // Track variable assignments for taint analysis
-                // This is a simplified version - real implementation would be more complex
+                if let Some(value_node) = node.child_by_field_name("value") {
+                    if let Ok(value_text) = value_node.text() {
+                        if let Some(var_node) = node.child_by_field_name("left") {
+                            if let Ok(var_name) = var_node.text() {
+                                context.variable_assignments.insert(var_name.to_string(), value_text.to_string());
+                            }
+                        }
+                    }
+                }
             }
             "call_expression" => {
-                // Track function calls
+                // Track function calls and detect user input sources
                 if let Some(function_node) = node.child_by_field_name("function") {
                     if let Ok(function_name) = function_node.text() {
                         context.function_calls.push(function_name.to_string());
+
+                        // Check if this is a user input function
+                        if self.is_user_input_function(&function_name.to_lowercase()) {
+                            context.has_user_input = true;
+                        }
                     }
                 }
+            }
+            "comment" => {
+                context.is_comment = true;
             }
             _ => {}
         }
@@ -1538,6 +1592,30 @@ impl AdvancedSecurityAnalyzer {
         for child in node.children() {
             self.walk_node_for_context(&child, context);
         }
+    }
+
+    /// Check if function name indicates user input source
+    fn is_user_input_function(&self, function_name: &str) -> bool {
+        let user_input_functions = [
+            // Web/HTTP input
+            "request", "req", "input", "param", "query", "body", "form", "post", "get",
+            "header", "cookie", "session", "url", "uri", "path",
+            // Console/CLI input
+            "stdin", "readline", "read_line", "input", "prompt", "getline", "scanf", "cin",
+            "gets", "fgets", "getchar", "getch",
+            // File input
+            "read", "readfile", "load", "open", "file", "upload",
+            // Network input
+            "recv", "receive", "socket", "connect", "accept", "listen",
+            // Environment input
+            "env", "getenv", "environ", "argv", "args", "cmdline",
+            // Database input (from external sources)
+            "fetch", "select", "find", "search", "lookup",
+            // API/External service input
+            "api", "service", "external", "remote", "http", "https", "curl", "wget",
+        ];
+
+        user_input_functions.iter().any(|&input_func| function_name.contains(input_func))
     }
 
     /// Detect SQL injection using AST analysis
@@ -3013,5 +3091,129 @@ impl std::fmt::Display for OwaspCategory {
             OwaspCategory::LoggingFailures => write!(f, "Logging Failures"),
             OwaspCategory::SSRF => write!(f, "Server-Side Request Forgery"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{FileInfo, Symbol, AnalysisResult};
+    use std::path::PathBuf;
+    use std::collections::HashMap;
+
+    fn create_test_analysis_result() -> AnalysisResult {
+        use std::fs;
+        use std::io::Write;
+
+        // Create a temporary file for testing
+        let temp_file = std::env::temp_dir().join("test_security.rs");
+        let mut file = fs::File::create(&temp_file).unwrap();
+        writeln!(file, "fn vulnerable_function() {{").unwrap();
+        writeln!(file, "    let password = \"hardcoded_password\";").unwrap();
+        writeln!(file, "    println!(\"Password: {{}}\", password);").unwrap();
+        writeln!(file, "}}").unwrap();
+
+        let symbols = vec![
+            Symbol {
+                name: "vulnerable_function".to_string(),
+                kind: "function".to_string(),
+                start_line: 1,
+                end_line: 4,
+                start_column: 0,
+                end_column: 1,
+                visibility: "public".to_string(),
+                documentation: Some("A potentially vulnerable function".to_string()),
+            }
+        ];
+
+        let file_info = FileInfo {
+            path: temp_file,
+            language: "rust".to_string(),
+            size: 500,
+            lines: 4,
+            parsed_successfully: true,
+            parse_errors: Vec::new(),
+            symbols,
+            security_vulnerabilities: Vec::new(),
+        };
+
+        AnalysisResult {
+            root_path: PathBuf::from("."),
+            total_files: 1,
+            parsed_files: 1,
+            error_files: 0,
+            total_lines: 4,
+            languages: HashMap::new(),
+            files: vec![file_info],
+            config: crate::AnalysisConfig::default(),
+        }
+    }
+
+    #[test]
+    fn test_advanced_security_scanner_creation() {
+        let config = AdvancedSecurityConfig::default();
+        let scanner = AdvancedSecurityAnalyzer::new().unwrap();
+
+        assert!(scanner.config.owasp_analysis);
+        assert!(scanner.config.secrets_detection);
+        assert_eq!(scanner.config.min_severity, SecuritySeverity::Low);
+    }
+
+    #[test]
+    fn test_scan_analysis_result() {
+        let config = AdvancedSecurityConfig::default();
+        let scanner = AdvancedSecurityAnalyzer::new().unwrap();
+        let analysis = create_test_analysis_result();
+
+        let result = scanner.analyze(&analysis);
+        if let Err(e) = &result {
+            eprintln!("Security analysis failed: {:?}", e);
+        }
+        assert!(result.is_ok());
+
+        let security_result = result.unwrap();
+        assert!(security_result.total_vulnerabilities >= 0);
+        assert!(security_result.security_score <= 100);
+    }
+
+    #[test]
+    fn test_user_input_function_detection() {
+        let config = AdvancedSecurityConfig::default();
+        let scanner = AdvancedSecurityAnalyzer::new().unwrap();
+
+        // Test user input function detection
+        assert!(scanner.is_user_input_function("request"));
+        assert!(scanner.is_user_input_function("input"));
+        assert!(scanner.is_user_input_function("stdin"));
+        assert!(scanner.is_user_input_function("readline"));
+        assert!(scanner.is_user_input_function("getenv"));
+        assert!(!scanner.is_user_input_function("println"));
+        assert!(!scanner.is_user_input_function("calculate"));
+    }
+
+    #[test]
+    fn test_security_config_default() {
+        let config = AdvancedSecurityConfig::default();
+
+        assert!(config.owasp_analysis);
+        assert!(config.secrets_detection);
+        assert!(config.input_validation);
+        assert_eq!(config.min_severity, SecuritySeverity::Low);
+        assert!(config.custom_rules.is_empty());
+        assert!(config.injection_analysis);
+    }
+
+    #[test]
+    fn test_entropy_calculation() {
+        let config = AdvancedSecurityConfig::default();
+        let scanner = AdvancedSecurityAnalyzer::new().unwrap();
+
+        // High entropy string (likely secret)
+        let high_entropy = "sk-1234567890abcdef1234567890abcdef";
+        assert!(scanner.calculate_entropy(high_entropy) > 4.0);
+
+        // Low entropy string (unlikely secret)
+        let low_entropy = "password123";
+        assert!(scanner.calculate_entropy(low_entropy) < 4.0);
     }
 }

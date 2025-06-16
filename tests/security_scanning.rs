@@ -5,10 +5,8 @@ use std::path::PathBuf;
 fn advanced_security_detects_vulnerabilities() -> Result<(), Box<dyn std::error::Error>> {
     let root = PathBuf::from("test_files");
     let mut analyzer = CodebaseAnalyzer::new();
-    let mut analysis = analyzer.analyze_directory(&root)?;
-    for file in &mut analysis.files {
-        file.path = analysis.root_path.join(&file.path);
-    }
+    let analysis = analyzer.analyze_directory(&root)?;
+    // No need to manually modify paths - the security analyzer handles this internally
     let scanner = AdvancedSecurityAnalyzer::new()?;
     let result = scanner.analyze(&analysis)?;
     assert!(result.total_vulnerabilities > 0);

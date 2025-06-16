@@ -277,8 +277,10 @@ impl CodeEvolutionTracker {
         
         // Verify this is a git repository
         if !repo_path.join(".git").exists() {
-            return Err(crate::Error::InvalidInput(
-                "Path is not a git repository".to_string()
+            return Err(crate::Error::invalid_input_error(
+                "path",
+                "git repository",
+                "non-git directory"
             ));
         }
 
@@ -370,11 +372,12 @@ impl CodeEvolutionTracker {
             ])
             .current_dir(&self.repo_path)
             .output()
-            .map_err(|e| crate::Error::Internal(format!("Failed to run git log: {}", e)))?;
+            .map_err(|e| crate::Error::internal_error("git", format!("Failed to run git log: {}", e)))?;
 
         if !output.status.success() {
-            return Err(crate::Error::Internal(
-                "Git log command failed".to_string()
+            return Err(crate::Error::internal_error(
+                "git",
+                "Git log command failed"
             ));
         }
 
@@ -399,7 +402,7 @@ impl CodeEvolutionTracker {
                 ])
                 .current_dir(&self.repo_path)
                 .output()
-                .map_err(|e| crate::Error::Internal(format!("Failed to run git log: {}", e)))?;
+                .map_err(|e| crate::Error::internal_error("git", format!("Failed to run git log: {}", e)))?;
 
             if output.status.success() {
                 let log_output = String::from_utf8_lossy(&output.stdout);
@@ -633,13 +636,14 @@ impl CodeEvolutionTracker {
             let coupling_strength = co_changes as f64 / (*file1_changes.min(file2_changes) as f64);
 
             if coupling_strength >= self.config.coupling_threshold {
+                let time_range = self.calculate_time_range_for_files(&[file1.clone(), file2.clone()])?;
                 let pattern = ChangePattern {
                     pattern_type: PatternType::CoupledChanges,
                     description: format!("Files {} and {} frequently change together",
                                        file1.display(), file2.display()),
                     confidence: coupling_strength,
                     files: vec![file1, file2],
-                    time_range: (0, 0), // TODO: Calculate actual time range
+                    time_range,
                     frequency: co_changes,
                 };
 
@@ -686,13 +690,14 @@ impl CodeEvolutionTracker {
             let coupling_strength = co_changes as f64 / (*file1_changes.min(file2_changes) as f64);
 
             if coupling_strength >= self.config.coupling_threshold {
+                let time_range = self.calculate_time_range_for_files(&[file1.clone(), file2.clone()])?;
                 let pattern = ChangePattern {
                     pattern_type: PatternType::CoupledChanges,
                     description: format!("Files {} and {} frequently change together",
                                        file1.display(), file2.display()),
                     confidence: coupling_strength,
                     files: vec![file1, file2],
-                    time_range: (0, 0),
+                    time_range,
                     frequency: co_changes,
                 };
 
@@ -965,6 +970,28 @@ impl CodeEvolutionTracker {
             }
         }
         Ok((0, 0))
+    }
+
+    fn calculate_time_range_for_files(&self, files: &[PathBuf]) -> Result<(u64, u64)> {
+        let mut min_time = u64::MAX;
+        let mut max_time = 0u64;
+        let mut found_changes = false;
+
+        for file_path in files {
+            if let Some(changes) = self.file_changes.get(file_path) {
+                for change in changes {
+                    found_changes = true;
+                    min_time = min_time.min(change.timestamp);
+                    max_time = max_time.max(change.timestamp);
+                }
+            }
+        }
+
+        if found_changes {
+            Ok((min_time, max_time))
+        } else {
+            Ok((0, 0))
+        }
     }
 
     fn count_unique_commits(&self) -> usize {

@@ -605,7 +605,7 @@ impl DependencyAnalyzer {
 
         // Parse Cargo.toml using proper TOML parsing
         let toml_value: toml::Value = toml::from_str(&content)
-            .map_err(|e| crate::error::Error::ParseError(format!("Failed to parse Cargo.toml: {}", e)))?;
+            .map_err(|e| crate::error::Error::parse_error(format!("Failed to parse Cargo.toml: {}", e)))?;
 
         // Extract regular dependencies
         if let Some(deps) = toml_value.get("dependencies").and_then(|d| d.as_table()) {
@@ -707,7 +707,7 @@ impl DependencyAnalyzer {
 
         // Parse package.json using serde_json
         let package_json: serde_json::Value = serde_json::from_str(&content)
-            .map_err(|e| crate::error::Error::ParseError(format!("Failed to parse package.json: {}", e)))?;
+            .map_err(|e| crate::error::Error::parse_error(format!("Failed to parse package.json: {}", e)))?;
 
         // Extract regular dependencies
         if let Some(deps) = package_json.get("dependencies").and_then(|d| d.as_object()) {
@@ -838,7 +838,7 @@ impl DependencyAnalyzer {
             }
             _ => {
                 // Fallback for other Python package managers
-                return Err(crate::error::Error::ParseError(
+                return Err(crate::error::Error::parse_error(
                     format!("Unsupported Python package manager: {:?}", pm_info.manager)
                 ));
             }
@@ -1173,7 +1173,7 @@ impl DependencyAnalyzer {
     /// Parse Poetry dependencies from pyproject.toml
     fn parse_poetry_dependencies(&self, content: &str, dependencies: &mut Vec<Dependency>) -> Result<()> {
         let toml_value: toml::Value = toml::from_str(content)
-            .map_err(|e| crate::error::Error::ParseError(format!("Failed to parse pyproject.toml: {}", e)))?;
+            .map_err(|e| crate::error::Error::parse_error(format!("Failed to parse pyproject.toml: {}", e)))?;
 
         // Extract dependencies from [tool.poetry.dependencies]
         if let Some(poetry) = toml_value.get("tool").and_then(|t| t.get("poetry")) {
@@ -1267,7 +1267,7 @@ impl DependencyAnalyzer {
     /// Parse Pipenv dependencies from Pipfile
     fn parse_pipfile_dependencies(&self, content: &str, dependencies: &mut Vec<Dependency>) -> Result<()> {
         let toml_value: toml::Value = toml::from_str(content)
-            .map_err(|e| crate::error::Error::ParseError(format!("Failed to parse Pipfile: {}", e)))?;
+            .map_err(|e| crate::error::Error::parse_error(format!("Failed to parse Pipfile: {}", e)))?;
 
         // Extract dependencies from [packages]
         if let Some(packages) = toml_value.get("packages").and_then(|p| p.as_table()) {

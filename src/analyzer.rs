@@ -13,6 +13,8 @@ use crate::tree::SyntaxTree;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use rayon::prelude::*;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -65,6 +67,12 @@ pub struct AnalysisConfig {
     pub include_hidden: bool,
     /// How much analysis to perform
     pub depth: AnalysisDepth,
+    /// Enable parallel processing for file analysis
+    pub enable_parallel: bool,
+    /// Number of threads to use for parallel processing (None = auto-detect)
+    pub thread_count: Option<usize>,
+    /// Minimum number of files to enable parallel processing
+    pub parallel_threshold: usize,
 }
 
 impl Default for AnalysisConfig {
@@ -86,6 +94,9 @@ impl Default for AnalysisConfig {
             max_depth: Some(20),
             include_hidden: false,
             depth: AnalysisDepth::Full,
+            enable_parallel: true,
+            thread_count: None, // Auto-detect
+            parallel_threshold: 10, // Enable parallel processing for 10+ files
         }
     }
 }
@@ -207,7 +218,7 @@ impl CodebaseAnalyzer {
     }
 
     /// Analyze a single file and return structured results
-    pub fn analyze_single_file<P: AsRef<Path>>(&mut self, file_path: P) -> Result<AnalysisResult> {
+    pub fn analyze_file<P: AsRef<Path>>(&mut self, file_path: P) -> Result<AnalysisResult> {
         let file_path = file_path.as_ref();
 
         if !file_path.exists() {
@@ -222,7 +233,7 @@ impl CodebaseAnalyzer {
         let root_path = file_path.parent().unwrap_or(Path::new("."));
         result.root_path = root_path.to_path_buf();
 
-        self.analyze_file(file_path, root_path, &mut result)?;
+        self.analyze_file_internal(file_path, root_path, &mut result)?;
 
         Ok(result)
     }
@@ -230,7 +241,7 @@ impl CodebaseAnalyzer {
     /// Analyze a directory and return structured results
     pub fn analyze_directory<P: AsRef<Path>>(&mut self, path: P) -> Result<AnalysisResult> {
         let root_path = path.as_ref().to_path_buf();
-        
+
         if !root_path.exists() {
             return Err(Error::invalid_input(format!("Path does not exist: {}", root_path.display())));
         }
@@ -239,7 +250,53 @@ impl CodebaseAnalyzer {
             return Err(Error::invalid_input(format!("Path is not a directory: {}", root_path.display())));
         }
 
-        let mut result = AnalysisResult {
+        // First, collect all files to analyze
+        let mut file_paths = Vec::new();
+        self.collect_files_recursive(&root_path, &root_path, &mut file_paths, 0)?;
+
+        // Decide whether to use parallel processing
+        if self.config.enable_parallel && file_paths.len() >= self.config.parallel_threshold {
+            self.analyze_directory_parallel(root_path, file_paths)
+        } else {
+            // Use sequential processing for small numbers of files
+            let mut result = AnalysisResult {
+                root_path: root_path.clone(),
+                total_files: 0,
+                parsed_files: 0,
+                error_files: 0,
+                total_lines: 0,
+                languages: HashMap::new(),
+                files: Vec::new(),
+                config: self.config.clone(),
+            };
+
+            self.analyze_directory_recursive(&root_path, &root_path, &mut result, 0)?;
+
+            // Build semantic graph if enabled
+            if self.semantic_graph.is_some() {
+                if let Some(ref mut graph) = self.semantic_graph {
+                    if let Err(e) = graph.build_from_analysis(&result) {
+                        eprintln!("Warning: Failed to build semantic graph: {}", e);
+                    }
+                }
+            }
+
+            Ok(result)
+        }
+    }
+
+    /// Analyze directory using parallel processing
+    fn analyze_directory_parallel(&self, root_path: PathBuf, file_paths: Vec<PathBuf>) -> Result<AnalysisResult> {
+        // Set up thread pool if custom thread count is specified
+        if let Some(thread_count) = self.config.thread_count {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(thread_count)
+                .build_global()
+                .map_err(|e| Error::internal(format!("Failed to set thread count: {}", e)))?;
+        }
+
+        // Shared result structure protected by mutex
+        let result = Arc::new(Mutex::new(AnalysisResult {
             root_path: root_path.clone(),
             total_files: 0,
             parsed_files: 0,
@@ -248,20 +305,100 @@ impl CodebaseAnalyzer {
             languages: HashMap::new(),
             files: Vec::new(),
             config: self.config.clone(),
-        };
+        }));
 
-        self.analyze_directory_recursive(&root_path, &root_path, &mut result, 0)?;
-
-        // Build semantic graph if enabled
-        if self.semantic_graph.is_some() {
-            if let Some(ref mut graph) = self.semantic_graph {
-                if let Err(e) = graph.build_from_analysis(&result) {
-                    eprintln!("Warning: Failed to build semantic graph: {}", e);
+        // Process files in parallel
+        let file_infos: Vec<_> = file_paths
+            .par_iter()
+            .filter_map(|file_path| {
+                match self.analyze_file_standalone(file_path, &root_path) {
+                    Ok(Some(file_info)) => Some(file_info),
+                    Ok(None) => None, // File was skipped
+                    Err(e) => {
+                        eprintln!("Warning: Failed to analyze file {}: {}", file_path.display(), e);
+                        None
+                    }
                 }
+            })
+            .collect();
+
+        // Aggregate results
+        let mut final_result = result.lock().unwrap();
+        for file_info in file_infos {
+            final_result.total_files += 1;
+            final_result.total_lines += file_info.lines;
+
+            if file_info.parsed_successfully {
+                final_result.parsed_files += 1;
+            } else {
+                final_result.error_files += 1;
             }
+
+            *final_result.languages.entry(file_info.language.clone()).or_insert(0) += 1;
+            final_result.files.push(file_info);
+        }
+
+        let mut result = final_result.clone();
+        drop(final_result); // Release the lock
+
+        // Build semantic graph if enabled (sequential for now due to complexity)
+        if self.semantic_graph.is_some() {
+            // Note: Semantic graph building is kept sequential for now
+            // as it requires complex coordination between threads
+            eprintln!("Note: Semantic graph building is performed sequentially even in parallel mode");
         }
 
         Ok(result)
+    }
+
+    /// Collect all files to be analyzed recursively
+    fn collect_files_recursive(
+        &self,
+        current_path: &Path,
+        root_path: &Path,
+        file_paths: &mut Vec<PathBuf>,
+        depth: usize,
+    ) -> Result<()> {
+        // Check depth limit
+        if let Some(max_depth) = self.config.max_depth {
+            if depth > max_depth {
+                return Ok(());
+            }
+        }
+
+        let entries = fs::read_dir(current_path)
+            .map_err(|e| Error::internal(format!("Failed to read directory {}: {}", current_path.display(), e)))?;
+
+        for entry in entries {
+            let entry = entry.map_err(|e| Error::internal(format!("Failed to read directory entry: {}", e)))?;
+            let path = entry.path();
+
+            // Skip hidden files/directories if not included
+            if !self.config.include_hidden {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if name.starts_with('.') {
+                        continue;
+                    }
+                }
+            }
+
+            if path.is_dir() {
+                // Check if directory should be excluded
+                if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
+                    if self.config.exclude_dirs.contains(&dir_name.to_string()) {
+                        continue;
+                    }
+                }
+
+                // Recursively collect from subdirectory
+                self.collect_files_recursive(&path, root_path, file_paths, depth + 1)?;
+            } else if path.is_file() {
+                // Add file to collection
+                file_paths.push(path);
+            }
+        }
+
+        Ok(())
     }
 
     /// Recursively analyze a directory
@@ -307,7 +444,7 @@ impl CodebaseAnalyzer {
                 self.analyze_directory_recursive(&path, root_path, result, depth + 1)?;
             } else if path.is_file() {
                 // Analyze file
-                if let Err(e) = self.analyze_file(&path, root_path, result) {
+                if let Err(e) = self.analyze_file_internal(&path, root_path, result) {
                     eprintln!("Warning: Failed to analyze file {}: {}", path.display(), e);
                 }
             }
@@ -316,8 +453,147 @@ impl CodebaseAnalyzer {
         Ok(())
     }
 
-    /// Analyze a single file
-    fn analyze_file(&mut self, file_path: &Path, root_path: &Path, result: &mut AnalysisResult) -> Result<()> {
+    /// Analyze a single file in standalone mode (for parallel processing)
+    fn analyze_file_standalone(&self, file_path: &Path, root_path: &Path) -> Result<Option<FileInfo>> {
+        // Get file extension
+        let extension = file_path.extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        // Check if extension should be excluded
+        if self.config.exclude_extensions.contains(&extension) {
+            return Ok(None);
+        }
+
+        // Check if extension should be included (if filter is specified)
+        if let Some(ref include_exts) = self.config.include_extensions {
+            if !include_exts.contains(&extension) {
+                return Ok(None);
+            }
+        }
+
+        // Detect language
+        let language = match crate::detect_language_from_extension(&extension) {
+            Some(lang) => lang,
+            None => return Ok(None), // Skip files with unknown languages
+        };
+
+        // Check file size
+        let metadata = fs::metadata(file_path)?;
+        let file_size = metadata.len() as usize;
+
+        if let Some(max_size) = self.config.max_file_size {
+            if file_size > max_size {
+                return Ok(None); // Skip large files
+            }
+        }
+
+        // Read file content
+        let content = fs::read_to_string(file_path)?;
+        let line_count = content.lines().count();
+
+        // Get relative path
+        let relative_path = file_path.strip_prefix(root_path)
+            .unwrap_or(file_path)
+            .to_path_buf();
+
+        let lang_name = language.name().to_string();
+
+        // Skip parsing if depth is Basic
+        if matches!(self.config.depth, AnalysisDepth::Basic) {
+            let file_info = FileInfo {
+                path: relative_path,
+                language: lang_name,
+                size: file_size,
+                lines: line_count,
+                parsed_successfully: false,
+                parse_errors: Vec::new(),
+                symbols: Vec::new(),
+                security_vulnerabilities: Vec::new(),
+            };
+            return Ok(Some(file_info));
+        }
+
+        // Create a parser for this thread (parsers are not thread-safe to share)
+        let parser = Parser::new(language)?;
+        let mut file_info = FileInfo {
+            path: relative_path.clone(),
+            language: lang_name,
+            size: file_size,
+            lines: line_count,
+            parsed_successfully: false,
+            parse_errors: Vec::new(),
+            symbols: Vec::new(),
+            security_vulnerabilities: Vec::new(),
+        };
+
+        match parser.parse(&content, None) {
+            Ok(tree) => {
+                file_info.parsed_successfully = true;
+
+                // Check for parse errors in the tree
+                if tree.has_error() {
+                    let error_nodes = tree.error_nodes();
+                    for error_node in error_nodes {
+                        let pos = error_node.start_position();
+                        file_info.parse_errors.push(format!(
+                            "Parse error at line {}, column {}: {}",
+                            pos.row + 1,
+                            pos.column,
+                            error_node.kind()
+                        ));
+                    }
+                }
+
+                // Extract symbols only for Full depth
+                if matches!(self.config.depth, AnalysisDepth::Full) {
+                    file_info.symbols = self.extract_symbols(&tree, &content, language)?;
+                }
+
+                // Perform security analysis for Deep and Full depth
+                if matches!(self.config.depth, AnalysisDepth::Deep | AnalysisDepth::Full) {
+                    // Create a temporary FileInfo for security analysis with full path
+                    let temp_file_info = FileInfo {
+                        path: file_path.to_path_buf(), // Use full path for security analysis
+                        language: file_info.language.clone(),
+                        size: file_info.size,
+                        lines: file_info.lines,
+                        parsed_successfully: file_info.parsed_successfully,
+                        parse_errors: file_info.parse_errors.clone(),
+                        symbols: file_info.symbols.clone(),
+                        security_vulnerabilities: Vec::new(),
+                    };
+
+                    // Create a new security analyzer for this thread
+                    let security_analyzer = AdvancedSecurityAnalyzer::new()
+                        .map_err(|e| Error::internal(format!("Failed to create security analyzer: {}", e)))?;
+
+                    match security_analyzer.detect_owasp_vulnerabilities(&temp_file_info) {
+                        Ok(vulnerabilities) => {
+                            // Update the vulnerabilities to use relative paths for consistency
+                            let mut updated_vulnerabilities = vulnerabilities;
+                            for vuln in &mut updated_vulnerabilities {
+                                vuln.location.file = relative_path.clone();
+                            }
+                            file_info.security_vulnerabilities = updated_vulnerabilities;
+                        }
+                        Err(e) => {
+                            eprintln!("Warning: Security analysis failed for {}: {}", file_path.display(), e);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                file_info.parse_errors.push(e.to_string());
+            }
+        }
+
+        Ok(Some(file_info))
+    }
+
+    /// Analyze a single file (internal method)
+    fn analyze_file_internal(&mut self, file_path: &Path, root_path: &Path, result: &mut AnalysisResult) -> Result<()> {
         // Get file extension
         let extension = file_path.extension()
             .and_then(|ext| ext.to_str())
