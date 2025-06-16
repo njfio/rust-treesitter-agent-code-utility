@@ -92,6 +92,10 @@ struct SecurityContext {
     variable_assignments: HashMap<String, String>,
     /// Function calls in current scope
     function_calls: Vec<String>,
+    /// Whether user input is involved
+    has_user_input: bool,
+    /// Whether we're in a web context
+    is_web_context: bool,
 }
 
 /// Results of advanced security analysis
@@ -631,11 +635,15 @@ impl AdvancedSecurityAnalyzer {
         // Create security context
         let context = self.build_security_context(&tree, file);
 
-        // Analyze different vulnerability types using AST
+        // Analyze different vulnerability types using enhanced AST analysis
         vulnerabilities.extend(self.detect_sql_injection_ast(&tree, &content, file, &context)?);
         vulnerabilities.extend(self.detect_command_injection_ast(&tree, &content, file, &context)?);
         vulnerabilities.extend(self.detect_hardcoded_secrets_ast(&tree, &content, file, &context)?);
         vulnerabilities.extend(self.detect_weak_crypto_ast(&tree, &content, file, &context)?);
+
+        // Add enhanced detection methods
+        vulnerabilities.extend(self.detect_enhanced_injection_ast(&tree, &content, file, &context)?);
+        vulnerabilities.extend(self.detect_access_control_ast(&tree, &content, file, &context)?);
 
         Ok(vulnerabilities)
     }
@@ -1489,6 +1497,10 @@ impl AdvancedSecurityAnalyzer {
             is_comment: false,
             variable_assignments: HashMap::new(),
             function_calls: Vec::new(),
+            has_user_input: false, // TODO: Implement user input detection
+            is_web_context: file.path.to_string_lossy().contains("web") ||
+                           file.path.to_string_lossy().contains("http") ||
+                           file.path.to_string_lossy().contains("api"),
         };
 
         // Walk the tree to build context
@@ -2001,6 +2013,658 @@ impl AdvancedSecurityAnalyzer {
         }
 
         Ok(())
+    }
+
+    /// Detect access control issues using AST analysis
+    fn detect_access_control_ast(&self, tree: &SyntaxTree, content: &str, file: &FileInfo, context: &SecurityContext) -> Result<Vec<SecurityVulnerability>> {
+        let mut vulnerabilities = Vec::new();
+        let root = tree.root_node();
+
+        self.analyze_node_for_access_control(&root, content, file, context, &mut vulnerabilities)?;
+        Ok(vulnerabilities)
+    }
+
+    /// Analyze node for access control issues
+    fn analyze_node_for_access_control(&self, node: &Node, content: &str, file: &FileInfo, context: &SecurityContext, vulnerabilities: &mut Vec<SecurityVulnerability>) -> Result<()> {
+        // Look for function definitions that might be admin functions
+        if node.kind() == "function_definition" || node.kind() == "function_declaration" || node.kind() == "method_definition" {
+            if let Some(name_node) = node.child_by_field_name("name") {
+                if let Ok(function_name) = name_node.text() {
+                    let function_name_lower = function_name.to_lowercase();
+
+                    // Check if this looks like an admin function
+                    if self.is_admin_function(&function_name_lower) {
+                        // Check if there are authorization checks in the function body
+                        if let Some(body_node) = node.child_by_field_name("body") {
+                            if !self.has_authorization_checks_in_body(&body_node, content) {
+                                vulnerabilities.push(SecurityVulnerability {
+                                    id: format!("AST_AC_{}", node.start_position().row),
+                                    title: "Missing authorization check in admin function".to_string(),
+                                    description: format!("Function '{}' appears to be an admin function but lacks authorization checks", function_name),
+                                    severity: SecuritySeverity::High,
+                                    owasp_category: OwaspCategory::BrokenAccessControl,
+                                    cwe_id: Some("CWE-862".to_string()),
+                                    location: VulnerabilityLocation {
+                                        file: file.path.clone(),
+                                        function: Some(function_name.to_string()),
+                                        start_line: node.start_position().row + 1,
+                                        end_line: node.end_position().row + 1,
+                                        column: node.start_position().column,
+                                    },
+                                    code_snippet: node.text().unwrap_or("").lines().take(3).collect::<Vec<_>>().join("\n"),
+                                    impact: SecurityImpact {
+                                        confidentiality: ImpactLevel::High,
+                                        integrity: ImpactLevel::High,
+                                        availability: ImpactLevel::Medium,
+                                        overall_score: 8.0,
+                                    },
+                                    remediation: RemediationGuidance {
+                                        summary: "Add proper authorization checks before admin operations".to_string(),
+                                        steps: vec![
+                                            "Add authentication verification at function start".to_string(),
+                                            "Implement role-based access control".to_string(),
+                                            "Validate user permissions for admin operations".to_string(),
+                                        ],
+                                        code_examples: vec![
+                                            CodeExample {
+                                                description: "Add authorization check".to_string(),
+                                                vulnerable_code: format!("def {}():\n    # admin operation", function_name),
+                                                secure_code: format!("def {}():\n    if not user.has_role('admin'):\n        raise Unauthorized()\n    # admin operation", function_name),
+                                                language: "python".to_string(),
+                                            }
+                                        ],
+                                        references: vec![
+                                            "https://owasp.org/Top10/A01_2021-Broken_Access_Control/".to_string(),
+                                        ],
+                                        effort: RemediationEffort::Medium,
+                                    },
+                                    confidence: ConfidenceLevel::High,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Recursively analyze children
+        for child in node.children() {
+            self.analyze_node_for_access_control(&child, content, file, context, vulnerabilities)?;
+        }
+
+        Ok(())
+    }
+
+    /// Check if function name suggests admin functionality
+    fn is_admin_function(&self, function_name: &str) -> bool {
+        let admin_patterns = [
+            "admin", "administrator", "delete_user", "create_user", "modify_user",
+            "delete_all", "drop_table", "reset_password", "change_role", "grant_permission",
+            "revoke_permission", "system_config", "backup", "restore", "migrate"
+        ];
+
+        admin_patterns.iter().any(|&pattern| function_name.contains(pattern))
+    }
+
+    /// Check if function body contains authorization checks
+    fn has_authorization_checks_in_body(&self, body_node: &Node, content: &str) -> bool {
+        // Look for authorization-related function calls or conditions
+        self.find_authorization_patterns(body_node, content)
+    }
+
+    /// Find authorization patterns in AST node
+    fn find_authorization_patterns(&self, node: &Node, content: &str) -> bool {
+        // Check current node for authorization patterns
+        if node.kind() == "call_expression" {
+            if let Some(function_node) = node.child_by_field_name("function") {
+                if let Ok(function_name) = function_node.text() {
+                    let function_name_lower = function_name.to_lowercase();
+                    if self.is_authorization_function(&function_name_lower) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Check for conditional statements that might be authorization checks
+        if node.kind() == "if_statement" || node.kind() == "conditional_expression" {
+            if let Ok(node_text) = node.text() {
+                let node_text_lower = node_text.to_lowercase();
+                if self.contains_authorization_keywords(&node_text_lower) {
+                    return true;
+                }
+            }
+        }
+
+        // Recursively check children
+        for child in node.children() {
+            if self.find_authorization_patterns(&child, content) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Check if function name is related to authorization
+    fn is_authorization_function(&self, function_name: &str) -> bool {
+        let auth_patterns = [
+            "check_auth", "verify_auth", "authenticate", "authorize", "has_role",
+            "has_permission", "check_permission", "verify_role", "is_admin",
+            "require_auth", "ensure_auth", "validate_token", "check_access"
+        ];
+
+        auth_patterns.iter().any(|&pattern| function_name.contains(pattern))
+    }
+
+    /// Check if text contains authorization keywords
+    fn contains_authorization_keywords(&self, text: &str) -> bool {
+        let auth_keywords = [
+            "auth", "permission", "role", "access", "token", "session",
+            "login", "user", "admin", "unauthorized", "forbidden"
+        ];
+
+        auth_keywords.iter().any(|&keyword| text.contains(keyword))
+    }
+
+    /// Check for authorization patterns in string-based analysis
+    fn has_authorization_patterns(&self, line: &str) -> bool {
+        let line_lower = line.to_lowercase();
+        let auth_patterns = [
+            "auth", "check", "verify", "permission", "role", "access",
+            "token", "session", "login", "user.is", "has_role", "require"
+        ];
+
+        auth_patterns.iter().any(|&pattern| line_lower.contains(pattern))
+    }
+
+    /// Check if line is likely a false positive
+    fn is_likely_false_positive(&self, line: &str, line_num: usize, lines: &[&str]) -> bool {
+        let line_lower = line.to_lowercase();
+
+        // Skip comments
+        if line_lower.trim_start().starts_with("//") ||
+           line_lower.trim_start().starts_with("#") ||
+           line_lower.trim_start().starts_with("/*") {
+            return true;
+        }
+
+        // Skip documentation strings
+        if line_lower.contains("\"\"\"") || line_lower.contains("'''") {
+            return true;
+        }
+
+        // Skip variable names or class names that just contain "admin"
+        if line_lower.contains("admin") &&
+           (line_lower.contains("class ") || line_lower.contains("var ") ||
+            line_lower.contains("const ") || line_lower.contains("let ")) &&
+           !line_lower.contains("(") {
+            return true;
+        }
+
+        // Check surrounding context for authorization
+        let context_start = line_num.saturating_sub(3);
+        let context_end = (line_num + 3).min(lines.len());
+
+        for i in context_start..context_end {
+            if i != line_num && self.has_authorization_patterns(lines[i]) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Enhanced injection detection with better AST analysis
+    fn detect_enhanced_injection_ast(&self, tree: &SyntaxTree, content: &str, file: &FileInfo, context: &SecurityContext) -> Result<Vec<SecurityVulnerability>> {
+        let mut vulnerabilities = Vec::new();
+        let root = tree.root_node();
+
+        // Detect SQL injection with better context awareness
+        self.analyze_node_for_enhanced_sql_injection(&root, content, file, context, &mut vulnerabilities)?;
+
+        // Detect command injection with better context awareness
+        self.analyze_node_for_enhanced_command_injection(&root, content, file, context, &mut vulnerabilities)?;
+
+        // Detect XSS vulnerabilities
+        self.analyze_node_for_xss(&root, content, file, context, &mut vulnerabilities)?;
+
+        Ok(vulnerabilities)
+    }
+
+    /// Enhanced SQL injection detection
+    fn analyze_node_for_enhanced_sql_injection(&self, node: &Node, content: &str, file: &FileInfo, context: &SecurityContext, vulnerabilities: &mut Vec<SecurityVulnerability>) -> Result<()> {
+        if node.kind() == "call_expression" {
+            if let Some(function_node) = node.child_by_field_name("function") {
+                if let Ok(function_name) = function_node.text() {
+                    let function_name_lower = function_name.to_lowercase();
+
+                    // Check for database-related function calls
+                    if self.is_database_function_enhanced(&function_name_lower) {
+                        if let Some(args_node) = node.child_by_field_name("arguments") {
+                            // Check if any argument contains string concatenation or interpolation
+                            if self.has_dynamic_sql_construction(&args_node, content) {
+                                let confidence = self.calculate_enhanced_sql_injection_confidence(node, content, context);
+
+                                vulnerabilities.push(SecurityVulnerability {
+                                    id: format!("AST_SQL_{}", node.start_position().row),
+                                    title: "SQL injection vulnerability detected".to_string(),
+                                    description: format!("Function '{}' uses dynamic SQL construction which may allow SQL injection", function_name),
+                                    severity: SecuritySeverity::High,
+                                    owasp_category: OwaspCategory::Injection,
+                                    cwe_id: Some("CWE-89".to_string()),
+                                    location: VulnerabilityLocation {
+                                        file: file.path.clone(),
+                                        function: context.function_name.clone(),
+                                        start_line: node.start_position().row + 1,
+                                        end_line: node.end_position().row + 1,
+                                        column: node.start_position().column,
+                                    },
+                                    code_snippet: node.text().unwrap_or("").to_string(),
+                                    impact: SecurityImpact {
+                                        confidentiality: ImpactLevel::High,
+                                        integrity: ImpactLevel::High,
+                                        availability: ImpactLevel::Medium,
+                                        overall_score: 8.5,
+                                    },
+                                    remediation: RemediationGuidance {
+                                        summary: "Use parameterized queries to prevent SQL injection".to_string(),
+                                        steps: vec![
+                                            "Replace string concatenation with parameterized queries".to_string(),
+                                            "Use prepared statements or ORM methods".to_string(),
+                                            "Validate and sanitize all user inputs".to_string(),
+                                            "Implement input validation at application boundaries".to_string(),
+                                        ],
+                                        code_examples: vec![
+                                            CodeExample {
+                                                description: "Use parameterized query instead of concatenation".to_string(),
+                                                vulnerable_code: "query = \"SELECT * FROM users WHERE id = \" + user_id".to_string(),
+                                                secure_code: "query = \"SELECT * FROM users WHERE id = ?\"; cursor.execute(query, (user_id,))".to_string(),
+                                                language: "python".to_string(),
+                                            }
+                                        ],
+                                        references: vec![
+                                            "https://owasp.org/Top10/A03_2021-Injection/".to_string(),
+                                            "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html".to_string(),
+                                        ],
+                                        effort: RemediationEffort::Medium,
+                                    },
+                                    confidence,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Recursively analyze children
+        for child in node.children() {
+            self.analyze_node_for_enhanced_sql_injection(&child, content, file, context, vulnerabilities)?;
+        }
+
+        Ok(())
+    }
+
+    /// Check if function is database-related (enhanced version)
+    fn is_database_function_enhanced(&self, function_name: &str) -> bool {
+        let db_functions = [
+            "execute", "query", "exec", "prepare", "cursor", "select", "insert",
+            "update", "delete", "create", "drop", "alter", "sql", "db", "database",
+            "find", "findone", "aggregate", "collection"
+        ];
+
+        db_functions.iter().any(|&func| function_name.contains(func))
+    }
+
+    /// Check for dynamic SQL construction patterns
+    fn has_dynamic_sql_construction(&self, args_node: &Node, _content: &str) -> bool {
+        for child in args_node.children() {
+            // Check for string concatenation
+            if child.kind() == "binary_expression" {
+                if let Some(operator_node) = child.child_by_field_name("operator") {
+                    if let Ok(operator) = operator_node.text() {
+                        if operator == "+" {
+                            // Check if this involves SQL keywords
+                            if let Ok(expr_text) = child.text() {
+                                if self.contains_sql_keywords(&expr_text.to_lowercase()) {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Check for template literals or f-strings
+            if child.kind() == "template_string" || child.kind() == "formatted_string" {
+                if let Ok(template_text) = child.text() {
+                    if self.contains_sql_keywords(&template_text.to_lowercase()) {
+                        return true;
+                    }
+                }
+            }
+
+            // Check for format strings
+            if child.kind() == "call_expression" {
+                if let Some(func_node) = child.child_by_field_name("function") {
+                    if let Ok(func_name) = func_node.text() {
+                        if func_name.contains("format") {
+                            if let Ok(call_text) = child.text() {
+                                if self.contains_sql_keywords(&call_text.to_lowercase()) {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Check if text contains SQL keywords
+    fn contains_sql_keywords(&self, text: &str) -> bool {
+        let sql_keywords = [
+            "select", "insert", "update", "delete", "create", "drop", "alter",
+            "from", "where", "join", "union", "order by", "group by", "having"
+        ];
+
+        sql_keywords.iter().any(|&keyword| text.contains(keyword))
+    }
+
+    /// Calculate enhanced confidence for SQL injection
+    fn calculate_enhanced_sql_injection_confidence(&self, node: &Node, content: &str, context: &SecurityContext) -> ConfidenceLevel {
+        let mut confidence_score = 0;
+
+        // Higher confidence if SQL keywords are present
+        if let Ok(node_text) = node.text() {
+            if self.contains_sql_keywords(&node_text.to_lowercase()) {
+                confidence_score += 3;
+            }
+        }
+
+        // Higher confidence if user input is involved
+        if context.has_user_input {
+            confidence_score += 2;
+        }
+
+        // Higher confidence if in a web context
+        if context.is_web_context {
+            confidence_score += 1;
+        }
+
+        // Lower confidence if in test files
+        if context.is_test_file {
+            confidence_score -= 2;
+        }
+
+        // Lower confidence if parameterized query patterns are nearby
+        if self.has_nearby_parameterized_patterns(node, content) {
+            confidence_score -= 1;
+        }
+
+        match confidence_score {
+            5.. => ConfidenceLevel::High,
+            3..=4 => ConfidenceLevel::Medium,
+            _ => ConfidenceLevel::Low,
+        }
+    }
+
+    /// Check for nearby parameterized query patterns
+    fn has_nearby_parameterized_patterns(&self, node: &Node, _content: &str) -> bool {
+        // Look for patterns like ?, $1, :param, etc. in the vicinity
+        if let Ok(node_text) = node.text() {
+            node_text.contains('?') ||
+            node_text.contains("$1") ||
+            node_text.contains(":") ||
+            node_text.contains("prepare")
+        } else {
+            false
+        }
+    }
+
+
+
+    /// Enhanced command injection detection
+    fn analyze_node_for_enhanced_command_injection(&self, node: &Node, content: &str, file: &FileInfo, context: &SecurityContext, vulnerabilities: &mut Vec<SecurityVulnerability>) -> Result<()> {
+        if node.kind() == "call_expression" {
+            if let Some(function_node) = node.child_by_field_name("function") {
+                if let Ok(function_name) = function_node.text() {
+                    let function_name_lower = function_name.to_lowercase();
+
+                    // Check for command execution functions
+                    if self.is_command_execution_function_enhanced(&function_name_lower) {
+                        if let Some(args_node) = node.child_by_field_name("arguments") {
+                            // Check if command is constructed dynamically
+                            if self.has_dynamic_command_construction(&args_node, content) {
+                                let confidence = self.calculate_command_injection_confidence(node, content, context);
+
+                                vulnerabilities.push(SecurityVulnerability {
+                                    id: format!("AST_CMD_{}", node.start_position().row),
+                                    title: "Command injection vulnerability detected".to_string(),
+                                    description: format!("Function '{}' executes dynamically constructed commands which may allow command injection", function_name),
+                                    severity: SecuritySeverity::Critical,
+                                    owasp_category: OwaspCategory::Injection,
+                                    cwe_id: Some("CWE-78".to_string()),
+                                    location: VulnerabilityLocation {
+                                        file: file.path.clone(),
+                                        function: context.function_name.clone(),
+                                        start_line: node.start_position().row + 1,
+                                        end_line: node.end_position().row + 1,
+                                        column: node.start_position().column,
+                                    },
+                                    code_snippet: node.text().unwrap_or("").to_string(),
+                                    impact: SecurityImpact {
+                                        confidentiality: ImpactLevel::Critical,
+                                        integrity: ImpactLevel::Critical,
+                                        availability: ImpactLevel::Critical,
+                                        overall_score: 9.5,
+                                    },
+                                    remediation: RemediationGuidance {
+                                        summary: "Avoid dynamic command construction and use safe APIs".to_string(),
+                                        steps: vec![
+                                            "Use safe APIs instead of shell command execution".to_string(),
+                                            "Validate and whitelist allowed commands".to_string(),
+                                            "Escape shell metacharacters if shell execution is necessary".to_string(),
+                                            "Use subprocess with argument arrays instead of shell strings".to_string(),
+                                        ],
+                                        code_examples: vec![
+                                            CodeExample {
+                                                description: "Use safe subprocess call instead of shell".to_string(),
+                                                vulnerable_code: "os.system('ls ' + user_input)".to_string(),
+                                                secure_code: "subprocess.run(['ls', user_input], check=True)".to_string(),
+                                                language: "python".to_string(),
+                                            }
+                                        ],
+                                        references: vec![
+                                            "https://owasp.org/Top10/A03_2021-Injection/".to_string(),
+                                            "https://cheatsheetseries.owasp.org/cheatsheets/OS_Command_Injection_Defense_Cheat_Sheet.html".to_string(),
+                                        ],
+                                        effort: RemediationEffort::High,
+                                    },
+                                    confidence,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Recursively analyze children
+        for child in node.children() {
+            self.analyze_node_for_enhanced_command_injection(&child, content, file, context, vulnerabilities)?;
+        }
+
+        Ok(())
+    }
+
+    /// Check if function executes commands (enhanced version)
+    fn is_command_execution_function_enhanced(&self, function_name: &str) -> bool {
+        let cmd_functions = [
+            "system", "exec", "shell", "cmd", "popen", "subprocess", "spawn",
+            "execve", "execl", "execlp", "execv", "execvp", "run", "call",
+            "check_output", "getoutput", "getstatusoutput"
+        ];
+
+        cmd_functions.iter().any(|&func| function_name.contains(func))
+    }
+
+    /// Check for dynamic command construction
+    fn has_dynamic_command_construction(&self, args_node: &Node, _content: &str) -> bool {
+        for child in args_node.children() {
+            // Check for string concatenation
+            if child.kind() == "binary_expression" {
+                if let Some(operator_node) = child.child_by_field_name("operator") {
+                    if let Ok(operator) = operator_node.text() {
+                        if operator == "+" {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            // Check for template literals or f-strings
+            if child.kind() == "template_string" || child.kind() == "formatted_string" {
+                return true;
+            }
+
+            // Check for format strings
+            if child.kind() == "call_expression" {
+                if let Some(func_node) = child.child_by_field_name("function") {
+                    if let Ok(func_name) = func_node.text() {
+                        if func_name.contains("format") {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
+    /// XSS vulnerability detection
+    fn analyze_node_for_xss(&self, node: &Node, content: &str, file: &FileInfo, context: &SecurityContext, vulnerabilities: &mut Vec<SecurityVulnerability>) -> Result<()> {
+        // Look for output functions that might render user input
+        if node.kind() == "call_expression" {
+            if let Some(function_node) = node.child_by_field_name("function") {
+                if let Ok(function_name) = function_node.text() {
+                    let function_name_lower = function_name.to_lowercase();
+
+                    // Check for output/rendering functions
+                    if self.is_output_function(&function_name_lower) {
+                        if let Some(args_node) = node.child_by_field_name("arguments") {
+                            // Check if output contains unescaped user input
+                            if self.has_unescaped_user_input(&args_node, content, context) {
+                                vulnerabilities.push(SecurityVulnerability {
+                                    id: format!("AST_XSS_{}", node.start_position().row),
+                                    title: "Cross-Site Scripting (XSS) vulnerability detected".to_string(),
+                                    description: format!("Function '{}' outputs user input without proper escaping", function_name),
+                                    severity: SecuritySeverity::High,
+                                    owasp_category: OwaspCategory::Injection,
+                                    cwe_id: Some("CWE-79".to_string()),
+                                    location: VulnerabilityLocation {
+                                        file: file.path.clone(),
+                                        function: context.function_name.clone(),
+                                        start_line: node.start_position().row + 1,
+                                        end_line: node.end_position().row + 1,
+                                        column: node.start_position().column,
+                                    },
+                                    code_snippet: node.text().unwrap_or("").to_string(),
+                                    impact: SecurityImpact {
+                                        confidentiality: ImpactLevel::Medium,
+                                        integrity: ImpactLevel::High,
+                                        availability: ImpactLevel::Low,
+                                        overall_score: 7.0,
+                                    },
+                                    remediation: RemediationGuidance {
+                                        summary: "Properly escape user input before output".to_string(),
+                                        steps: vec![
+                                            "Use context-appropriate output encoding".to_string(),
+                                            "Implement Content Security Policy (CSP)".to_string(),
+                                            "Validate and sanitize user input".to_string(),
+                                            "Use templating engines with auto-escaping".to_string(),
+                                        ],
+                                        code_examples: vec![
+                                            CodeExample {
+                                                description: "Escape HTML output".to_string(),
+                                                vulnerable_code: "output = '<div>' + user_input + '</div>'".to_string(),
+                                                secure_code: "output = '<div>' + html.escape(user_input) + '</div>'".to_string(),
+                                                language: "python".to_string(),
+                                            }
+                                        ],
+                                        references: vec![
+                                            "https://owasp.org/Top10/A03_2021-Injection/".to_string(),
+                                            "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html".to_string(),
+                                        ],
+                                        effort: RemediationEffort::Medium,
+                                    },
+                                    confidence: ConfidenceLevel::Medium,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Recursively analyze children
+        for child in node.children() {
+            self.analyze_node_for_xss(&child, content, file, context, vulnerabilities)?;
+        }
+
+        Ok(())
+    }
+
+    /// Check if function outputs content
+    fn is_output_function(&self, function_name: &str) -> bool {
+        let output_functions = [
+            "print", "write", "render", "send", "response", "output", "echo",
+            "innerHTML", "outerHTML", "document.write", "append", "html",
+            "text", "val", "attr", "prop"
+        ];
+
+        output_functions.iter().any(|&func| function_name.contains(func))
+    }
+
+    /// Check for unescaped user input
+    fn has_unescaped_user_input(&self, args_node: &Node, _content: &str, _context: &SecurityContext) -> bool {
+        // This is a simplified check - in a real implementation, you'd track data flow
+        for child in args_node.children() {
+            if let Ok(arg_text) = child.text() {
+                let arg_text_lower = arg_text.to_lowercase();
+
+                // Look for variables that might contain user input
+                if self.looks_like_user_input(&arg_text_lower) &&
+                   !self.has_escaping_function(&arg_text_lower) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Check if variable name suggests user input
+    fn looks_like_user_input(&self, var_name: &str) -> bool {
+        let user_input_patterns = [
+            "user", "input", "request", "param", "query", "form", "post",
+            "get", "body", "data", "payload", "content"
+        ];
+
+        user_input_patterns.iter().any(|&pattern| var_name.contains(pattern))
+    }
+
+    /// Check if escaping function is used
+    fn has_escaping_function(&self, text: &str) -> bool {
+        let escape_functions = [
+            "escape", "encode", "sanitize", "clean", "filter", "safe"
+        ];
+
+        escape_functions.iter().any(|&func| text.contains(func))
     }
 
 }

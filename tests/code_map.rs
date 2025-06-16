@@ -16,6 +16,8 @@ fn cli_generates_tree_map_json() -> Result<(), Box<dyn std::error::Error>> {
     assert!(output.status.success());
     let json = parse_json_from_output(&output.stdout);
     assert!(json.get("files").is_some());
+    Ok(())
+}
 
 use rust_tree_sitter::{CodebaseAnalyzer, build_call_graph, build_module_graph};
 use std::fs;
