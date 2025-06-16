@@ -664,7 +664,7 @@ impl AdvancedSecurityAnalyzer {
 
         // Detect language and create parser
         let language = detect_language_from_path(&file.path)
-            .ok_or_else(|| Error::language("Unable to detect language for AST analysis".to_string()))?;
+            .ok_or_else(|| Error::language_error("unknown", "Unable to detect language for AST analysis"))?;
 
         let parser = Parser::new(language)?;
         let content = std::fs::read_to_string(&file.path)?;
@@ -3002,7 +3002,7 @@ impl SecurityPatterns {
         let mut secrets = HashMap::new();
         for (name, pattern) in secret_patterns {
             let regex = Regex::new(pattern)
-                .map_err(|e| Error::invalid_input(format!("invalid regex for {}: {}", name, e)))?;
+                .map_err(|e| Error::invalid_input_error("regex pattern", pattern, &format!("valid regex: {}", e)))?;
             secrets.insert(name.to_string(), regex);
         }
 
@@ -3015,7 +3015,7 @@ impl SecurityPatterns {
         let mut injections = HashMap::new();
         for (name, pattern) in injection_patterns {
             let regex = Regex::new(pattern)
-                .map_err(|e| Error::invalid_input(format!("invalid regex for {}: {}", name, e)))?;
+                .map_err(|e| Error::invalid_input_error("regex pattern", pattern, &format!("valid regex: {}", e)))?;
             injections.insert(name.to_string(), regex);
         }
 
@@ -3029,7 +3029,7 @@ impl SecurityPatterns {
         let mut insecure_functions = HashMap::new();
         for (name, pattern) in insecure_fn_patterns {
             let regex = Regex::new(pattern)
-                .map_err(|e| Error::invalid_input(format!("invalid regex for {}: {}", name, e)))?;
+                .map_err(|e| Error::invalid_input_error("regex pattern", pattern, &format!("valid regex: {}", e)))?;
             insecure_functions.insert(name.to_string(), regex);
         }
 
@@ -3051,7 +3051,7 @@ impl SecurityPatterns {
         let mut credentials = HashMap::new();
         for (name, pattern) in credential_patterns {
             let regex = Regex::new(pattern)
-                .map_err(|e| Error::invalid_input(format!("invalid regex for {}: {}", name, e)))?;
+                .map_err(|e| Error::invalid_input_error("regex pattern", pattern, &format!("valid regex: {}", e)))?;
             credentials.insert(name.to_string(), regex);
         }
 

@@ -214,7 +214,7 @@ impl CodebaseAnalyzer {
             self.parsers.insert(language, parser);
         }
         self.parsers.get(&language)
-            .ok_or_else(|| Error::internal(format!("Parser for {} should exist after insertion", language.name())))
+            .ok_or_else(|| Error::internal_error("analyzer", format!("Parser for {} should exist after insertion", language.name())))
     }
 
     /// Analyze a single file and return structured results
@@ -222,11 +222,11 @@ impl CodebaseAnalyzer {
         let file_path = file_path.as_ref();
 
         if !file_path.exists() {
-            return Err(Error::invalid_input(format!("File does not exist: {}", file_path.display())));
+            return Err(Error::invalid_input_error("file path", &file_path.display().to_string(), "existing file"));
         }
 
         if !file_path.is_file() {
-            return Err(Error::invalid_input(format!("Path is not a file: {}", file_path.display())));
+            return Err(Error::invalid_input_error("path type", &file_path.display().to_string(), "file (not directory)"));
         }
 
         let mut result = AnalysisResult::new();
@@ -243,11 +243,11 @@ impl CodebaseAnalyzer {
         let root_path = path.as_ref().to_path_buf();
 
         if !root_path.exists() {
-            return Err(Error::invalid_input(format!("Path does not exist: {}", root_path.display())));
+            return Err(Error::invalid_input_error("directory path", &root_path.display().to_string(), "existing directory"));
         }
 
         if !root_path.is_dir() {
-            return Err(Error::invalid_input(format!("Path is not a directory: {}", root_path.display())));
+            return Err(Error::invalid_input_error("path type", &root_path.display().to_string(), "directory (not file)"));
         }
 
         // First, collect all files to analyze
@@ -292,7 +292,7 @@ impl CodebaseAnalyzer {
             rayon::ThreadPoolBuilder::new()
                 .num_threads(thread_count)
                 .build_global()
-                .map_err(|e| Error::internal(format!("Failed to set thread count: {}", e)))?;
+                .map_err(|e| Error::internal_error("thread_pool", format!("Failed to set thread count: {}", e)))?;
         }
 
         // Shared result structure protected by mutex
@@ -367,10 +367,10 @@ impl CodebaseAnalyzer {
         }
 
         let entries = fs::read_dir(current_path)
-            .map_err(|e| Error::internal(format!("Failed to read directory {}: {}", current_path.display(), e)))?;
+            .map_err(|e| Error::internal_error_with_context("file_system", format!("Failed to read directory: {}", e), current_path.display().to_string()))?;
 
         for entry in entries {
-            let entry = entry.map_err(|e| Error::internal(format!("Failed to read directory entry: {}", e)))?;
+            let entry = entry.map_err(|e| Error::internal_error("file_system", format!("Failed to read directory entry: {}", e)))?;
             let path = entry.path();
 
             // Skip hidden files/directories if not included
@@ -417,10 +417,10 @@ impl CodebaseAnalyzer {
         }
 
         let entries = fs::read_dir(current_path)
-            .map_err(|e| Error::internal(format!("Failed to read directory {}: {}", current_path.display(), e)))?;
+            .map_err(|e| Error::internal_error_with_context("file_system", format!("Failed to read directory: {}", e), current_path.display().to_string()))?;
 
         for entry in entries {
-            let entry = entry.map_err(|e| Error::internal(format!("Failed to read directory entry: {}", e)))?;
+            let entry = entry.map_err(|e| Error::internal_error("file_system", format!("Failed to read directory entry: {}", e)))?;
             let path = entry.path();
 
             // Skip hidden files/directories if not included
@@ -567,7 +567,7 @@ impl CodebaseAnalyzer {
 
                     // Create a new security analyzer for this thread
                     let security_analyzer = AdvancedSecurityAnalyzer::new()
-                        .map_err(|e| Error::internal(format!("Failed to create security analyzer: {}", e)))?;
+                        .map_err(|e| Error::internal_error("security_analyzer", format!("Failed to create security analyzer: {}", e)))?;
 
                     match security_analyzer.detect_owasp_vulnerabilities(&temp_file_info) {
                         Ok(vulnerabilities) => {

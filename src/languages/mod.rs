@@ -180,7 +180,7 @@ impl std::str::FromStr for Language {
             "c" => Ok(Language::C),
             "cpp" | "c++" | "cxx" => Ok(Language::Cpp),
             "go" => Ok(Language::Go),
-            _ => Err(Error::invalid_input(format!("Unknown language: {}", s))),
+            _ => Err(Error::invalid_input_error("language", s, "supported language (rust, javascript, typescript, python, c, cpp, go)")),
         }
     }
 }

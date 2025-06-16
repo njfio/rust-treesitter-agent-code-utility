@@ -1,6 +1,6 @@
 //! Query system for pattern matching in syntax trees
 
-use crate::error::{Error, Result};
+use crate::error::{Error, Result, QueryErrorType};
 use crate::languages::Language;
 use crate::tree::{Node, SyntaxTree};
 use tree_sitter::{Point, Range};
@@ -130,7 +130,7 @@ impl Query {
     /// Create a query for syntax highlighting
     pub fn highlights(language: Language) -> Result<Self> {
         let highlights_query = language.highlights_query()
-            .ok_or_else(|| Error::not_supported(format!("Highlights query not available for {}", language.name())))?;
+            .ok_or_else(|| Error::not_supported_error(&format!("Highlights query for {}", language.name()), "Language does not support syntax highlighting"))?;
         
         Self::new(language, highlights_query)
     }
@@ -309,7 +309,7 @@ impl QueryBuilder {
     /// Build the query
     pub fn build(self) -> Result<Query> {
         if self.patterns.is_empty() {
-            return Err(Error::query("No patterns added to query builder"));
+            return Err(Error::query_error("empty", "query_builder", QueryErrorType::CompilationError));
         }
         
         let combined_pattern = self.patterns.join("\n");
