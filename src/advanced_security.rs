@@ -502,27 +502,65 @@ impl AdvancedSecurityAnalyzer {
         let mut input_validation_issues = Vec::new();
         let mut injection_vulnerabilities = Vec::new();
         let mut best_practice_violations = Vec::new();
-        
+
         // Analyze each file for security issues
         for file in &analysis_result.files {
+            // Create a file info with absolute path for security analysis
+            let absolute_path = analysis_result.root_path.join(&file.path);
+            let file_with_absolute_path = FileInfo {
+                path: absolute_path,
+                language: file.language.clone(),
+                size: file.size,
+                lines: file.lines,
+                parsed_successfully: file.parsed_successfully,
+                parse_errors: file.parse_errors.clone(),
+                symbols: file.symbols.clone(),
+                security_vulnerabilities: file.security_vulnerabilities.clone(),
+            };
+
             if self.config.owasp_analysis {
-                vulnerabilities.extend(self.detect_owasp_vulnerabilities(file)?);
+                let mut file_vulnerabilities = self.detect_owasp_vulnerabilities(&file_with_absolute_path)?;
+                // Update paths to use relative paths for consistency
+                for vuln in &mut file_vulnerabilities {
+                    vuln.location.file = file.path.clone();
+                }
+                vulnerabilities.extend(file_vulnerabilities);
             }
-            
+
             if self.config.secrets_detection {
-                secrets.extend(self.detect_secrets(file)?);
+                let mut file_secrets = self.detect_secrets(&file_with_absolute_path)?;
+                // Update paths to use relative paths for consistency
+                for secret in &mut file_secrets {
+                    secret.location.file = file.path.clone();
+                }
+                secrets.extend(file_secrets);
             }
-            
+
             if self.config.input_validation {
-                input_validation_issues.extend(self.detect_input_validation_issues(file)?);
+                let mut file_input_issues = self.detect_input_validation_issues(&file_with_absolute_path)?;
+                // Update paths to use relative paths for consistency
+                for issue in &mut file_input_issues {
+                    issue.location.file = file.path.clone();
+                }
+                input_validation_issues.extend(file_input_issues);
             }
-            
+
             if self.config.injection_analysis {
-                injection_vulnerabilities.extend(self.detect_injection_vulnerabilities(file)?);
+                let mut file_injection_vulns = self.detect_injection_vulnerabilities(&file_with_absolute_path)?;
+                // Update paths to use relative paths for consistency
+                for vuln in &mut file_injection_vulns {
+                    vuln.location.file = file.path.clone();
+                }
+                injection_vulnerabilities.extend(file_injection_vulns);
             }
-            
+
             if self.config.best_practices {
-                best_practice_violations.extend(self.detect_best_practice_violations(file)?);
+                let mut file_best_practices = self.detect_best_practice_violations(&file_with_absolute_path)?;
+                // Update paths to use relative paths for consistency
+                for violation in &mut file_best_practices {
+                    violation.location.file = file.path.clone();
+                }
+                best_practice_violations.extend(file_best_practices);
             }
         }
         

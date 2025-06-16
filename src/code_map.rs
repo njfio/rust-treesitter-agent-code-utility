@@ -66,7 +66,6 @@ impl ModuleGraph {
 
 /// Build a call graph from analysis results.
 pub fn build_call_graph(result: &AnalysisResult) -> CallGraph {
-    let root = &result.root_path;
     let mut nodes = HashSet::new();
     let mut edges = HashSet::new();
 
@@ -81,16 +80,26 @@ pub fn build_call_graph(result: &AnalysisResult) -> CallGraph {
         }
     }
 
-    // Build call relationships using AST analysis
-    for (file, sym) in &functions {
-        if let Ok(call_targets) = extract_function_calls_ast(root, file, sym) {
-            let from = format!("{}::{}", file.path.display(), sym.name);
-            for target in call_targets {
-                // Try to match target with known functions
-                for (other_file, other_sym) in &functions {
-                    if other_sym.name == target {
-                        let target_name = format!("{}::{}", other_file.path.display(), other_sym.name);
-                        edges.insert((from.clone(), target_name));
+    // Build call relationships using simple string-based analysis for now
+    // This is more reliable than complex AST analysis for basic call graphs
+    for file in &result.files {
+        if let Ok(content) = fs::read_to_string(&result.root_path.join(&file.path)) {
+            // Find all function calls in this file using simple pattern matching
+            let calls = extract_function_calls_simple(&content);
+
+            // For each function in this file, check if it calls other functions
+            for sym in &file.symbols {
+                if sym.kind == "function" || sym.kind == "method" {
+                    let from = format!("{}::{}", file.path.display(), sym.name);
+
+                    // Check if any of the found calls match known functions
+                    for call in &calls {
+                        for (other_file, other_sym) in &functions {
+                            if other_sym.name == *call {
+                                let target_name = format!("{}::{}", other_file.path.display(), other_sym.name);
+                                edges.insert((from.clone(), target_name));
+                            }
+                        }
                     }
                 }
             }
@@ -159,99 +168,50 @@ fn read_symbol_content(root: &PathBuf, file: &FileInfo, sym: &Symbol) -> std::io
     Ok(lines[start..end].join("\n"))
 }
 
-/// Extract function calls using AST analysis instead of string matching
-fn extract_function_calls_ast(root: &PathBuf, file: &FileInfo, sym: &Symbol) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    use crate::parser::Parser;
-    use crate::languages::Language;
+/// Extract function calls using simple string-based pattern matching
+fn extract_function_calls_simple(content: &str) -> Vec<String> {
+    let mut calls = Vec::new();
 
-    let path = root.join(&file.path);
-    let content = fs::read_to_string(path)?;
+    // Simple regex-like patterns for function calls
+    // This handles most common patterns: function_name(), obj.method(), module::function()
+    for line in content.lines() {
+        let line = line.trim();
 
-    // Get language from string
-    let language: Language = file.language.parse()?;
-    let parser = Parser::new(language)?;
+        // Skip comments and empty lines
+        if line.starts_with("//") || line.starts_with("/*") || line.is_empty() {
+            continue;
+        }
 
-    // Parse the file
-    let syntax_tree = parser.parse(&content, None)?;
-    let root_node = syntax_tree.root_node();
+        // Find function call patterns: identifier followed by (
+        let mut chars = line.chars().peekable();
+        let mut current_word = String::new();
 
-    // Extract the symbol's content range
-    let lines: Vec<&str> = content.lines().collect();
-    let start_byte = lines.iter()
-        .take(sym.start_line.saturating_sub(1))
-        .map(|line| line.len() + 1) // +1 for newline
-        .sum::<usize>();
-    let end_byte = lines.iter()
-        .take(sym.end_line.min(lines.len()))
-        .map(|line| line.len() + 1)
-        .sum::<usize>();
-
-    // Find the node that contains this symbol
-    let symbol_node = find_node_at_range(&root_node.inner(), start_byte, end_byte);
-
-    let mut function_calls = Vec::new();
-    if let Some(node) = symbol_node {
-        extract_calls_from_node(&node, &content, &mut function_calls);
+        while let Some(ch) = chars.next() {
+            if ch.is_alphabetic() || ch == '_' {
+                current_word.push(ch);
+            } else if ch.is_numeric() && !current_word.is_empty() {
+                current_word.push(ch);
+            } else if ch == '(' && !current_word.is_empty() {
+                // Found a function call
+                calls.push(current_word.clone());
+                current_word.clear();
+            } else if ch == ':' && chars.peek() == Some(&':') {
+                // Handle :: in Rust (module::function)
+                chars.next(); // consume the second :
+                current_word.clear(); // reset, we'll capture the function name after ::
+            } else if ch == '.' {
+                // Handle . in method calls (obj.method)
+                current_word.clear(); // reset, we'll capture the method name after .
+            } else {
+                current_word.clear();
+            }
+        }
     }
 
-    Ok(function_calls)
+    calls
 }
 
-/// Find AST node that contains the given byte range
-fn find_node_at_range<'a>(node: &tree_sitter::Node<'a>, start_byte: usize, end_byte: usize) -> Option<tree_sitter::Node<'a>> {
-    if node.start_byte() <= start_byte && node.end_byte() >= end_byte {
-        // Check children first for more specific match
-        for child in node.children(&mut node.walk()) {
-            if let Some(found) = find_node_at_range(&child, start_byte, end_byte) {
-                return Some(found);
-            }
-        }
-        // Return this node if no child contains the range
-        Some(*node)
-    } else {
-        None
-    }
-}
 
-/// Extract function calls from an AST node
-fn extract_calls_from_node(node: &tree_sitter::Node, content: &str, calls: &mut Vec<String>) {
-    match node.kind() {
-        "call_expression" | "function_call" => {
-            // Extract function name from call expression
-            if let Some(function_node) = node.child_by_field_name("function") {
-                let function_text = &content[function_node.start_byte()..function_node.end_byte()];
-                // Handle qualified names (e.g., obj.method, module::function)
-                let name = function_text.split(&['.', ':'][..]).last().unwrap_or(function_text);
-                calls.push(name.to_string());
-            } else if let Some(first_child) = node.child(0) {
-                // Fallback: use first child as function name
-                let function_text = &content[first_child.start_byte()..first_child.end_byte()];
-                let name = function_text.split(&['.', ':'][..]).last().unwrap_or(function_text);
-                calls.push(name.to_string());
-            }
-        }
-        "method_invocation" => {
-            // Handle method calls (Java, C#, etc.)
-            if let Some(method_node) = node.child_by_field_name("name") {
-                let method_text = &content[method_node.start_byte()..method_node.end_byte()];
-                calls.push(method_text.to_string());
-            }
-        }
-        "member_expression" => {
-            // Handle member access that might be function calls
-            if let Some(property_node) = node.child_by_field_name("property") {
-                let property_text = &content[property_node.start_byte()..property_node.end_byte()];
-                calls.push(property_text.to_string());
-            }
-        }
-        _ => {}
-    }
-
-    // Recursively process children
-    for child in node.children(&mut node.walk()) {
-        extract_calls_from_node(&child, content, calls);
-    }
-}
 
 fn extract_dependencies(content: &str) -> Vec<String> {
     // Try AST-based extraction first, fall back to string-based for unsupported languages
