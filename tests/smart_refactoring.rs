@@ -2,6 +2,7 @@ use rust_tree_sitter::smart_refactoring::{SmartRefactoringEngine, SmartRefactori
 use rust_tree_sitter::CodebaseAnalyzer;
 use tempfile::TempDir;
 use std::fs;
+use std::path::PathBuf;
 
 /// Test comprehensive code smell detection using AST analysis
 #[test]
@@ -282,6 +283,9 @@ struct Manager { name: String, team: String }
 /// Test modernization suggestions
 #[test]
 fn test_modernization_suggestions() -> Result<(), Box<dyn std::error::Error>> {
+    use std::collections::HashMap;
+    use rust_tree_sitter::{AnalysisResult, FileInfo, AnalysisConfig};
+
     let temp_dir = TempDir::new()?;
 
     // Create code with outdated patterns
@@ -305,8 +309,32 @@ fn another_operation() -> Result<i32, &'static str> { Ok(24) }
     let outdated_file = temp_dir.path().join("outdated.rs");
     fs::write(&outdated_file, outdated_code)?;
 
-    let mut analyzer = CodebaseAnalyzer::new();
-    let analysis_result = analyzer.analyze_single_file(&outdated_file)?;
+    // Create analysis result manually to ensure correct paths
+    let file_info = FileInfo {
+        path: PathBuf::from("outdated.rs"), // Relative path
+        language: "Rust".to_string(),
+        size: outdated_code.len(),
+        lines: outdated_code.lines().count(),
+        parsed_successfully: true,
+        parse_errors: Vec::new(),
+        symbols: Vec::new(),
+        security_vulnerabilities: Vec::new(),
+    };
+
+    let analysis_result = AnalysisResult {
+        root_path: temp_dir.path().to_path_buf(), // Root path
+        total_files: 1,
+        parsed_files: 1,
+        error_files: 0,
+        total_lines: outdated_code.lines().count(),
+        languages: {
+            let mut map = HashMap::new();
+            map.insert("Rust".to_string(), 1);
+            map
+        },
+        files: vec![file_info],
+        config: AnalysisConfig::default(),
+    };
 
     let refactoring_engine = SmartRefactoringEngine::new();
     let result = refactoring_engine.analyze(&analysis_result)?;
@@ -325,6 +353,72 @@ fn another_operation() -> Result<i32, &'static str> { Ok(24) }
         .filter(|sug| matches!(sug.modernization_type, ModernizationType::ModernSyntax))
         .collect();
     assert!(!syntax_modern.is_empty(), "Should suggest modern syntax");
+
+    Ok(())
+}
+
+#[test]
+fn test_modernization_suggestions_simple() -> Result<(), Box<dyn std::error::Error>> {
+    use std::collections::HashMap;
+    use rust_tree_sitter::{AnalysisResult, FileInfo, AnalysisConfig};
+
+    let temp_dir = TempDir::new()?;
+
+    // Create code with outdated patterns
+    let outdated_code = r#"
+fn risky_operation() -> i32 {
+    let result = some_operation().unwrap();
+    result
+}
+
+fn format_message(name: &str) -> String {
+    format!("Hello {}", name)
+}
+
+fn some_operation() -> Result<i32, &'static str> { Ok(42) }
+"#;
+
+    let outdated_file = temp_dir.path().join("outdated.rs");
+    fs::write(&outdated_file, outdated_code)?;
+
+    // Create analysis result manually to ensure correct paths
+    let file_info = FileInfo {
+        path: PathBuf::from("outdated.rs"), // Relative path
+        language: "Rust".to_string(),
+        size: outdated_code.len(),
+        lines: outdated_code.lines().count(),
+        parsed_successfully: true,
+        parse_errors: Vec::new(),
+        symbols: Vec::new(),
+        security_vulnerabilities: Vec::new(),
+    };
+
+    let analysis_result = AnalysisResult {
+        root_path: temp_dir.path().to_path_buf(), // Root path
+        total_files: 1,
+        parsed_files: 1,
+        error_files: 0,
+        total_lines: outdated_code.lines().count(),
+        languages: {
+            let mut map = HashMap::new();
+            map.insert("Rust".to_string(), 1);
+            map
+        },
+        files: vec![file_info],
+        config: AnalysisConfig::default(),
+    };
+
+    let refactoring_engine = SmartRefactoringEngine::new();
+    let result = refactoring_engine.analyze(&analysis_result)?;
+
+    // Verify modernization suggestions
+    assert!(!result.modernization_suggestions.is_empty(), "Should suggest modernizations");
+
+    // Check for error handling modernization
+    let error_handling: Vec<_> = result.modernization_suggestions.iter()
+        .filter(|sug| matches!(sug.modernization_type, ModernizationType::BestPractices))
+        .collect();
+    assert!(!error_handling.is_empty(), "Should suggest better error handling");
 
     Ok(())
 }

@@ -1658,7 +1658,15 @@ impl SmartRefactoringEngine {
                 // Check for deprecated Rust patterns
                 if file.path.extension().map_or(false, |ext| ext == "rs") {
                     // Check for old-style error handling
-                    if content.contains("unwrap()") && !content.contains("expect(") {
+                    if content.contains("unwrap()") {
+                        // Count unwrap() calls vs expect() calls (excluding comments)
+                        let unwrap_count = content.matches("unwrap()").count();
+                        let expect_count = content.lines()
+                            .filter(|line| !line.trim_start().starts_with("//"))
+                            .map(|line| line.matches("expect(").count())
+                            .sum::<usize>();
+
+                        if unwrap_count > expect_count {
                         suggestions.push(ModernizationSuggestion {
                             id: format!("MODERN_ERROR_HANDLING_{}", file.path.display()),
                             modernization_type: ModernizationType::BestPractices,
@@ -1681,6 +1689,7 @@ impl SmartRefactoringEngine {
                             ],
                             confidence: 0.9,
                         });
+                        }
                     }
 
                     // Check for old-style string formatting
