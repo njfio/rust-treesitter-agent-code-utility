@@ -183,7 +183,8 @@ impl CodebaseAnalyzer {
             let parser = Parser::new(language)?;
             self.parsers.insert(language, parser);
         }
-        Ok(self.parsers.get(&language).unwrap())
+        self.parsers.get(&language)
+            .ok_or_else(|| Error::internal(format!("Parser for {} should exist after insertion", language.name())))
     }
 
     /// Analyze a directory and return structured results

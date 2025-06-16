@@ -1447,13 +1447,13 @@ impl SmartRefactoringEngine {
         // Sort by priority and effort
         refactoring_items.sort_by(|a, b| {
             match (&a.priority, &b.priority) {
-                (Priority::Critical, Priority::Critical) => a.effort.partial_cmp(&b.effort).unwrap(),
+                (Priority::Critical, Priority::Critical) => a.effort.partial_cmp(&b.effort).unwrap_or(std::cmp::Ordering::Equal),
                 (Priority::Critical, _) => std::cmp::Ordering::Less,
                 (_, Priority::Critical) => std::cmp::Ordering::Greater,
-                (Priority::High, Priority::High) => a.effort.partial_cmp(&b.effort).unwrap(),
+                (Priority::High, Priority::High) => a.effort.partial_cmp(&b.effort).unwrap_or(std::cmp::Ordering::Equal),
                 (Priority::High, _) => std::cmp::Ordering::Less,
                 (_, Priority::High) => std::cmp::Ordering::Greater,
-                _ => a.effort.partial_cmp(&b.effort).unwrap(),
+                _ => a.effort.partial_cmp(&b.effort).unwrap_or(std::cmp::Ordering::Equal),
             }
         });
 
