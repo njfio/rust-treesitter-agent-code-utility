@@ -1546,7 +1546,85 @@ impl AdvancedSecurityAnalyzer {
         let root = tree.root_node();
 
         self.analyze_node_for_sql_injection(&root, content, file, context, &mut vulnerabilities)?;
+
+        // Filter out false positives using AST context
+        vulnerabilities = self.filter_sql_injection_false_positives(vulnerabilities, tree, content, context)?;
+
         Ok(vulnerabilities)
+    }
+
+    /// Filter SQL injection false positives using AST context
+    fn filter_sql_injection_false_positives(&self, vulnerabilities: Vec<SecurityVulnerability>, _tree: &SyntaxTree, _content: &str, context: &SecurityContext) -> Result<Vec<SecurityVulnerability>> {
+        let mut filtered = Vec::new();
+
+        for vuln in vulnerabilities {
+            let mut is_false_positive = false;
+
+            // Check if it's in a test file
+            if context.is_test_file {
+                is_false_positive = true;
+            }
+
+            // Check if it's in a comment
+            if context.is_comment {
+                is_false_positive = true;
+            }
+
+            // Check if the SQL string is parameterized (using placeholders)
+            if self.is_parameterized_query(&vuln.code_snippet) {
+                is_false_positive = true;
+            }
+
+            // Check if it's a static query without user input
+            if !context.has_user_input && self.is_static_query(&vuln.code_snippet) {
+                is_false_positive = true;
+            }
+
+            // Check if it's using an ORM or query builder
+            if self.is_using_orm_or_query_builder(&vuln.code_snippet) {
+                is_false_positive = true;
+            }
+
+            if !is_false_positive {
+                filtered.push(vuln);
+            }
+        }
+
+        Ok(filtered)
+    }
+
+    /// Check if query uses parameterized statements
+    fn is_parameterized_query(&self, code: &str) -> bool {
+        // Look for common parameterized query patterns
+        code.contains("?") || // JDBC style
+        code.contains("$1") || code.contains("$2") || // PostgreSQL style
+        code.contains(":param") || // Named parameters
+        code.contains("@param") || // SQL Server style
+        code.contains("%(") // Python style
+    }
+
+    /// Check if query is static (no concatenation or interpolation)
+    fn is_static_query(&self, code: &str) -> bool {
+        // Look for signs of dynamic query construction
+        !(code.contains("+") || // String concatenation
+          code.contains("format!") || // Rust formatting
+          code.contains("sprintf") || // C style formatting
+          code.contains("f\"") || // Python f-strings
+          code.contains("${") || // Template literals
+          code.contains("concat"))
+    }
+
+    /// Check if code is using ORM or query builder
+    fn is_using_orm_or_query_builder(&self, code: &str) -> bool {
+        let orm_patterns = [
+            "sqlx::", "diesel::", "sea_orm::", // Rust ORMs
+            "ActiveRecord", "Eloquent", // Ruby/PHP ORMs
+            "SQLAlchemy", "Django.orm", // Python ORMs
+            "Sequelize", "TypeORM", "Prisma", // JavaScript ORMs
+            "Hibernate", "JPA", "MyBatis", // Java ORMs
+        ];
+
+        orm_patterns.iter().any(|pattern| code.contains(pattern))
     }
 
     /// Analyze node for SQL injection patterns
@@ -1694,7 +1772,83 @@ impl AdvancedSecurityAnalyzer {
         let root = tree.root_node();
 
         self.analyze_node_for_command_injection(&root, content, file, context, &mut vulnerabilities)?;
+
+        // Filter out false positives using AST context
+        vulnerabilities = self.filter_command_injection_false_positives(vulnerabilities, tree, content, context)?;
+
         Ok(vulnerabilities)
+    }
+
+    /// Filter command injection false positives using AST context
+    fn filter_command_injection_false_positives(&self, vulnerabilities: Vec<SecurityVulnerability>, _tree: &SyntaxTree, _content: &str, context: &SecurityContext) -> Result<Vec<SecurityVulnerability>> {
+        let mut filtered = Vec::new();
+
+        for vuln in vulnerabilities {
+            let mut is_false_positive = false;
+
+            // Check if it's in a test file
+            if context.is_test_file {
+                is_false_positive = true;
+            }
+
+            // Check if it's in a comment
+            if context.is_comment {
+                is_false_positive = true;
+            }
+
+            // Check if command is hardcoded (no user input)
+            if !context.has_user_input && self.is_hardcoded_command(&vuln.code_snippet) {
+                is_false_positive = true;
+            }
+
+            // Check if using safe command execution patterns
+            if self.is_using_safe_command_execution(&vuln.code_snippet) {
+                is_false_positive = true;
+            }
+
+            // Check if it's a build script or development tool
+            if self.is_build_or_dev_script(&vuln.location.file.to_string_lossy()) {
+                is_false_positive = true;
+            }
+
+            if !is_false_positive {
+                filtered.push(vuln);
+            }
+        }
+
+        Ok(filtered)
+    }
+
+    /// Check if command is hardcoded without user input
+    fn is_hardcoded_command(&self, code: &str) -> bool {
+        // Look for static command strings
+        let has_quotes = code.contains("\"") || code.contains("'");
+        let has_concatenation = code.contains("+") || code.contains("format!") || code.contains("&");
+
+        has_quotes && !has_concatenation
+    }
+
+    /// Check if using safe command execution patterns
+    fn is_using_safe_command_execution(&self, code: &str) -> bool {
+        // Look for safe execution patterns
+        code.contains("Command::new") || // Rust std::process::Command
+        code.contains("execve") || // Direct syscall
+        code.contains("spawn") || // Controlled spawning
+        code.contains("ProcessBuilder") // Build tools
+    }
+
+    /// Check if file is a build script or development tool
+    fn is_build_or_dev_script(&self, file_path: &str) -> bool {
+        let build_patterns = [
+            "build.rs", "Makefile", "CMakeLists.txt",
+            "package.json", "Cargo.toml", "setup.py",
+            "gulpfile", "webpack.config", "rollup.config"
+        ];
+
+        build_patterns.iter().any(|pattern| file_path.contains(pattern)) ||
+        file_path.contains("/scripts/") ||
+        file_path.contains("/build/") ||
+        file_path.contains("/tools/")
     }
 
     /// Analyze node for command injection patterns
@@ -1817,8 +1971,89 @@ impl AdvancedSecurityAnalyzer {
         let root = tree.root_node();
 
         self.analyze_node_for_hardcoded_secrets(&root, content, file, context, &mut vulnerabilities)?;
+
+        // Filter out false positives using AST context
+        vulnerabilities = self.filter_secrets_false_positives(vulnerabilities, tree, content, context)?;
+
         Ok(vulnerabilities)
     }
+
+    /// Filter secrets false positives using AST context
+    fn filter_secrets_false_positives(&self, vulnerabilities: Vec<SecurityVulnerability>, _tree: &SyntaxTree, _content: &str, context: &SecurityContext) -> Result<Vec<SecurityVulnerability>> {
+        let mut filtered = Vec::new();
+
+        for vuln in vulnerabilities {
+            let mut is_false_positive = false;
+
+            // Check if it's in a test file
+            if context.is_test_file {
+                is_false_positive = true;
+            }
+
+            // Check if it's in a comment or documentation
+            if context.is_comment {
+                is_false_positive = true;
+            }
+
+            // Check if it's a placeholder or example value
+            if self.is_placeholder_secret(&vuln.code_snippet) {
+                is_false_positive = true;
+            }
+
+            // Check if it's a configuration template
+            if self.is_config_template(&vuln.code_snippet) {
+                is_false_positive = true;
+            }
+
+            // Check if it's a public key or certificate
+            if self.is_public_key_or_cert(&vuln.code_snippet) {
+                is_false_positive = true;
+            }
+
+            // Check if entropy is too low (likely not a real secret)
+            if self.calculate_entropy(&vuln.code_snippet) < 3.0 {
+                is_false_positive = true;
+            }
+
+            if !is_false_positive {
+                filtered.push(vuln);
+            }
+        }
+
+        Ok(filtered)
+    }
+
+    /// Check if secret is a placeholder or example
+    fn is_placeholder_secret(&self, secret: &str) -> bool {
+        let placeholder_patterns = [
+            "example", "placeholder", "dummy", "test", "fake",
+            "your_", "my_", "insert_", "replace_", "change_",
+            "xxx", "yyy", "zzz", "123", "abc",
+            "password", "secret", "key", "token"
+        ];
+
+        let secret_lower = secret.to_lowercase();
+        placeholder_patterns.iter().any(|pattern| secret_lower.contains(pattern))
+    }
+
+    /// Check if it's a configuration template
+    fn is_config_template(&self, secret: &str) -> bool {
+        secret.contains("${") || // Environment variable template
+        secret.contains("{{") || // Handlebars/Mustache template
+        secret.contains("%{") || // ERB template
+        secret.contains("<") && secret.contains(">") // XML-style template
+    }
+
+    /// Check if it's a public key or certificate
+    fn is_public_key_or_cert(&self, secret: &str) -> bool {
+        secret.contains("-----BEGIN PUBLIC KEY-----") ||
+        secret.contains("-----BEGIN CERTIFICATE-----") ||
+        secret.contains("-----BEGIN RSA PUBLIC KEY-----") ||
+        secret.contains("ssh-rsa") ||
+        secret.contains("ssh-ed25519")
+    }
+
+
 
     /// Analyze node for hardcoded secrets
     fn analyze_node_for_hardcoded_secrets(&self, node: &Node, content: &str, file: &FileInfo, context: &SecurityContext, vulnerabilities: &mut Vec<SecurityVulnerability>) -> Result<()> {
