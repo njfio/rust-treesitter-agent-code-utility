@@ -1878,9 +1878,16 @@ impl PerformanceAnalyzer {
                 let lines: Vec<&str> = content.lines().collect();
                 let mut current_function = None;
                 let mut current_complexity = 1.0;
+                let mut brace_depth = 0;
+                let mut function_start_depth = 0;
+                let mut in_function = false;
 
                 for line in lines {
                     let trimmed = line.trim();
+
+                    // Update brace depth first
+                    let open_braces = trimmed.chars().filter(|&c| c == '{').count() as i32;
+                    let close_braces = trimmed.chars().filter(|&c| c == '}').count() as i32;
 
                     // Detect function start
                     if trimmed.starts_with("fn ") && trimmed.contains('(') {
@@ -1895,36 +1902,84 @@ impl PerformanceAnalyzer {
                                 let func_name = trimmed[name_start + 3..name_start + 3 + name_end].trim().to_string();
                                 current_function = Some(func_name);
                                 current_complexity = 1.0;
+                                function_start_depth = brace_depth;
+                                in_function = false; // Will be set to true when we see the opening brace
                             }
                         }
                     }
 
-                    // Count complexity-adding constructs
-                    if current_function.is_some() {
-                        if trimmed.contains("if ") || trimmed.contains("if let") {
-                            current_complexity += 1.0;
+                    // Update brace depth after function detection
+                    brace_depth += open_braces;
+
+                    // Check if we're entering the function body
+                    if current_function.is_some() && !in_function && open_braces > 0 {
+                        in_function = true;
+                        function_start_depth = brace_depth - 1; // The depth before this opening brace
+                    }
+
+                    // Only count complexity if we're inside a function body
+                    if current_function.is_some() && in_function && brace_depth > function_start_depth {
+                        // Use more precise pattern matching to avoid false positives
+                        let line_lower = trimmed.to_lowercase();
+
+
+
+                        // Control flow statements - check if line is not a comment
+                        let is_comment = trimmed.starts_with("//");
+
+                        if !is_comment {
+                            // Check for if statements (but not else if to avoid double counting)
+                            if (line_lower.contains("if ") && !line_lower.contains("else if")) || line_lower.contains("if(") {
+                                current_complexity += 1.0;
+                            }
+                            // Check for if let statements
+                            if line_lower.contains("if let") {
+                                current_complexity += 1.0;
+                            }
+                            // Check for while statements
+                            if line_lower.contains("while ") || line_lower.contains("while let") || line_lower.contains("while(") {
+                                current_complexity += 1.0;
+                            }
+                            // Check for for statements
+                            if line_lower.contains("for ") || line_lower.contains("for(") {
+                                current_complexity += 1.0;
+                            }
+                            // Check for loop statements
+                            if line_lower.contains("loop ") {
+                                current_complexity += 1.0;
+                            }
+                            // Check for match statements
+                            if line_lower.contains("match ") {
+                                current_complexity += 1.0;
+                            }
+                            // Count match arms for additional complexity
+                            if trimmed.contains("=>") && !trimmed.contains("match") {
+                                current_complexity += 1.0; // Each match arm adds complexity
+                            }
                         }
-                        if trimmed.contains("while ") || trimmed.contains("while let") {
-                            current_complexity += 1.0;
+                        // Count error handling patterns
+                        if (trimmed.contains("?") || trimmed.contains("unwrap") || trimmed.contains("expect")) && !trimmed.contains("//") {
+                            current_complexity += 0.3; // Error handling adds complexity
                         }
-                        if trimmed.contains("for ") {
-                            current_complexity += 1.0;
+                        // Logical operators
+                        if (trimmed.contains("&&") || trimmed.contains("||")) && !trimmed.contains("//") {
+                            current_complexity += 0.5; // Logical operators add complexity
                         }
-                        if trimmed.contains("loop ") {
-                            current_complexity += 1.0;
+                    }
+
+                    // Update brace depth after processing
+                    brace_depth -= close_braces;
+
+                    // Check if we've exited the current function
+                    if current_function.is_some() && in_function && brace_depth <= function_start_depth {
+                        if let Some(func_name) = current_function.take() {
+                            complexities.push((func_name, current_complexity));
                         }
-                        if trimmed.contains("match ") {
-                            current_complexity += 1.0;
-                        }
-                        // Count nested loops (simple heuristic)
-                        if (trimmed.contains("for ") || trimmed.contains("while ")) &&
-                           (content.matches("for ").count() > 1 || content.matches("while ").count() > 1) {
-                            current_complexity += 2.0; // Extra penalty for potential nesting
-                        }
+                        in_function = false;
                     }
                 }
 
-                // Save last function
+                // Save last function if still open
                 if let Some(func_name) = current_function {
                     complexities.push((func_name, current_complexity));
                 }

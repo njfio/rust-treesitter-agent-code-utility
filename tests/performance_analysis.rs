@@ -104,15 +104,23 @@ fn switch_like_function(x: i32) -> String {
     let analyzer = PerformanceAnalyzer::with_config(config);
     let result = analyzer.analyze(&analysis_result)?;
 
+    // Debug output to see what's happening
+    println!("Max complexity: {}", result.complexity_analysis.max_complexity);
+    println!("Average complexity: {}", result.complexity_analysis.average_complexity);
+    println!("High complexity functions count: {}", result.complexity_analysis.high_complexity_functions.len());
+    for func in &result.complexity_analysis.high_complexity_functions {
+        println!("  Function: {} - Complexity: {}", func.name, func.complexity);
+    }
+
     // Verify complexity analysis results
     assert!(result.complexity_analysis.max_complexity > 5.0,
         "Max complexity should be > 5, got: {}", result.complexity_analysis.max_complexity);
-    
+
     assert!(result.complexity_analysis.average_complexity > 2.0,
         "Average complexity should be > 2, got: {}", result.complexity_analysis.average_complexity);
-    
+
     assert!(result.complexity_analysis.high_complexity_functions.len() >= 3,
-        "Should detect at least 3 high complexity functions, found: {}", 
+        "Should detect at least 3 high complexity functions, found: {}",
         result.complexity_analysis.high_complexity_functions.len());
 
     // Verify that nested loop function has highest complexity

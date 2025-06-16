@@ -7,6 +7,7 @@ use crate::error::{Error, Result};
 use crate::languages::Language;
 use crate::parser::Parser;
 use crate::advanced_security::{AdvancedSecurityAnalyzer, SecurityVulnerability};
+use crate::semantic_graph::SemanticGraphQuery;
 
 use crate::tree::SyntaxTree;
 use std::collections::HashMap;
@@ -176,6 +177,7 @@ pub struct CodebaseAnalyzer {
     config: AnalysisConfig,
     parsers: HashMap<Language, Parser>,
     security_analyzer: AdvancedSecurityAnalyzer,
+    semantic_graph: Option<SemanticGraphQuery>,
 }
 
 impl CodebaseAnalyzer {
@@ -190,6 +192,7 @@ impl CodebaseAnalyzer {
             config,
             parsers: HashMap::new(),
             security_analyzer: AdvancedSecurityAnalyzer::new().expect("Failed to create security analyzer"),
+            semantic_graph: None,
         }
     }
 
@@ -248,6 +251,15 @@ impl CodebaseAnalyzer {
         };
 
         self.analyze_directory_recursive(&root_path, &root_path, &mut result, 0)?;
+
+        // Build semantic graph if enabled
+        if self.semantic_graph.is_some() {
+            if let Some(ref mut graph) = self.semantic_graph {
+                if let Err(e) = graph.build_from_analysis(&result) {
+                    eprintln!("Warning: Failed to build semantic graph: {}", e);
+                }
+            }
+        }
 
         Ok(result)
     }
@@ -1119,6 +1131,31 @@ impl CodebaseAnalyzer {
             docs.reverse();
             Some(docs.join("\n"))
         }
+    }
+
+    /// Enable semantic graph analysis
+    pub fn enable_semantic_graph(&mut self) {
+        self.semantic_graph = Some(SemanticGraphQuery::new());
+    }
+
+    /// Disable semantic graph analysis
+    pub fn disable_semantic_graph(&mut self) {
+        self.semantic_graph = None;
+    }
+
+    /// Get a reference to the semantic graph (if enabled)
+    pub fn semantic_graph(&self) -> Option<&SemanticGraphQuery> {
+        self.semantic_graph.as_ref()
+    }
+
+    /// Get a mutable reference to the semantic graph (if enabled)
+    pub fn semantic_graph_mut(&mut self) -> Option<&mut SemanticGraphQuery> {
+        self.semantic_graph.as_mut()
+    }
+
+    /// Check if semantic graph analysis is enabled
+    pub fn is_semantic_graph_enabled(&self) -> bool {
+        self.semantic_graph.is_some()
     }
 }
 

@@ -1275,14 +1275,14 @@ impl AdvancedAIAnalyzer {
             .count();
 
         let avg_complexity = if total_functions > 0 {
-            // Simplified complexity calculation
-            5.0
+            // Calculate real complexity based on function symbols and file content
+            self.calculate_real_average_complexity(analysis_result)
         } else {
             0.0
         };
 
         let avg_function_length = if total_functions > 0 {
-            analysis_result.total_lines as f64 / total_functions as f64
+            self.calculate_real_average_function_length(analysis_result)
         } else {
             0.0
         };
@@ -1419,9 +1419,10 @@ impl AdvancedAIAnalyzer {
         let mut code_quality_debt = 0.0;
         let mut architecture_debt = 0.0;
         for smell in &smells {
-            code_quality_debt += 1.0;
+            let debt_weight = self.calculate_smell_debt_weight(&smell);
+            code_quality_debt += debt_weight;
             if smell.name.contains("Large") {
-                architecture_debt += 1.0;
+                architecture_debt += debt_weight * 1.5; // Architecture issues have higher impact
             }
 
             let severity = match smell.severity {
@@ -1431,13 +1432,15 @@ impl AdvancedAIAnalyzer {
                 SmellSeverity::Low => DebtSeverity::Low,
             };
 
+            let (effort, impact) = self.calculate_debt_effort_impact(&smell, analysis_result);
+
             debt_items.push(DebtItem {
                 description: smell.description.clone(),
                 category: "Code Quality".to_string(),
                 severity,
                 location: smell.location.clone(),
-                effort: 1.0,
-                impact: 2.0,
+                effort,
+                impact,
             });
         }
 
@@ -1869,6 +1872,186 @@ impl AdvancedAIAnalyzer {
         let total_score = semantic_score + quality_score + pattern_score;
         total_score.max(0.0).min(100.0) as u8
     }
+
+    /// Calculate real average complexity based on AST analysis
+    fn calculate_real_average_complexity(&self, analysis_result: &AnalysisResult) -> f64 {
+        let mut total_complexity = 0.0;
+        let mut function_count = 0;
+
+        for file in &analysis_result.files {
+            if let Ok(content) = std::fs::read_to_string(&file.path) {
+                let file_complexity = self.calculate_file_complexity_ast(&content, &file.language);
+                let file_functions = file.symbols.iter().filter(|s| s.kind == "function").count();
+
+                if file_functions > 0 {
+                    total_complexity += file_complexity;
+                    function_count += file_functions;
+                }
+            }
+        }
+
+        if function_count > 0 {
+            total_complexity / function_count as f64
+        } else {
+            1.0 // Base complexity
+        }
+    }
+
+    /// Calculate real average function length based on symbol positions
+    fn calculate_real_average_function_length(&self, analysis_result: &AnalysisResult) -> f64 {
+        let mut total_length = 0.0;
+        let mut function_count = 0;
+
+        for file in &analysis_result.files {
+            for symbol in &file.symbols {
+                if symbol.kind == "function" {
+                    let length = (symbol.end_line - symbol.start_line + 1) as f64;
+                    total_length += length;
+                    function_count += 1;
+                }
+            }
+        }
+
+        if function_count > 0 {
+            total_length / function_count as f64
+        } else {
+            0.0
+        }
+    }
+
+    /// Calculate file complexity using AST analysis
+    fn calculate_file_complexity_ast(&self, content: &str, language: &str) -> f64 {
+        use crate::{Language, Parser};
+
+        let lang = match language.to_lowercase().as_str() {
+            "rust" => Language::Rust,
+            "python" => Language::Python,
+            "javascript" => Language::JavaScript,
+            "typescript" => Language::TypeScript,
+            "c" => Language::C,
+            "cpp" | "c++" => Language::Cpp,
+            "go" => Language::Go,
+            _ => return 1.0,
+        };
+
+        let parser = match Parser::new(lang) {
+            Ok(p) => p,
+            Err(_) => return 1.0,
+        };
+
+        let tree = match parser.parse(content, None) {
+            Ok(t) => t,
+            Err(_) => return 1.0,
+        };
+
+        self.calculate_cyclomatic_complexity_ast(&tree, language)
+    }
+
+    /// Calculate cyclomatic complexity from AST
+    fn calculate_cyclomatic_complexity_ast(&self, tree: &crate::SyntaxTree, language: &str) -> f64 {
+        let mut complexity = 1.0; // Base complexity
+
+        // Language-specific control flow patterns
+        let control_patterns = match language.to_lowercase().as_str() {
+            "rust" => vec![
+                "if_expression", "while_expression", "for_expression", "loop_expression",
+                "match_expression", "match_arm", "if_let_expression", "while_let_expression"
+            ],
+            "python" => vec![
+                "if_statement", "while_statement", "for_statement", "try_statement",
+                "except_clause", "with_statement", "match_statement", "case_clause"
+            ],
+            "javascript" | "typescript" => vec![
+                "if_statement", "while_statement", "for_statement", "for_in_statement",
+                "switch_statement", "try_statement", "catch_clause", "conditional_expression"
+            ],
+            "c" | "cpp" | "c++" => vec![
+                "if_statement", "while_statement", "for_statement", "do_statement",
+                "switch_statement", "case_statement", "conditional_expression"
+            ],
+            "go" => vec![
+                "if_statement", "for_statement", "switch_statement", "type_switch_statement",
+                "case_clause", "select_statement", "communication_clause"
+            ],
+            _ => vec!["if_statement", "while_statement", "for_statement", "switch_statement"],
+        };
+
+        // Count control flow constructs
+        for pattern in control_patterns {
+            let nodes = tree.find_nodes_by_kind(pattern);
+            complexity += nodes.len() as f64;
+        }
+
+        complexity
+    }
+
+    /// Calculate debt weight based on code smell characteristics
+    fn calculate_smell_debt_weight(&self, smell: &CodeSmell) -> f64 {
+        let base_weight = match smell.severity {
+            SmellSeverity::Critical => 5.0,
+            SmellSeverity::High => 3.0,
+            SmellSeverity::Medium => 2.0,
+            SmellSeverity::Low => 1.0,
+        };
+
+        let category_multiplier = match smell.category {
+            SmellCategory::Bloaters => 1.5,
+            SmellCategory::OOAbusers => 2.0,
+            SmellCategory::ChangePreventers => 2.5,
+            SmellCategory::Dispensables => 1.0,
+            SmellCategory::Couplers => 2.0,
+        };
+
+        base_weight * category_multiplier
+    }
+
+    /// Calculate effort and impact for debt items based on real analysis
+    fn calculate_debt_effort_impact(&self, smell: &CodeSmell, analysis_result: &AnalysisResult) -> (f64, f64) {
+        // Find the file this smell relates to
+        let file_info = analysis_result.files.iter()
+            .find(|f| f.path == smell.location);
+
+        let effort = match smell.name.as_str() {
+            "Large File" => {
+                if let Some(file) = file_info {
+                    // Effort based on file size and complexity
+                    let size_factor = (file.lines as f64 / 100.0).min(10.0);
+                    let symbol_factor = (file.symbols.len() as f64 / 10.0).min(5.0);
+                    size_factor + symbol_factor
+                } else {
+                    3.0
+                }
+            },
+            "Large Class/Module" => {
+                if let Some(file) = file_info {
+                    // Effort based on number of functions and their complexity
+                    let function_count = file.symbols.iter().filter(|s| s.kind == "function").count();
+                    (function_count as f64 / 5.0).min(8.0).max(2.0)
+                } else {
+                    4.0
+                }
+            },
+            _ => {
+                // Default effort calculation based on severity
+                match smell.severity {
+                    SmellSeverity::Critical => 6.0,
+                    SmellSeverity::High => 4.0,
+                    SmellSeverity::Medium => 2.5,
+                    SmellSeverity::Low => 1.5,
+                }
+            }
+        };
+
+        let impact = match smell.category {
+            SmellCategory::ChangePreventers => effort * 1.8, // High impact on maintainability
+            SmellCategory::Bloaters => effort * 1.5,        // Medium-high impact
+            SmellCategory::OOAbusers => effort * 1.6,
+            SmellCategory::Couplers => effort * 1.7,        // High impact on modularity
+            SmellCategory::Dispensables => effort * 1.2,    // Lower impact
+        };
+
+        (effort, impact)
+    }
 }
 
 // Default implementations
@@ -1887,27 +2070,27 @@ impl Default for SemanticAnalysis {
 impl Default for QualityAssessment {
     fn default() -> Self {
         Self {
-            overall_score: 50,
+            overall_score: 65, // More realistic baseline
             maintainability: MaintainabilityMetrics {
-                maintainability_index: 50.0,
-                avg_complexity: 5.0,
-                avg_function_length: 20.0,
-                avg_inheritance_depth: 2.0,
-                coupling_score: 5.0,
+                maintainability_index: 65.0, // Industry average baseline
+                avg_complexity: 3.5,         // Realistic complexity for well-structured code
+                avg_function_length: 15.0,   // Reasonable function length
+                avg_inheritance_depth: 1.5,  // Shallow inheritance is better
+                coupling_score: 3.0,         // Lower coupling is better
             },
             readability: ReadabilityAssessment {
-                readability_score: 5.0,
-                naming_quality: 5.0,
-                comment_quality: 5.0,
-                structure_clarity: 5.0,
-                consistency: 5.0,
+                readability_score: 6.5,      // Above average readability
+                naming_quality: 7.0,         // Good naming is achievable
+                comment_quality: 5.5,        // Moderate commenting
+                structure_clarity: 6.0,      // Clear structure
+                consistency: 6.5,            // Good consistency
             },
             design_quality: DesignQuality {
-                solid_adherence: 5.0,
-                dry_adherence: 5.0,
-                kiss_adherence: 5.0,
-                separation_of_concerns: 5.0,
-                abstraction_quality: 5.0,
+                solid_adherence: 6.0,        // Good SOLID principles
+                dry_adherence: 6.5,          // Good DRY adherence
+                kiss_adherence: 7.0,         // KISS is easier to achieve
+                separation_of_concerns: 6.0, // Good separation
+                abstraction_quality: 5.5,    // Moderate abstraction
             },
             technical_debt: TechnicalDebtAnalysis {
                 total_debt: 0.0,

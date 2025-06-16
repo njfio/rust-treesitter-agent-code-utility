@@ -46,6 +46,10 @@ pub mod smart_refactoring;
 pub mod test_coverage;
 pub mod tree;
 pub mod code_map;
+pub mod semantic_graph;
+pub mod code_evolution;
+pub mod intent_mapping;
+pub mod reasoning_engine;
 
 // Re-export commonly used types
 pub use advanced_ai_analysis::{AdvancedAIAnalyzer, AdvancedAIResult, AdvancedAIConfig, SemanticAnalysis, ArchitecturePattern};
@@ -66,6 +70,19 @@ pub use smart_refactoring::{SmartRefactoringEngine, SmartRefactoringResult, Smar
 pub use test_coverage::{TestCoverageAnalyzer, TestCoverageResult, TestCoverageConfig, MissingTest};
 pub use code_map::{CallGraph, ModuleGraph, build_call_graph, build_module_graph};
 pub use tree::{Node, SyntaxTree, TreeCursor, TreeEdit};
+pub use semantic_graph::{SemanticGraphQuery, GraphNode, GraphEdge, NodeType, RelationshipType, QueryResult, QueryConfig, GraphStatistics};
+pub use code_evolution::{CodeEvolutionTracker, EvolutionAnalysisResult, EvolutionConfig, ChangePattern, PatternType, EvolutionMetrics, FileInsight, EvolutionRecommendation, ChangeType, RiskLevel};
+pub use intent_mapping::{
+    IntentMappingSystem, MappingAnalysisResult, MappingConfig, Requirement, Implementation,
+    IntentMapping, TraceabilityMatrix, TraceabilityReport, RequirementType, ImplementationType,
+    Priority as IntentPriority, RequirementStatus, ImplementationStatus, QualityMetrics,
+    CodeElement, MappingType, ValidationStatus, GapType, RecommendationType, MappingGap,
+    MappingRecommendation
+};
+pub use reasoning_engine::{
+    AutomatedReasoningEngine, ReasoningResult, ReasoningConfig, Fact, Rule, KnowledgeBase,
+    InferenceEngine, ConstraintSolver, TheoremProver, ReasoningInsight, InsightType
+};
 
 // Re-export tree-sitter types that users might need
 pub use tree_sitter::{InputEdit, Point, Range};
