@@ -37,6 +37,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         max_depth: Some(10),
         include_hidden: false,
         depth: AnalysisDepth::Full,
+        enable_parallel: true,
+        parallel_threshold: 10,
+        thread_count: None,
     };
 
     let mut analyzer = CodebaseAnalyzer::with_config(config);

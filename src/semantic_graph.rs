@@ -675,3 +675,204 @@ impl std::fmt::Display for RelationshipType {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Symbol};
+    use std::collections::HashMap;
+
+    fn create_test_analysis_result() -> AnalysisResult {
+        let mut symbols = Vec::new();
+        symbols.push(Symbol {
+            name: "test_function".to_string(),
+            kind: "function".to_string(),
+            start_line: 1,
+            end_line: 5,
+            start_column: 0,
+            end_column: 10,
+            visibility: "public".to_string(),
+            documentation: Some("Test function".to_string()),
+        });
+
+        symbols.push(Symbol {
+            name: "TestClass".to_string(),
+            kind: "class".to_string(),
+            start_line: 10,
+            end_line: 20,
+            start_column: 0,
+            end_column: 15,
+            visibility: "public".to_string(),
+            documentation: Some("Test class".to_string()),
+        });
+
+        let file = FileInfo {
+            path: PathBuf::from("test.rs"),
+            language: "rust".to_string(),
+            size: 100,
+            lines: 25,
+            parsed_successfully: true,
+            parse_errors: Vec::new(),
+            symbols,
+            security_vulnerabilities: Vec::new(),
+        };
+
+        AnalysisResult {
+            root_path: PathBuf::from("."),
+            total_files: 1,
+            parsed_files: 1,
+            error_files: 0,
+            total_lines: 25,
+            languages: HashMap::new(),
+            files: vec![file],
+            config: crate::AnalysisConfig::default(),
+        }
+    }
+
+    #[test]
+    fn test_semantic_graph_creation() {
+        let graph = SemanticGraphQuery::new();
+
+        assert!(graph.nodes.is_empty());
+        assert!(graph.edges.is_empty());
+    }
+
+    #[test]
+    fn test_build_graph_from_analysis() {
+        let analysis = create_test_analysis_result();
+        let mut graph = SemanticGraphQuery::new();
+
+        let result = graph.build_from_analysis(&analysis);
+        assert!(result.is_ok());
+
+        // Should have created nodes for the function and class
+        assert_eq!(graph.nodes.len(), 2);
+
+        // Check that nodes were created correctly
+        let function_nodes: Vec<_> = graph.nodes.values()
+            .filter(|n| n.node_type == NodeType::Function)
+            .collect();
+        assert_eq!(function_nodes.len(), 1);
+        assert_eq!(function_nodes[0].name, "test_function");
+
+        let class_nodes: Vec<_> = graph.nodes.values()
+            .filter(|n| n.node_type == NodeType::Class)
+            .collect();
+        assert_eq!(class_nodes.len(), 1);
+        assert_eq!(class_nodes[0].name, "TestClass");
+    }
+
+    #[test]
+    fn test_find_by_type() {
+        let analysis = create_test_analysis_result();
+        let mut graph = SemanticGraphQuery::new();
+        graph.build_from_analysis(&analysis).unwrap();
+
+        let config = QueryConfig::default();
+
+        // Find functions
+        let function_result = graph.find_by_type(NodeType::Function, &config);
+        assert_eq!(function_result.nodes.len(), 1);
+        assert_eq!(function_result.nodes[0].name, "test_function");
+
+        // Find classes
+        let class_result = graph.find_by_type(NodeType::Class, &config);
+        assert_eq!(class_result.nodes.len(), 1);
+        assert_eq!(class_result.nodes[0].name, "TestClass");
+
+        // Find non-existent type
+        let module_result = graph.find_by_type(NodeType::Module, &config);
+        assert_eq!(module_result.nodes.len(), 0);
+    }
+
+    #[test]
+    fn test_find_by_name() {
+        let analysis = create_test_analysis_result();
+        let mut graph = SemanticGraphQuery::new();
+        graph.build_from_analysis(&analysis).unwrap();
+
+        let config = QueryConfig::default();
+
+        // Find by exact name
+        let result = graph.find_by_name("test_function", &config);
+        assert_eq!(result.nodes.len(), 1);
+        assert_eq!(result.nodes[0].name, "test_function");
+
+        // Find by partial name
+        let result = graph.find_by_name("Test", &config);
+        assert_eq!(result.nodes.len(), 1);
+        assert_eq!(result.nodes[0].name, "TestClass");
+
+        // Find non-existent name
+        let result = graph.find_by_name("nonexistent", &config);
+        assert_eq!(result.nodes.len(), 0);
+    }
+
+    #[test]
+    fn test_symbol_to_node_type_conversion() {
+        let graph = SemanticGraphQuery::new();
+
+        assert_eq!(graph.symbol_to_node_type("function"), NodeType::Function);
+        assert_eq!(graph.symbol_to_node_type("method"), NodeType::Function);
+        assert_eq!(graph.symbol_to_node_type("class"), NodeType::Class);
+        assert_eq!(graph.symbol_to_node_type("type"), NodeType::Class);
+        assert_eq!(graph.symbol_to_node_type("module"), NodeType::Module);
+        assert_eq!(graph.symbol_to_node_type("variable"), NodeType::Variable);
+        assert_eq!(graph.symbol_to_node_type("constant"), NodeType::Constant);
+        assert_eq!(graph.symbol_to_node_type("interface"), NodeType::Interface);
+        assert_eq!(graph.symbol_to_node_type("struct"), NodeType::Struct);
+        assert_eq!(graph.symbol_to_node_type("enum"), NodeType::Enum);
+        assert_eq!(graph.symbol_to_node_type("trait"), NodeType::Trait);
+        assert_eq!(graph.symbol_to_node_type("unknown"), NodeType::Function); // Default fallback
+    }
+
+    #[test]
+    fn test_string_similarity() {
+        let graph = SemanticGraphQuery::new();
+
+        // Identical strings
+        assert_eq!(graph.string_similarity("test", "test"), 1.0);
+
+        // Completely different strings
+        assert_eq!(graph.string_similarity("abc", "xyz"), 0.0);
+
+        // Partial overlap
+        let similarity = graph.string_similarity("test_function", "test_method");
+        assert!(similarity > 0.0 && similarity < 1.0);
+    }
+
+    #[test]
+    fn test_get_statistics() {
+        let analysis = create_test_analysis_result();
+        let mut graph = SemanticGraphQuery::new();
+        graph.build_from_analysis(&analysis).unwrap();
+
+        let stats = graph.get_statistics();
+
+        assert_eq!(stats.total_nodes, 2);
+        assert!(stats.total_edges > 0); // Should have some relationships
+        assert_eq!(stats.node_type_distribution.get(&NodeType::Function), Some(&1));
+        assert_eq!(stats.node_type_distribution.get(&NodeType::Class), Some(&1));
+    }
+
+    #[test]
+    fn test_query_config_default() {
+        let config = QueryConfig::default();
+
+        assert_eq!(config.max_results, 100);
+        assert_eq!(config.max_depth, 5);
+        assert_eq!(config.similarity_threshold, 0.5);
+        assert!(config.include_metadata);
+    }
+
+    #[test]
+    fn test_node_properties_default() {
+        let props = NodeProperties::default();
+
+        assert_eq!(props.complexity, 1.0);
+        assert_eq!(props.importance, 1.0);
+        assert_eq!(props.in_degree, 0);
+        assert_eq!(props.out_degree, 0);
+        assert!(props.tags.is_empty());
+    }
+}

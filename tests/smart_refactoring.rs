@@ -141,7 +141,7 @@ fn find_duplicates(data: &[i32]) -> Vec<i32> {
 
     // Analyze the code using the analyzer (like other tests)
     let mut analyzer = CodebaseAnalyzer::new();
-    let analysis_result = analyzer.analyze_single_file(&rust_file)?;
+    let analysis_result = analyzer.analyze_file(&rust_file)?;
 
     // Run smart refactoring analysis
     let refactoring_config = SmartRefactoringConfig {
@@ -257,7 +257,7 @@ struct Manager { name: String, team: String }
     fs::write(&pattern_file, pattern_code)?;
 
     let mut analyzer = CodebaseAnalyzer::new();
-    let analysis_result = analyzer.analyze_single_file(&pattern_file)?;
+    let analysis_result = analyzer.analyze_file(&pattern_file)?;
 
     let refactoring_engine = SmartRefactoringEngine::new();
     let result = refactoring_engine.analyze(&analysis_result)?;

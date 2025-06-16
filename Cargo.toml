@@ -28,6 +28,8 @@ toml = "0.8"
 tabled = "0.15"
 regex = "1.10"
 sha2 = "0.10"
+rand = "0.8"
+rayon = "1.8"
 
 # Phase A: Infrastructure Dependencies
 tokio = { version = "1.0", features = ["full"] }

@@ -32,6 +32,7 @@ pub mod advanced_ai_analysis;
 pub mod advanced_security;
 pub mod ai_analysis;
 pub mod analyzer;
+pub mod cli;
 pub mod dependency_analysis;
 pub mod enhanced_security;
 pub mod error;

@@ -2404,6 +2404,8 @@ dependencies = [
  "indicatif",
  "num_cpus",
  "predicates",
+ "rand 0.8.5",
+ "rayon",
  "regex",
  "reqwest",
  "serde",

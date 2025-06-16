@@ -25,6 +25,29 @@ pub struct ServiceRateLimiter {
     service_name: String,
     requests_per_minute: u32,
     burst_size: u32,
+    stats: Arc<RwLock<ServiceStats>>,
+}
+
+/// Internal statistics tracking for a service
+#[derive(Debug, Clone)]
+struct ServiceStats {
+    total_requests: u64,
+    total_limited: u64,
+    last_reset: std::time::Instant,
+    consecutive_failures: u32,
+    last_failure: Option<std::time::Instant>,
+}
+
+impl Default for ServiceStats {
+    fn default() -> Self {
+        Self {
+            total_requests: 0,
+            total_limited: 0,
+            last_reset: std::time::Instant::now(),
+            consecutive_failures: 0,
+            last_failure: None,
+        }
+    }
 }
 
 /// Rate limiting configuration for a service
@@ -43,6 +66,26 @@ pub enum RateLimitResult {
     Allowed,
     Limited { retry_after: Duration },
     Error(String),
+}
+
+/// Exponential backoff configuration
+#[derive(Debug, Clone)]
+pub struct BackoffConfig {
+    pub initial_delay: Duration,
+    pub max_delay: Duration,
+    pub multiplier: f64,
+    pub jitter: bool,
+}
+
+impl Default for BackoffConfig {
+    fn default() -> Self {
+        Self {
+            initial_delay: Duration::from_millis(100),
+            max_delay: Duration::from_secs(60),
+            multiplier: 2.0,
+            jitter: true,
+        }
+    }
 }
 
 impl MultiServiceRateLimiter {
@@ -115,12 +158,26 @@ impl ServiceRateLimiter {
             service_name: config.service_name,
             requests_per_minute: config.requests_per_minute,
             burst_size: config.burst_size.unwrap_or(config.requests_per_minute),
+            stats: Arc::new(RwLock::new(ServiceStats {
+                total_requests: 0,
+                total_limited: 0,
+                last_reset: std::time::Instant::now(),
+                consecutive_failures: 0,
+                last_failure: None,
+            })),
         })
     }
 
     /// Wait for permission to make a request
     pub async fn wait_for_permit(&self) -> Result<()> {
         self.limiter.until_ready().await;
+
+        // Update statistics
+        {
+            let mut stats = self.stats.write().await;
+            stats.total_requests += 1;
+        }
+
         debug!("Rate limit permit granted for {}", self.service_name);
         Ok(())
     }
@@ -129,10 +186,18 @@ impl ServiceRateLimiter {
     pub fn check_permit(&self) -> RateLimitResult {
         match self.limiter.check() {
             Ok(_) => {
+                // Update statistics for successful request
+                if let Ok(mut stats) = self.stats.try_write() {
+                    stats.total_requests += 1;
+                }
                 debug!("Rate limit check passed for {}", self.service_name);
                 RateLimitResult::Allowed
             }
             Err(negative) => {
+                // Update statistics for limited request
+                if let Ok(mut stats) = self.stats.try_write() {
+                    stats.total_limited += 1;
+                }
                 let retry_after = negative.wait_time_from(governor::clock::DefaultClock::default().now());
                 warn!("Rate limit exceeded for {}, retry after: {:?}",
                       self.service_name, retry_after);
@@ -143,15 +208,95 @@ impl ServiceRateLimiter {
 
     /// Get rate limiting statistics
     pub fn get_stats(&self) -> RateLimitStats {
-        // Note: governor doesn't provide detailed stats, so we return basic info
+        let stats = if let Ok(stats) = self.stats.try_read() {
+            stats.clone()
+        } else {
+            ServiceStats::default()
+        };
+
+        // Estimate current tokens based on time elapsed and rate
+        let elapsed = stats.last_reset.elapsed();
+        let tokens_replenished = (elapsed.as_secs() as f64 / 60.0 * self.requests_per_minute as f64) as u32;
+        let current_tokens = tokens_replenished.min(self.burst_size);
+
         RateLimitStats {
             service_name: self.service_name.clone(),
             requests_per_minute: self.requests_per_minute,
             burst_size: self.burst_size,
-            current_tokens: 0, // Would need custom implementation to track
-            total_requests: 0, // Would need custom implementation to track
-            total_limited: 0,  // Would need custom implementation to track
+            current_tokens,
+            total_requests: stats.total_requests,
+            total_limited: stats.total_limited,
         }
+    }
+
+    /// Reset statistics (useful for periodic reporting)
+    pub async fn reset_stats(&self) {
+        let mut stats = self.stats.write().await;
+        stats.total_requests = 0;
+        stats.total_limited = 0;
+        stats.last_reset = std::time::Instant::now();
+    }
+
+    /// Get the service name
+    pub fn service_name(&self) -> &str {
+        &self.service_name
+    }
+
+    /// Record a successful request (resets backoff)
+    pub async fn record_success(&self) {
+        let mut stats = self.stats.write().await;
+        stats.consecutive_failures = 0;
+        stats.last_failure = None;
+    }
+
+    /// Record a failed request (increases backoff)
+    pub async fn record_failure(&self) {
+        let mut stats = self.stats.write().await;
+        stats.consecutive_failures += 1;
+        stats.last_failure = Some(std::time::Instant::now());
+    }
+
+    /// Calculate exponential backoff delay
+    pub async fn calculate_backoff_delay(&self, config: &BackoffConfig) -> Duration {
+        let stats = self.stats.read().await;
+
+        if stats.consecutive_failures == 0 {
+            return Duration::from_millis(0);
+        }
+
+        // Calculate exponential delay
+        let base_delay = config.initial_delay.as_millis() as f64;
+        let multiplier = config.multiplier.powi(stats.consecutive_failures as i32 - 1);
+        let delay_ms = (base_delay * multiplier) as u64;
+
+        let mut delay = Duration::from_millis(delay_ms);
+
+        // Cap at max delay
+        if delay > config.max_delay {
+            delay = config.max_delay;
+        }
+
+        // Add jitter if enabled
+        if config.jitter {
+            use rand::Rng;
+            let jitter_factor = rand::thread_rng().gen_range(0.5..1.5);
+            delay = Duration::from_millis((delay.as_millis() as f64 * jitter_factor) as u64);
+        }
+
+        delay
+    }
+
+    /// Wait with exponential backoff if needed
+    pub async fn wait_with_backoff(&self, config: &BackoffConfig) -> Result<()> {
+        let backoff_delay = self.calculate_backoff_delay(config).await;
+
+        if !backoff_delay.is_zero() {
+            debug!("Applying exponential backoff for {}: {:?}",
+                   self.service_name, backoff_delay);
+            tokio::time::sleep(backoff_delay).await;
+        }
+
+        self.wait_for_permit().await
     }
 }
 

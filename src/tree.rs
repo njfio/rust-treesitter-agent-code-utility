@@ -157,6 +157,16 @@ impl<'a> Node<'a> {
         self.inner.end_position()
     }
 
+    /// Get the start byte offset of this node
+    pub fn start_byte(&self) -> usize {
+        self.inner.start_byte()
+    }
+
+    /// Get the end byte offset of this node
+    pub fn end_byte(&self) -> usize {
+        self.inner.end_byte()
+    }
+
     /// Check if this node has an error
     pub fn has_error(&self) -> bool {
         self.inner.has_error()
