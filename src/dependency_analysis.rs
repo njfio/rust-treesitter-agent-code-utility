@@ -145,6 +145,8 @@ pub enum DependencyType {
     Transitive,
     /// Development dependency
     Development,
+    /// Build dependency
+    Build,
     /// Optional dependency
     Optional,
     /// Peer dependency
@@ -601,39 +603,42 @@ impl DependencyAnalyzer {
         let content = fs::read_to_string(&pm_info.config_file)?;
         let mut dependencies = Vec::new();
 
-        // Simple TOML parsing for dependencies section
-        let mut in_dependencies = false;
-        let mut in_dev_dependencies = false;
+        // Parse Cargo.toml using proper TOML parsing
+        let toml_value: toml::Value = toml::from_str(&content)
+            .map_err(|e| crate::error::Error::ParseError(format!("Failed to parse Cargo.toml: {}", e)))?;
 
-        for line in content.lines() {
-            let line = line.trim();
-
-            if line == "[dependencies]" {
-                in_dependencies = true;
-                in_dev_dependencies = false;
-                continue;
-            } else if line == "[dev-dependencies]" {
-                in_dependencies = false;
-                in_dev_dependencies = true;
-                continue;
-            } else if line.starts_with('[') {
-                in_dependencies = false;
-                in_dev_dependencies = false;
-                continue;
+        // Extract regular dependencies
+        if let Some(deps) = toml_value.get("dependencies").and_then(|d| d.as_table()) {
+            for (name, version_spec) in deps {
+                let (version, dependency_type) = self.parse_cargo_dependency_spec(version_spec);
+                dependencies.push(Dependency {
+                    name: name.clone(),
+                    version,
+                    latest_version: None,
+                    manager: PackageManager::Cargo,
+                    dependency_type,
+                    license: None,
+                    repository: None,
+                    description: None,
+                    maintainers: Vec::new(),
+                    download_count: None,
+                    last_updated: None,
+                    security_advisories: 0,
+                });
             }
+        }
 
-            if (in_dependencies || (in_dev_dependencies && self.config.include_dev_dependencies)) && !line.is_empty() {
-                if let Some((name, version)) = self.parse_cargo_dependency_line(line) {
+        // Extract dev dependencies if configured
+        if self.config.include_dev_dependencies {
+            if let Some(dev_deps) = toml_value.get("dev-dependencies").and_then(|d| d.as_table()) {
+                for (name, version_spec) in dev_deps {
+                    let (version, _) = self.parse_cargo_dependency_spec(version_spec);
                     dependencies.push(Dependency {
-                        name,
+                        name: name.clone(),
                         version,
                         latest_version: None,
                         manager: PackageManager::Cargo,
-                        dependency_type: if in_dev_dependencies {
-                            DependencyType::Development
-                        } else {
-                            DependencyType::Direct
-                        },
+                        dependency_type: DependencyType::Development,
                         license: None,
                         repository: None,
                         description: None,
@@ -646,22 +651,53 @@ impl DependencyAnalyzer {
             }
         }
 
+        // Extract build dependencies
+        if let Some(build_deps) = toml_value.get("build-dependencies").and_then(|d| d.as_table()) {
+            for (name, version_spec) in build_deps {
+                let (version, _) = self.parse_cargo_dependency_spec(version_spec);
+                dependencies.push(Dependency {
+                    name: name.clone(),
+                    version,
+                    latest_version: None,
+                    manager: PackageManager::Cargo,
+                    dependency_type: DependencyType::Build,
+                    license: None,
+                    repository: None,
+                    description: None,
+                    maintainers: Vec::new(),
+                    download_count: None,
+                    last_updated: None,
+                    security_advisories: 0,
+                });
+            }
+        }
+
         Ok(dependencies)
     }
 
-    /// Parse a Cargo dependency line
-    fn parse_cargo_dependency_line(&self, line: &str) -> Option<(String, String)> {
-        if let Some(eq_pos) = line.find('=') {
-            let name = line[..eq_pos].trim().to_string();
-            let version_part = line[eq_pos + 1..].trim();
-
-            // Handle simple version strings
-            if version_part.starts_with('"') && version_part.ends_with('"') {
-                let version = version_part[1..version_part.len() - 1].to_string();
-                return Some((name, version));
+    /// Parse a Cargo dependency specification
+    fn parse_cargo_dependency_spec(&self, version_spec: &toml::Value) -> (String, DependencyType) {
+        match version_spec {
+            toml::Value::String(version) => {
+                (version.clone(), DependencyType::Direct)
             }
+            toml::Value::Table(table) => {
+                // Handle complex dependency specifications
+                let version = table.get("version")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("*")
+                    .to_string();
+
+                let dependency_type = if table.get("optional").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    DependencyType::Optional
+                } else {
+                    DependencyType::Direct
+                };
+
+                (version, dependency_type)
+            }
+            _ => ("*".to_string(), DependencyType::Direct)
         }
-        None
     }
 
     /// Extract npm/yarn dependencies
