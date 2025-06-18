@@ -1175,3 +1175,546 @@ impl std::fmt::Display for MappingType {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_intent_mapping_system_creation() {
+        let system = IntentMappingSystem::new();
+        assert_eq!(system.requirements().len(), 0);
+        assert_eq!(system.implementations().len(), 0);
+        assert_eq!(system.mappings().len(), 0);
+        assert_eq!(system.config().confidence_threshold, DEFAULT_CONFIDENCE_THRESHOLD);
+    }
+
+    #[test]
+    fn test_intent_mapping_system_with_config() {
+        let mut config = MappingConfig::default();
+        config.confidence_threshold = 0.9;
+        config.enable_nlp = false;
+
+        let system = IntentMappingSystem::with_config(config.clone());
+        assert_eq!(system.config().confidence_threshold, 0.9);
+        assert!(!system.config().enable_nlp);
+    }
+
+    #[test]
+    fn test_mapping_config_default() {
+        let config = MappingConfig::default();
+        assert_eq!(config.confidence_threshold, DEFAULT_CONFIDENCE_THRESHOLD);
+        assert_eq!(config.max_mapping_distance, DEFAULT_MAX_MAPPING_DISTANCE);
+        assert_eq!(config.auto_validation_threshold, DEFAULT_AUTO_VALIDATION_THRESHOLD);
+        assert!(config.enable_nlp);
+        assert!(config.enable_semantic_analysis);
+    }
+
+    #[test]
+    fn test_requirement_creation() {
+        let requirement = Requirement {
+            id: "REQ-001".to_string(),
+            requirement_type: RequirementType::UserStory,
+            description: "As a user, I want to log in".to_string(),
+            priority: Priority::High,
+            acceptance_criteria: vec![
+                "User can enter credentials".to_string(),
+                "System validates credentials".to_string(),
+            ],
+            stakeholders: vec!["Product Owner".to_string(), "Development Team".to_string()],
+            tags: vec!["authentication".to_string(), "security".to_string()],
+            status: RequirementStatus::Approved,
+        };
+
+        assert_eq!(requirement.id, "REQ-001");
+        assert!(matches!(requirement.requirement_type, RequirementType::UserStory));
+        assert!(matches!(requirement.priority, Priority::High));
+        assert!(matches!(requirement.status, RequirementStatus::Approved));
+        assert_eq!(requirement.acceptance_criteria.len(), 2);
+        assert_eq!(requirement.stakeholders.len(), 2);
+        assert_eq!(requirement.tags.len(), 2);
+    }
+
+    #[test]
+    fn test_requirement_type_variants() {
+        let types = vec![
+            RequirementType::Functional,
+            RequirementType::NonFunctional,
+            RequirementType::Business,
+            RequirementType::Technical,
+            RequirementType::UserStory,
+            RequirementType::Epic,
+            RequirementType::Feature,
+            RequirementType::BugFix,
+            RequirementType::Performance,
+            RequirementType::Security,
+        ];
+
+        assert_eq!(types.len(), 10);
+        assert!(types.contains(&RequirementType::UserStory));
+        assert!(types.contains(&RequirementType::Security));
+    }
+
+    #[test]
+    fn test_priority_ordering() {
+        assert!(Priority::Critical > Priority::High);
+        assert!(Priority::High > Priority::Medium);
+        assert!(Priority::Medium > Priority::Low);
+    }
+
+    #[test]
+    fn test_requirement_status_variants() {
+        let statuses = vec![
+            RequirementStatus::Draft,
+            RequirementStatus::Approved,
+            RequirementStatus::InProgress,
+            RequirementStatus::Implemented,
+            RequirementStatus::Tested,
+            RequirementStatus::Deployed,
+            RequirementStatus::Rejected,
+        ];
+
+        assert_eq!(statuses.len(), 7);
+        assert!(statuses.contains(&RequirementStatus::Approved));
+        assert!(statuses.contains(&RequirementStatus::Implemented));
+    }
+
+    #[test]
+    fn test_implementation_creation() {
+        let implementation = Implementation {
+            id: "IMPL-001".to_string(),
+            implementation_type: ImplementationType::Function,
+            file_path: PathBuf::from("src/auth.rs"),
+            code_elements: vec![
+                CodeElement {
+                    name: "login".to_string(),
+                    element_type: "function".to_string(),
+                    line_range: (10, 25),
+                    complexity: 2.5,
+                    test_coverage: 0.85,
+                }
+            ],
+            status: ImplementationStatus::Complete,
+            quality_metrics: QualityMetrics::default(),
+            documentation: Some("User authentication function".to_string()),
+        };
+
+        assert_eq!(implementation.id, "IMPL-001");
+        assert!(matches!(implementation.implementation_type, ImplementationType::Function));
+        assert_eq!(implementation.file_path, PathBuf::from("src/auth.rs"));
+        assert!(matches!(implementation.status, ImplementationStatus::Complete));
+        assert_eq!(implementation.code_elements.len(), 1);
+        assert!(implementation.documentation.is_some());
+    }
+
+    #[test]
+    fn test_implementation_type_variants() {
+        let types = vec![
+            ImplementationType::Function,
+            ImplementationType::Class,
+            ImplementationType::Module,
+            ImplementationType::Interface,
+            ImplementationType::Database,
+            ImplementationType::API,
+            ImplementationType::Configuration,
+            ImplementationType::Test,
+            ImplementationType::Documentation,
+            ImplementationType::Infrastructure,
+        ];
+
+        assert_eq!(types.len(), 10);
+        assert!(types.contains(&ImplementationType::Function));
+        assert!(types.contains(&ImplementationType::API));
+    }
+
+    #[test]
+    fn test_code_element_creation() {
+        let element = CodeElement {
+            name: "authenticate_user".to_string(),
+            element_type: "function".to_string(),
+            line_range: (15, 30),
+            complexity: 3.2,
+            test_coverage: 0.92,
+        };
+
+        assert_eq!(element.name, "authenticate_user");
+        assert_eq!(element.element_type, "function");
+        assert_eq!(element.line_range, (15, 30));
+        assert_eq!(element.complexity, 3.2);
+        assert_eq!(element.test_coverage, 0.92);
+    }
+
+    #[test]
+    fn test_implementation_status_variants() {
+        let statuses = vec![
+            ImplementationStatus::NotStarted,
+            ImplementationStatus::InProgress,
+            ImplementationStatus::Complete,
+            ImplementationStatus::Tested,
+            ImplementationStatus::Deployed,
+            ImplementationStatus::Deprecated,
+        ];
+
+        assert_eq!(statuses.len(), 6);
+        assert!(statuses.contains(&ImplementationStatus::Complete));
+        assert!(statuses.contains(&ImplementationStatus::Tested));
+    }
+
+    #[test]
+    fn test_quality_metrics_creation() {
+        let metrics = QualityMetrics {
+            coverage: 0.85,
+            complexity: 2.3,
+            maintainability: 0.78,
+            performance: 0.91,
+            security: 0.88,
+        };
+
+        assert_eq!(metrics.coverage, 0.85);
+        assert_eq!(metrics.complexity, 2.3);
+        assert_eq!(metrics.maintainability, 0.78);
+        assert_eq!(metrics.performance, 0.91);
+        assert_eq!(metrics.security, 0.88);
+    }
+
+    #[test]
+    fn test_quality_metrics_default() {
+        let metrics = QualityMetrics::default();
+        assert_eq!(metrics.coverage, DEFAULT_COVERAGE);
+        assert_eq!(metrics.complexity, DEFAULT_COMPLEXITY);
+        assert_eq!(metrics.maintainability, DEFAULT_MAINTAINABILITY);
+        assert_eq!(metrics.performance, DEFAULT_PERFORMANCE);
+        assert_eq!(metrics.security, DEFAULT_SECURITY);
+    }
+
+    #[test]
+    fn test_intent_mapping_creation() {
+        let mapping = IntentMapping {
+            id: "MAP-001".to_string(),
+            requirement_id: "REQ-001".to_string(),
+            implementation_id: "IMPL-001".to_string(),
+            mapping_type: MappingType::Direct,
+            confidence: 0.92,
+            rationale: "Direct keyword match".to_string(),
+            validation_status: ValidationStatus::Valid,
+            last_updated: 1234567890,
+        };
+
+        assert_eq!(mapping.id, "MAP-001");
+        assert_eq!(mapping.requirement_id, "REQ-001");
+        assert_eq!(mapping.implementation_id, "IMPL-001");
+        assert!(matches!(mapping.mapping_type, MappingType::Direct));
+        assert_eq!(mapping.confidence, 0.92);
+        assert!(matches!(mapping.validation_status, ValidationStatus::Valid));
+    }
+
+    #[test]
+    fn test_mapping_type_variants() {
+        let types = vec![
+            MappingType::Direct,
+            MappingType::OneToMany,
+            MappingType::ManyToOne,
+            MappingType::Partial,
+            MappingType::Derived,
+            MappingType::Inferred,
+        ];
+
+        assert_eq!(types.len(), 6);
+        assert!(types.contains(&MappingType::Direct));
+        assert!(types.contains(&MappingType::Inferred));
+    }
+
+    #[test]
+    fn test_validation_status_variants() {
+        let statuses = vec![
+            ValidationStatus::NotValidated,
+            ValidationStatus::Valid,
+            ValidationStatus::Invalid,
+            ValidationStatus::NeedsReview,
+            ValidationStatus::Outdated,
+        ];
+
+        assert_eq!(statuses.len(), 5);
+        assert!(statuses.contains(&ValidationStatus::Valid));
+        assert!(statuses.contains(&ValidationStatus::NeedsReview));
+    }
+
+    #[test]
+    fn test_traceability_matrix_creation() {
+        let matrix = TraceabilityMatrix::new();
+        assert!(matrix.forward_trace.is_empty());
+        assert!(matrix.backward_trace.is_empty());
+        assert_eq!(matrix.coverage_metrics.requirement_coverage, 0.0);
+        assert_eq!(matrix.coverage_metrics.implementation_coverage, 0.0);
+        assert_eq!(matrix.coverage_metrics.orphaned_requirements, 0);
+        assert_eq!(matrix.coverage_metrics.orphaned_implementations, 0);
+    }
+
+    #[test]
+    fn test_coverage_metrics_creation() {
+        let metrics = CoverageMetrics {
+            requirement_coverage: 0.85,
+            implementation_coverage: 0.92,
+            orphaned_requirements: 3,
+            orphaned_implementations: 1,
+        };
+
+        assert_eq!(metrics.requirement_coverage, 0.85);
+        assert_eq!(metrics.implementation_coverage, 0.92);
+        assert_eq!(metrics.orphaned_requirements, 3);
+        assert_eq!(metrics.orphaned_implementations, 1);
+    }
+
+    fn create_test_requirement() -> Requirement {
+        Requirement {
+            id: "REQ-TEST-001".to_string(),
+            requirement_type: RequirementType::UserStory,
+            description: "As a user, I want to authenticate securely".to_string(),
+            priority: Priority::High,
+            acceptance_criteria: vec![
+                "User can enter username and password".to_string(),
+                "System validates credentials".to_string(),
+                "User is redirected on success".to_string(),
+            ],
+            stakeholders: vec!["Product Owner".to_string()],
+            tags: vec!["authentication".to_string(), "security".to_string()],
+            status: RequirementStatus::Approved,
+        }
+    }
+
+    fn create_test_implementation() -> Implementation {
+        Implementation {
+            id: "IMPL-TEST-001".to_string(),
+            implementation_type: ImplementationType::Function,
+            file_path: PathBuf::from("src/auth.rs"),
+            code_elements: vec![
+                CodeElement {
+                    name: "authenticate".to_string(),
+                    element_type: "function".to_string(),
+                    line_range: (10, 25),
+                    complexity: 2.0,
+                    test_coverage: 0.9,
+                }
+            ],
+            status: ImplementationStatus::Complete,
+            quality_metrics: QualityMetrics {
+                coverage: 0.9,
+                complexity: 2.0,
+                maintainability: 0.8,
+                performance: 0.85,
+                security: 0.9,
+            },
+            documentation: Some("Authentication function".to_string()),
+        }
+    }
+
+    #[test]
+    fn test_add_requirement() {
+        let mut system = IntentMappingSystem::new();
+        let requirement = create_test_requirement();
+
+        system.add_requirement(requirement.clone());
+        assert_eq!(system.requirements().len(), 1);
+        assert_eq!(system.requirements()[0].id, requirement.id);
+    }
+
+    #[test]
+    fn test_add_multiple_requirements() {
+        let mut system = IntentMappingSystem::new();
+        let requirements = vec![
+            create_test_requirement(),
+            Requirement {
+                id: "REQ-TEST-002".to_string(),
+                requirement_type: RequirementType::Functional,
+                description: "System should validate input".to_string(),
+                priority: Priority::Medium,
+                acceptance_criteria: vec!["Input is validated".to_string()],
+                stakeholders: vec!["Developer".to_string()],
+                tags: vec!["validation".to_string()],
+                status: RequirementStatus::Draft,
+            }
+        ];
+
+        system.add_requirements(requirements);
+        assert_eq!(system.requirements().len(), 2);
+    }
+
+    #[test]
+    fn test_add_implementation() {
+        let mut system = IntentMappingSystem::new();
+        let implementation = create_test_implementation();
+
+        system.add_implementation(implementation.clone());
+        assert_eq!(system.implementations().len(), 1);
+        assert_eq!(system.implementations()[0].id, implementation.id);
+    }
+
+    #[test]
+    fn test_extract_keywords() {
+        let system = IntentMappingSystem::new();
+        let text = "As a user, I want to authenticate securely with the system";
+        let keywords = system.extract_keywords_public(text);
+
+        assert!(keywords.contains(&"user".to_string()));
+        assert!(keywords.contains(&"authenticate".to_string()));
+        assert!(keywords.contains(&"securely".to_string()));
+        assert!(keywords.contains(&"system".to_string()));
+
+        // Should not contain stop words
+        assert!(!keywords.contains(&"as".to_string()));
+        assert!(!keywords.contains(&"a".to_string()));
+        assert!(!keywords.contains(&"to".to_string()));
+        assert!(!keywords.contains(&"with".to_string()));
+        assert!(!keywords.contains(&"the".to_string()));
+    }
+
+    #[test]
+    fn test_calculate_keyword_similarity() {
+        let system = IntentMappingSystem::new();
+        let keywords1 = vec!["user".to_string(), "authenticate".to_string(), "security".to_string()];
+        let keywords2 = vec!["user".to_string(), "login".to_string(), "security".to_string()];
+
+        let similarity = system.calculate_keyword_similarity_public(&keywords1, &keywords2);
+        assert!(similarity > 0.0);
+        assert!(similarity <= 1.0);
+
+        // Test identical keywords
+        let identical_similarity = system.calculate_keyword_similarity_public(&keywords1, &keywords1);
+        assert_eq!(identical_similarity, 1.0);
+
+        // Test no overlap
+        let keywords3 = vec!["database".to_string(), "query".to_string()];
+        let no_overlap_similarity = system.calculate_keyword_similarity_public(&keywords1, &keywords3);
+        assert_eq!(no_overlap_similarity, 0.0);
+    }
+
+    #[test]
+    fn test_extract_implementation_keywords() {
+        let system = IntentMappingSystem::new();
+        let implementation = create_test_implementation();
+
+        let keywords = system.extract_implementation_keywords_public(&implementation);
+        assert!(keywords.contains(&"auth".to_string()));
+        assert!(keywords.contains(&"authenticate".to_string()));
+    }
+
+    #[test]
+    fn test_build_traceability_matrix() {
+        let mut system = IntentMappingSystem::new();
+        let requirement = create_test_requirement();
+        let implementation = create_test_implementation();
+
+        system.add_requirement(requirement.clone());
+        system.add_implementation(implementation.clone());
+
+        let mapping = IntentMapping {
+            id: "MAP-TEST-001".to_string(),
+            requirement_id: requirement.id.clone(),
+            implementation_id: implementation.id.clone(),
+            mapping_type: MappingType::Direct,
+            confidence: 0.9,
+            rationale: "Test mapping".to_string(),
+            validation_status: ValidationStatus::Valid,
+            last_updated: 1234567890,
+        };
+
+        system.add_mapping(mapping);
+        system.build_traceability_matrix_public();
+
+        let traceability = system.traceability();
+        assert!(traceability.forward_trace.contains_key(&requirement.id));
+        assert!(traceability.backward_trace.contains_key(&implementation.id));
+    }
+
+    #[test]
+    fn test_identify_gaps() {
+        let mut system = IntentMappingSystem::new();
+
+        // Add requirement without implementation
+        let orphaned_requirement = Requirement {
+            id: "REQ-ORPHANED".to_string(),
+            requirement_type: RequirementType::Functional,
+            description: "Orphaned requirement".to_string(),
+            priority: Priority::Medium,
+            acceptance_criteria: vec!["Should be implemented".to_string()],
+            stakeholders: vec!["Developer".to_string()],
+            tags: vec!["orphaned".to_string()],
+            status: RequirementStatus::Approved,
+        };
+
+        // Add implementation without requirement
+        let orphaned_implementation = Implementation {
+            id: "IMPL-ORPHANED".to_string(),
+            implementation_type: ImplementationType::Function,
+            file_path: PathBuf::from("src/orphaned.rs"),
+            code_elements: vec![],
+            status: ImplementationStatus::Complete,
+            quality_metrics: QualityMetrics::default(),
+            documentation: None,
+        };
+
+        system.add_requirement(orphaned_requirement);
+        system.add_implementation(orphaned_implementation);
+        system.build_traceability_matrix_public();
+
+        let gaps = system.identify_gaps_public().unwrap();
+        assert!(gaps.len() >= 2); // At least one missing implementation and one missing requirement
+
+        let missing_impl_gaps: Vec<_> = gaps.iter()
+            .filter(|g| g.gap_type == GapType::MissingImplementation)
+            .collect();
+        assert!(!missing_impl_gaps.is_empty());
+
+        let missing_req_gaps: Vec<_> = gaps.iter()
+            .filter(|g| g.gap_type == GapType::MissingRequirement)
+            .collect();
+        assert!(!missing_req_gaps.is_empty());
+    }
+
+    #[test]
+    fn test_generate_recommendations() {
+        let system = IntentMappingSystem::new();
+        let gaps = vec![
+            MappingGap {
+                gap_type: GapType::MissingImplementation,
+                description: "Missing implementation for requirement".to_string(),
+                affected_items: vec!["REQ-001".to_string()],
+                severity: Priority::High,
+                suggested_actions: vec!["Create implementation".to_string()],
+            },
+            MappingGap {
+                gap_type: GapType::TestGap,
+                description: "Low test coverage".to_string(),
+                affected_items: vec!["IMPL-001".to_string()],
+                severity: Priority::Medium,
+                suggested_actions: vec!["Add tests".to_string()],
+            }
+        ];
+
+        let recommendations = system.generate_recommendations_public(&gaps).unwrap();
+        assert_eq!(recommendations.len(), 2);
+
+        let create_impl_recs: Vec<_> = recommendations.iter()
+            .filter(|r| r.recommendation_type == RecommendationType::CreateImplementation)
+            .collect();
+        assert_eq!(create_impl_recs.len(), 1);
+
+        let add_test_recs: Vec<_> = recommendations.iter()
+            .filter(|r| r.recommendation_type == RecommendationType::AddTests)
+            .collect();
+        assert_eq!(add_test_recs.len(), 1);
+    }
+
+    #[test]
+    fn test_display_implementations() {
+        assert_eq!(format!("{}", RequirementType::UserStory), "user-story");
+        assert_eq!(format!("{}", RequirementType::Security), "security");
+        assert_eq!(format!("{}", ImplementationType::Function), "function");
+        assert_eq!(format!("{}", ImplementationType::API), "api");
+        assert_eq!(format!("{}", Priority::High), "high");
+        assert_eq!(format!("{}", Priority::Critical), "critical");
+        assert_eq!(format!("{}", MappingType::Direct), "direct");
+        assert_eq!(format!("{}", MappingType::OneToMany), "one-to-many");
+    }
+}
