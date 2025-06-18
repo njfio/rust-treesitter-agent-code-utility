@@ -309,7 +309,11 @@ impl Cache {
     /// Get disk file path for cache key
     fn get_disk_file_path(&self, key: &str) -> Result<PathBuf> {
         let disk_dir = self.disk_cache_dir.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Disk cache directory not configured"))?;
+            .ok_or_else(|| crate::error::Error::internal_error_with_context(
+                "cache",
+                "Disk cache directory not configured".to_string(),
+                "Call set_disk_cache_dir() to configure disk caching before use".to_string()
+            ))?;
         let safe_key = key.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
         Ok(disk_dir.join(format!("{}.cache", safe_key)))
     }

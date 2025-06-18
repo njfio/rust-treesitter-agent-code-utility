@@ -905,12 +905,18 @@ impl PerformanceAnalyzer {
 
         let parser = match Parser::new(lang) {
             Ok(p) => p,
-            Err(_) => return Ok(Vec::new()),
+            Err(e) => {
+                eprintln!("Warning: Failed to create parser for {}: {}", file.language, e);
+                return Ok(Vec::new()); // Continue analysis without AST-based hotspots
+            }
         };
 
         let tree = match parser.parse(content, None) {
             Ok(t) => t,
-            Err(_) => return Ok(Vec::new()),
+            Err(e) => {
+                eprintln!("Warning: Failed to parse {} for hotspot detection: {}", file.path.display(), e);
+                return Ok(Vec::new()); // Continue analysis without AST-based hotspots
+            }
         };
 
         let mut hotspots = Vec::new();

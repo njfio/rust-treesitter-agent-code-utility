@@ -119,7 +119,10 @@ impl HttpClient {
                         warn!("HTTP {} {} failed (attempt {}), retrying in {:?}: {}", method, url, attempt + 1, delay, e);
                         tokio::time::sleep(delay).await;
                     } else {
-                        return Err(anyhow!("Max backoff time exceeded for {} {}: {}", method, url, e));
+                        return Err(anyhow!(
+                            "Max backoff time exceeded after {} retries for {} {}: {}",
+                            attempt, method, url, e
+                        ));
                     }
                 }
                 Err(e) => {
@@ -129,7 +132,10 @@ impl HttpClient {
             }
         }
 
-        Err(anyhow!("Max retries exceeded for {} {}", method, url))
+        Err(anyhow!(
+            "Max retries ({}) exceeded for {} {}: All retry attempts failed",
+            self.max_retries, method, url
+        ))
     }
 
     /// Execute a single HTTP request
@@ -146,7 +152,10 @@ impl HttpClient {
             "POST" => self.client.post(url),
             "PUT" => self.client.put(url),
             "DELETE" => self.client.delete(url),
-            _ => return Err(anyhow!("Unsupported HTTP method: {}", method)),
+            _ => return Err(anyhow!(
+                "Unsupported HTTP method '{}': expected GET, POST, PUT, or DELETE",
+                method
+            )),
         };
 
         // Add timeout
@@ -180,7 +189,10 @@ impl HttpClient {
         // Check for HTTP errors
         if !status.is_success() {
             let error_body = response.text().await.unwrap_or_default();
-            return Err(anyhow!("HTTP {} error for {}: {}", status, url, error_body));
+            return Err(anyhow!(
+                "HTTP {} error for {}: {}",
+                status, url, error_body
+            ));
         }
 
         let body = response.text().await?;
@@ -320,7 +332,10 @@ pub mod utils {
     /// * `Result<T>` - The parsed object or an error if parsing fails
     pub fn parse_json<T: for<'de> Deserialize<'de>>(response: &HttpResponse) -> Result<T> {
         serde_json::from_str(&response.body)
-            .map_err(|e| anyhow!("Failed to parse JSON response: {}", e))
+            .map_err(|e| anyhow!(
+                "Failed to parse JSON response: {}. Ensure the response contains valid JSON data",
+                e
+            ))
     }
 
     /// Check if response indicates rate limiting

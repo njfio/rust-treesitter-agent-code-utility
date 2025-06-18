@@ -428,7 +428,11 @@ impl EnhancedSecurityScanner {
         let parser = Parser::new(language)?;
         let tree = parser.parse(content, None)?;
         self.owasp_detector.detect_vulnerabilities(&tree, content, file_path)
-            .map_err(|e| crate::error::Error::Anyhow(e))
+            .map_err(|e| crate::error::Error::internal_error_with_context(
+                "enhanced_security",
+                format!("OWASP vulnerability detection failed: {}", e),
+                format!("File: {}", file_path)
+            ))
     }
 
     /// Detect programming language from file extension
