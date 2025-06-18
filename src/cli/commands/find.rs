@@ -18,7 +18,8 @@ pub fn execute(
     let pb = create_progress_bar("Finding symbols...");
 
     // Analyze the codebase
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()
+        .map_err(|e| format!("Failed to create analyzer: {}", e))?;
     let analysis_result = analyzer.analyze_directory(path)
         .map_err(|e| format!("Failed to analyze directory: {}", e))?;
 

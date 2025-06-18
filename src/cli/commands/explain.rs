@@ -26,7 +26,7 @@ pub fn execute(
     };
 
     // Analyze the codebase first
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
     let analysis_result = if analysis_path.is_file() {
         analyzer.analyze_file(analysis_path)
     } else {

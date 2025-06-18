@@ -15,7 +15,8 @@ pub fn execute(path: &PathBuf) -> CliResult<()> {
     println!("Type 'help' for available commands, 'quit' to exit\n");
 
     // Initialize analyzers
-    let mut codebase_analyzer = CodebaseAnalyzer::new();
+    let mut codebase_analyzer = CodebaseAnalyzer::new()
+        .map_err(|e| format!("Failed to create analyzer: {}", e))?;
     let analysis_result = if path.is_file() {
         codebase_analyzer.analyze_file(path)
     } else {

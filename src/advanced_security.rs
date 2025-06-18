@@ -478,6 +478,14 @@ impl Default for AdvancedSecurityConfig {
     }
 }
 
+impl Default for AdvancedSecurityAnalyzer {
+    fn default() -> Self {
+        Self {
+            config: AdvancedSecurityConfig::default(),
+        }
+    }
+}
+
 impl AdvancedSecurityAnalyzer {
     /// Create a new advanced security analyzer with default configuration
     pub fn new() -> Result<Self> {

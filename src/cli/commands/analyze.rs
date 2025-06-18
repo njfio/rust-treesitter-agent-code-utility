@@ -43,7 +43,8 @@ pub fn execute(
         include_exts.cloned(),
     )?;
     
-    let mut analyzer = CodebaseAnalyzer::with_config(config);
+    let mut analyzer = CodebaseAnalyzer::with_config(config)
+        .map_err(|e| CliError::Analysis(e.to_string()))?;
     
     // Run analysis
     pb.set_message("Running analysis...");

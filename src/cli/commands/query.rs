@@ -30,7 +30,7 @@ pub fn execute(
     use crate::languages::Language;
 
     // Initialize analyzer
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
 
     // Analyze the target path
     let analysis_result = if path.is_file() {

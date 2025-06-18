@@ -11,7 +11,7 @@ pub fn execute(path: &PathBuf, focus: &str, format: &str) -> CliResult<()> {
     let pb = create_progress_bar("Analyzing codebase for insights...");
 
     // Analyze the codebase first
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
     let analysis_result = if path.is_file() {
         analyzer.analyze_file(path)
     } else {

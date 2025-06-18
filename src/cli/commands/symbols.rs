@@ -15,7 +15,8 @@ pub fn execute(path: &PathBuf, format: &str) -> CliResult<()> {
     let pb = create_progress_bar("Extracting symbols...");
 
     // Analyze the codebase to extract symbols
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()
+        .map_err(|e| CliError::Analysis(e.to_string()))?;
     let analysis_result = analyzer.analyze_directory(path)
         .map_err(|e| CliError::Analysis(e.to_string()))?;
 

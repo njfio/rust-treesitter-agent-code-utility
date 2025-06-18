@@ -193,18 +193,18 @@ pub struct CodebaseAnalyzer {
 
 impl CodebaseAnalyzer {
     /// Create a new analyzer with default configuration
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self> {
         Self::with_config(AnalysisConfig::default())
     }
 
     /// Create a new analyzer with custom configuration
-    pub fn with_config(config: AnalysisConfig) -> Self {
-        Self {
+    pub fn with_config(config: AnalysisConfig) -> Result<Self> {
+        Ok(Self {
             config,
             parsers: HashMap::new(),
-            security_analyzer: AdvancedSecurityAnalyzer::new().expect("Failed to create security analyzer"),
+            security_analyzer: AdvancedSecurityAnalyzer::new()?,
             semantic_graph: None,
-        }
+        })
     }
 
     /// Get or create a parser for the given language
@@ -1438,7 +1438,15 @@ impl CodebaseAnalyzer {
 
 impl Default for CodebaseAnalyzer {
     fn default() -> Self {
-        Self::new()
+        Self::new().unwrap_or_else(|_| {
+            // Fallback implementation if security analyzer fails
+            Self {
+                config: AnalysisConfig::default(),
+                parsers: HashMap::new(),
+                security_analyzer: AdvancedSecurityAnalyzer::default(),
+                semantic_graph: None,
+            }
+        })
     }
 }
 
@@ -1450,7 +1458,7 @@ mod tests {
 
     #[test]
     fn test_analyzer_creation() {
-        let analyzer = CodebaseAnalyzer::new();
+        let analyzer = CodebaseAnalyzer::new().unwrap();
         assert_eq!(analyzer.config.max_file_size, Some(1024 * 1024));
     }
 
@@ -1489,7 +1497,7 @@ mod tests {
         "#).unwrap();
 
         // Analyze the directory
-        let mut analyzer = CodebaseAnalyzer::new();
+        let mut analyzer = CodebaseAnalyzer::new().unwrap();
         let result = analyzer.analyze_directory(temp_path).unwrap();
 
         assert_eq!(result.total_files, 2);
