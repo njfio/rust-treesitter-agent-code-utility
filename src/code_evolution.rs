@@ -300,6 +300,29 @@ impl CodeEvolutionTracker {
         Ok(tracker)
     }
 
+    /// Helper function to create file change without excessive cloning
+    fn create_file_change(
+        commit_hash: &str,
+        author: &str,
+        timestamp: u64,
+        message: &str,
+        change_type: ChangeType,
+        lines_added: usize,
+        lines_removed: usize,
+        related_files: &[PathBuf],
+    ) -> FileChange {
+        FileChange {
+            commit_hash: commit_hash.to_string(),
+            author: author.to_string(),
+            timestamp,
+            change_type,
+            lines_added,
+            lines_removed,
+            message: message.to_string(),
+            related_files: related_files.to_vec(),
+        }
+    }
+
     /// Analyze code evolution from git history
     pub fn analyze_evolution(&mut self) -> Result<EvolutionAnalysisResult> {
         // Extract git history
@@ -426,16 +449,16 @@ impl CodeEvolutionTracker {
                 // Parse numstat lines
                 while i < lines.len() && !lines[i].contains('|') {
                     if let Some((file_path, added, removed)) = self.parse_numstat_line(lines[i]) {
-                        let change = FileChange {
-                            commit_hash: commit_info.0.clone(),
-                            author: commit_info.1.clone(),
-                            timestamp: commit_info.2,
-                            change_type: self.classify_change_type(&commit_info.3),
-                            lines_added: added,
-                            lines_removed: removed,
-                            message: commit_info.3.clone(),
-                            related_files: related_files.clone(),
-                        };
+                        let change = Self::create_file_change(
+                            &commit_info.0,
+                            &commit_info.1,
+                            commit_info.2,
+                            &commit_info.3,
+                            self.classify_change_type(&commit_info.3),
+                            added,
+                            removed,
+                            &related_files,
+                        );
 
                         self.file_changes
                             .entry(file_path.clone())
@@ -556,7 +579,7 @@ impl CodeEvolutionTracker {
         let mut change_counts: HashMap<PathBuf, usize> = HashMap::new();
 
         for (file_path, changes) in &self.file_changes {
-            change_counts.insert(file_path.clone(), changes.len());
+            change_counts.insert(file_path.to_path_buf(), changes.len());
         }
 
         for (file_path, count) in change_counts {

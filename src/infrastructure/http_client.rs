@@ -259,6 +259,7 @@ pub struct HttpClientBuilder {
 }
 
 impl HttpClientBuilder {
+    /// Create a new HTTP client builder with default settings
     pub fn new() -> Self {
         Self {
             timeout: Duration::from_secs(30),
@@ -267,21 +268,25 @@ impl HttpClientBuilder {
         }
     }
 
+    /// Set the request timeout duration
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
         self
     }
 
+    /// Set the maximum number of retry attempts for failed requests
     pub fn max_retries(mut self, max_retries: usize) -> Self {
         self.max_retries = max_retries;
         self
     }
 
+    /// Set the User-Agent header for requests
     pub fn user_agent(mut self, user_agent: String) -> Self {
         self.user_agent = user_agent;
         self
     }
 
+    /// Build the HTTP client with the configured settings
     pub fn build(self) -> Result<HttpClient> {
         let client = Client::builder()
             .timeout(self.timeout)
@@ -306,13 +311,27 @@ impl Default for HttpClientBuilder {
 pub mod utils {
     use super::*;
 
-    /// Parse JSON response body
+    /// Parse JSON response body into the specified type
+    ///
+    /// # Arguments
+    /// * `response` - The HTTP response containing JSON data
+    ///
+    /// # Returns
+    /// * `Result<T>` - The parsed object or an error if parsing fails
     pub fn parse_json<T: for<'de> Deserialize<'de>>(response: &HttpResponse) -> Result<T> {
         serde_json::from_str(&response.body)
             .map_err(|e| anyhow!("Failed to parse JSON response: {}", e))
     }
 
     /// Check if response indicates rate limiting
+    ///
+    /// Checks both the HTTP status code (429) and rate limit headers
+    ///
+    /// # Arguments
+    /// * `response` - The HTTP response to check
+    ///
+    /// # Returns
+    /// * `bool` - True if the response indicates rate limiting
     pub fn is_rate_limited(response: &HttpResponse) -> bool {
         response.status == StatusCode::TOO_MANY_REQUESTS ||
         response.headers.get("x-ratelimit-remaining")
@@ -323,6 +342,14 @@ pub mod utils {
     }
 
     /// Extract rate limit information from response headers
+    ///
+    /// Parses standard rate limit headers to extract remaining requests and reset time
+    ///
+    /// # Arguments
+    /// * `response` - The HTTP response containing rate limit headers
+    ///
+    /// # Returns
+    /// * `Option<RateLimitInfo>` - Rate limit info if headers are present and valid
     pub fn extract_rate_limit_info(response: &HttpResponse) -> Option<RateLimitInfo> {
         let remaining = response.headers.get("x-ratelimit-remaining")?
             .to_str().ok()?

@@ -185,6 +185,48 @@ impl SemanticGraphQuery {
         }
     }
 
+    /// Helper function to create graph node without excessive cloning
+    fn create_graph_node(
+        id: &str,
+        node_type: &NodeType,
+        name: &str,
+        file_path: &std::path::Path,
+        line_number: usize,
+    ) -> GraphNode {
+        GraphNode {
+            id: id.to_string(),
+            node_type: node_type.clone(),
+            name: name.to_string(),
+            file_path: file_path.to_path_buf(),
+            line_number,
+            metadata: HashMap::new(),
+            properties: NodeProperties {
+                complexity: 1.0,
+                importance: 1.0,
+                in_degree: 0,
+                out_degree: 0,
+                tags: Vec::new(),
+            },
+        }
+    }
+
+    /// Helper function to create graph edge without excessive cloning
+    fn create_graph_edge(
+        from: &str,
+        to: &str,
+        relationship: RelationshipType,
+        weight: f64,
+        context: Option<&str>,
+    ) -> GraphEdge {
+        GraphEdge {
+            from: from.to_string(),
+            to: to.to_string(),
+            relationship,
+            weight,
+            context: context.map(|s| s.to_string()),
+        }
+    }
+
     /// Build the semantic graph from analysis results
     pub fn build_from_analysis(&mut self, analysis: &AnalysisResult) -> Result<()> {
         // Clear existing data
@@ -412,21 +454,13 @@ impl SemanticGraphQuery {
             let node_id = format!("{}:{}:{}", file.path.display(), symbol.name, symbol.start_line);
             let node_type = self.symbol_to_node_type(&symbol.kind);
 
-            let node = GraphNode {
-                id: node_id.clone(),
-                node_type: node_type.clone(),
-                name: symbol.name.clone(),
-                file_path: file.path.clone(),
-                line_number: symbol.start_line,
-                metadata: HashMap::new(),
-                properties: NodeProperties {
-                    complexity: 1.0, // Default complexity
-                    importance: 1.0, // Default importance
-                    in_degree: 0,
-                    out_degree: 0,
-                    tags: Vec::new(),
-                },
-            };
+            let node = Self::create_graph_node(
+                &node_id,
+                &node_type,
+                &symbol.name,
+                &file.path,
+                symbol.start_line,
+            );
 
             self.nodes.insert(node_id, node);
         }
@@ -476,13 +510,13 @@ impl SemanticGraphQuery {
                 let node2_id = format!("{}:{}:{}", file.path.display(), symbol2.name, symbol2.start_line);
 
                 // Create a basic "defined in same file" relationship
-                let edge = GraphEdge {
-                    from: node1_id.clone(),
-                    to: node2_id.clone(),
-                    relationship: RelationshipType::DependsOn,
-                    weight: 0.3, // Low weight for same-file relationships
-                    context: Some("same_file".to_string()),
-                };
+                let edge = Self::create_graph_edge(
+                    &node1_id,
+                    &node2_id,
+                    RelationshipType::DependsOn,
+                    0.3, // Low weight for same-file relationships
+                    Some("same_file"),
+                );
 
                 edges_for_node1.push(edge);
             }
@@ -502,10 +536,10 @@ impl SemanticGraphQuery {
 
         // Count degrees
         for (from_id, edges) in &self.edges {
-            out_degrees.insert(from_id.clone(), edges.len());
+            out_degrees.insert(from_id.to_string(), edges.len());
 
             for edge in edges {
-                *in_degrees.entry(edge.to.clone()).or_insert(0) += 1;
+                *in_degrees.entry(edge.to.to_string()).or_insert(0) += 1;
             }
         }
 
@@ -583,19 +617,19 @@ impl SemanticGraphQuery {
             self.index.by_type
                 .entry(node.node_type.clone())
                 .or_insert_with(HashSet::new)
-                .insert(node_id.clone());
+                .insert(node_id.to_string());
 
             // Index by file
             self.index.by_file
-                .entry(node.file_path.clone())
+                .entry(node.file_path.to_path_buf())
                 .or_insert_with(HashSet::new)
-                .insert(node_id.clone());
+                .insert(node_id.to_string());
 
             // Index by name
             self.index.by_name
-                .entry(node.name.clone())
+                .entry(node.name.to_string())
                 .or_insert_with(HashSet::new)
-                .insert(node_id.clone());
+                .insert(node_id.to_string());
         }
     }
 }

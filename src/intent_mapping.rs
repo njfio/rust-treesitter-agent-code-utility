@@ -400,6 +400,31 @@ impl IntentMappingSystem {
         }
     }
 
+    /// Helper function to create intent mapping without excessive cloning
+    fn create_intent_mapping(
+        id_prefix: &str,
+        requirement_id: &str,
+        implementation_id: &str,
+        mapping_type: MappingType,
+        confidence: f64,
+        rationale: &str,
+        validation_status: ValidationStatus,
+    ) -> IntentMapping {
+        IntentMapping {
+            id: format!("{}_{}_{}", id_prefix, requirement_id, implementation_id),
+            requirement_id: requirement_id.to_string(),
+            implementation_id: implementation_id.to_string(),
+            mapping_type,
+            confidence,
+            rationale: rationale.to_string(),
+            validation_status,
+            last_updated: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+        }
+    }
+
     /// Add a requirement to the system
     pub fn add_requirement(&mut self, requirement: Requirement) {
         self.requirements.push(requirement);
@@ -596,23 +621,21 @@ impl IntentMappingSystem {
                 let similarity = self.calculate_keyword_similarity(&req_keywords, &impl_keywords);
 
                 if similarity >= self.config.confidence_threshold {
-                    let mapping = IntentMapping {
-                        id: format!("map_{}_{}", requirement.id, implementation.id),
-                        requirement_id: requirement.id.clone(),
-                        implementation_id: implementation.id.clone(),
-                        mapping_type: MappingType::Direct,
-                        confidence: similarity,
-                        rationale: "Keyword-based matching".to_string(),
-                        validation_status: if similarity >= self.config.auto_validation_threshold {
-                            ValidationStatus::Valid
-                        } else {
-                            ValidationStatus::NotValidated
-                        },
-                        last_updated: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs(),
+                    let validation_status = if similarity >= self.config.auto_validation_threshold {
+                        ValidationStatus::Valid
+                    } else {
+                        ValidationStatus::NotValidated
                     };
+
+                    let mapping = Self::create_intent_mapping(
+                        "map",
+                        &requirement.id,
+                        &implementation.id,
+                        MappingType::Direct,
+                        similarity,
+                        "Keyword-based matching",
+                        validation_status,
+                    );
 
                     self.mappings.push(mapping);
                 }
@@ -640,19 +663,15 @@ impl IntentMappingSystem {
                     );
 
                     if !exists {
-                        let mapping = IntentMapping {
-                            id: format!("sem_{}_{}", requirement.id, implementation.id),
-                            requirement_id: requirement.id.clone(),
-                            implementation_id: implementation.id.clone(),
-                            mapping_type: MappingType::Inferred,
-                            confidence: semantic_score,
-                            rationale: "Semantic similarity matching".to_string(),
-                            validation_status: ValidationStatus::NeedsReview,
-                            last_updated: std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs(),
-                        };
+                        let mapping = Self::create_intent_mapping(
+                            "sem",
+                            &requirement.id,
+                            &implementation.id,
+                            MappingType::Inferred,
+                            semantic_score,
+                            "Semantic similarity matching",
+                            ValidationStatus::NeedsReview,
+                        );
 
                         self.mappings.push(mapping);
                     }
@@ -704,15 +723,15 @@ impl IntentMappingSystem {
         for mapping in &self.mappings {
             // Forward traceability
             self.traceability.forward_trace
-                .entry(mapping.requirement_id.clone())
+                .entry(mapping.requirement_id.to_string())
                 .or_insert_with(Vec::new)
-                .push(mapping.implementation_id.clone());
+                .push(mapping.implementation_id.to_string());
 
             // Backward traceability
             self.traceability.backward_trace
-                .entry(mapping.implementation_id.clone())
+                .entry(mapping.implementation_id.to_string())
                 .or_insert_with(Vec::new)
-                .push(mapping.requirement_id.clone());
+                .push(mapping.requirement_id.to_string());
         }
 
         // Calculate coverage metrics

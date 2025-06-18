@@ -483,6 +483,23 @@ impl AdvancedSecurityAnalyzer {
             config,
         })
     }
+
+    /// Helper function to create vulnerability location without cloning file path repeatedly
+    fn create_vulnerability_location(
+        file_path: &std::path::Path,
+        function_name: Option<&str>,
+        start_line: usize,
+        end_line: usize,
+        column: usize,
+    ) -> VulnerabilityLocation {
+        VulnerabilityLocation {
+            file: file_path.to_path_buf(),
+            function: function_name.map(|s| s.to_string()),
+            start_line,
+            end_line,
+            column,
+        }
+    }
     
     /// Perform comprehensive security analysis on a codebase
     pub fn analyze(&self, analysis_result: &AnalysisResult) -> Result<AdvancedSecurityResult> {
@@ -715,13 +732,13 @@ impl AdvancedSecurityAnalyzer {
                     severity: SecuritySeverity::High,
                     owasp_category: OwaspCategory::BrokenAccessControl,
                     cwe_id: Some("CWE-862".to_string()),
-                    location: VulnerabilityLocation {
-                        file: file.path.clone(),
-                        function: None,
-                        start_line: line_num + 1,
-                        end_line: line_num + 1,
-                        column: 0,
-                    },
+                    location: Self::create_vulnerability_location(
+                        &file.path,
+                        None,
+                        line_num + 1,
+                        line_num + 1,
+                        0,
+                    ),
                     code_snippet: line.to_string(),
                     impact: SecurityImpact {
                         confidentiality: ImpactLevel::High,
@@ -773,13 +790,13 @@ impl AdvancedSecurityAnalyzer {
                     severity: SecuritySeverity::Medium,
                     owasp_category: OwaspCategory::CryptographicFailures,
                     cwe_id: Some("CWE-327".to_string()),
-                    location: VulnerabilityLocation {
-                        file: file.path.clone(),
-                        function: None,
-                        start_line: line_num + 1,
-                        end_line: line_num + 1,
-                        column: 0,
-                    },
+                    location: Self::create_vulnerability_location(
+                        &file.path,
+                        None,
+                        line_num + 1,
+                        line_num + 1,
+                        0,
+                    ),
                     code_snippet: line.to_string(),
                     impact: SecurityImpact {
                         confidentiality: ImpactLevel::Medium,
@@ -884,13 +901,13 @@ impl AdvancedSecurityAnalyzer {
                     severity: SecuritySeverity::High,
                     owasp_category: OwaspCategory::Injection,
                     cwe_id: Some("CWE-89".to_string()),
-                    location: VulnerabilityLocation {
-                        file: file.path.clone(),
-                        function: None,
-                        start_line: line_num + 1,
-                        end_line: line_num + 1,
-                        column: 0,
-                    },
+                    location: Self::create_vulnerability_location(
+                        &file.path,
+                        None,
+                        line_num + 1,
+                        line_num + 1,
+                        0,
+                    ),
                     code_snippet: line.to_string(),
                     impact: SecurityImpact {
                         confidentiality: ImpactLevel::High,
