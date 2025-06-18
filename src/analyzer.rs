@@ -323,7 +323,8 @@ impl CodebaseAnalyzer {
             .collect();
 
         // Aggregate results
-        let mut final_result = result.lock().unwrap();
+        let mut final_result = result.lock()
+            .map_err(|e| crate::error::Error::internal_error("analyzer", format!("Failed to acquire lock for result aggregation: {}", e)))?;
         for file_info in file_infos {
             final_result.total_files += 1;
             final_result.total_lines += file_info.lines;
@@ -338,7 +339,7 @@ impl CodebaseAnalyzer {
             final_result.files.push(file_info);
         }
 
-        let mut result = final_result.clone();
+        let result = final_result.clone();
         drop(final_result); // Release the lock
 
         // Build semantic graph if enabled (sequential for now due to complexity)
@@ -1313,7 +1314,7 @@ impl CodebaseAnalyzer {
     }
 
     /// Extract Python docstring from function or class definition
-    fn extract_python_docstring(&self, content: &str, node: &crate::Node) -> Option<String> {
+    fn extract_python_docstring(&self, _content: &str, node: &crate::Node) -> Option<String> {
         // Look for the first string literal in the body
         if let Some(body) = node.child_by_field_name("body") {
             for child in body.children() {

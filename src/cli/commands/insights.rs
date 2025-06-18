@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use crate::cli::error::{CliResult, validate_path};
 use crate::cli::utils::create_progress_bar;
 use crate::{CodebaseAnalyzer, AutomatedReasoningEngine, ReasoningConfig};
-use colored::Colorize;
 
 pub fn execute(path: &PathBuf, focus: &str, format: &str) -> CliResult<()> {
     validate_path(path)?;

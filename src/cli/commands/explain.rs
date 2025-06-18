@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use crate::cli::error::{CliResult, validate_path};
 use crate::cli::utils::create_progress_bar;
 use crate::{CodebaseAnalyzer, AIAnalyzer, AIConfig};
-use colored::Colorize;
 
 pub fn execute(
     path: &PathBuf,
@@ -45,7 +44,7 @@ pub fn execute(
         architectural_insights: detailed,
     };
 
-    let mut ai_analyzer = AIAnalyzer::with_config(ai_config);
+    let ai_analyzer = AIAnalyzer::with_config(ai_config);
     let ai_result = ai_analyzer.analyze(&analysis_result);
 
     pb.finish_with_message("Analysis complete!");

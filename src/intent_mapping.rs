@@ -4,6 +4,7 @@
 //! design intent, and actual code implementation for AI-assisted development.
 
 use crate::{Result, FileInfo, AnalysisResult};
+use crate::constants::intent_mapping::*;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
@@ -271,11 +272,11 @@ pub struct MappingConfig {
 impl Default for MappingConfig {
     fn default() -> Self {
         Self {
-            confidence_threshold: 0.7,
+            confidence_threshold: DEFAULT_CONFIDENCE_THRESHOLD,
             enable_nlp: true,
             enable_semantic_analysis: true,
-            max_mapping_distance: 0.8,
-            auto_validation_threshold: 0.9,
+            max_mapping_distance: DEFAULT_MAX_MAPPING_DISTANCE,
+            auto_validation_threshold: DEFAULT_AUTO_VALIDATION_THRESHOLD,
         }
     }
 }
@@ -776,7 +777,7 @@ impl IntentMappingSystem {
 
         // Find quality gaps
         for implementation in &self.implementations {
-            if implementation.quality_metrics.coverage < 0.8 {
+            if implementation.quality_metrics.coverage < COVERAGE_THRESHOLD {
                 gaps.push(MappingGap {
                     gap_type: GapType::TestGap,
                     description: format!("Implementation '{}' has low test coverage", implementation.id),
@@ -844,39 +845,37 @@ impl IntentMappingSystem {
         let implementation = self.implementations.iter()
             .find(|i| i.id == mapping.implementation_id);
 
-        if requirement.is_none() || implementation.is_none() {
-            return Ok(ValidationStatus::Invalid);
-        }
-
-        let req = requirement.unwrap();
-        let impl_item = implementation.unwrap();
+        let (req, impl_item) = match (requirement, implementation) {
+            (Some(req), Some(impl_item)) => (req, impl_item),
+            _ => return Ok(ValidationStatus::Invalid),
+        };
 
         // Validation criteria
         let mut validation_score = 0.0;
 
         // Check confidence threshold
         if mapping.confidence >= self.config.auto_validation_threshold {
-            validation_score += 0.4;
+            validation_score += VALIDATION_CONFIDENCE_WEIGHT;
         }
 
         // Check requirement status
         if matches!(req.status, RequirementStatus::Approved | RequirementStatus::InProgress) {
-            validation_score += 0.2;
+            validation_score += VALIDATION_REQUIREMENT_WEIGHT;
         }
 
         // Check implementation status
         if matches!(impl_item.status, ImplementationStatus::Complete | ImplementationStatus::Tested) {
-            validation_score += 0.2;
+            validation_score += VALIDATION_IMPLEMENTATION_WEIGHT;
         }
 
         // Check quality metrics
-        if impl_item.quality_metrics.coverage > 0.7 {
-            validation_score += 0.2;
+        if impl_item.quality_metrics.coverage > QUALITY_COVERAGE_THRESHOLD {
+            validation_score += VALIDATION_QUALITY_WEIGHT;
         }
 
-        if validation_score >= 0.8 {
+        if validation_score >= VALIDATION_VALID_THRESHOLD {
             Ok(ValidationStatus::Valid)
-        } else if validation_score >= 0.5 {
+        } else if validation_score >= VALIDATION_REVIEW_THRESHOLD {
             Ok(ValidationStatus::NeedsReview)
         } else {
             Ok(ValidationStatus::Invalid)
@@ -970,10 +969,10 @@ impl IntentMappingSystem {
 
         // Type-based matching
         match (&requirement.requirement_type, &implementation.implementation_type) {
-            (RequirementType::UserStory, ImplementationType::API) => score += 0.3,
-            (RequirementType::Functional, ImplementationType::Function) => score += 0.4,
-            (RequirementType::Technical, ImplementationType::Module) => score += 0.3,
-            (RequirementType::Security, _) => score += 0.2,
+            (RequirementType::UserStory, ImplementationType::API) => score += USER_STORY_API_WEIGHT,
+            (RequirementType::Functional, ImplementationType::Function) => score += FUNCTIONAL_FUNCTION_WEIGHT,
+            (RequirementType::Technical, ImplementationType::Module) => score += TECHNICAL_MODULE_WEIGHT,
+            (RequirementType::Security, _) => score += SECURITY_WEIGHT,
             _ => {}
         }
 
@@ -982,7 +981,7 @@ impl IntentMappingSystem {
         let impl_keywords = self.extract_implementation_keywords(implementation);
         let keyword_sim = self.calculate_keyword_similarity(&req_keywords, &impl_keywords);
 
-        score += keyword_sim * 0.7;
+        score += keyword_sim * KEYWORD_SIMILARITY_WEIGHT;
 
         score.min(1.0)
     }
@@ -1110,11 +1109,11 @@ impl Default for IntentMappingSystem {
 impl Default for QualityMetrics {
     fn default() -> Self {
         Self {
-            coverage: 0.0,
-            complexity: 1.0,
-            maintainability: 0.8,
-            performance: 0.8,
-            security: 0.8,
+            coverage: DEFAULT_COVERAGE,
+            complexity: DEFAULT_COMPLEXITY,
+            maintainability: DEFAULT_MAINTAINABILITY,
+            performance: DEFAULT_PERFORMANCE,
+            security: DEFAULT_SECURITY,
         }
     }
 }

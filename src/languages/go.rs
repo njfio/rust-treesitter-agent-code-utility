@@ -3,7 +3,7 @@
 //! This module provides Go-specific utilities for parsing and analyzing
 //! Go source code using tree-sitter.
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::query::Query;
 use crate::tree::{Node, SyntaxTree};
 use tree_sitter::Point;

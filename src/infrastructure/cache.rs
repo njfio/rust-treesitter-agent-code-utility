@@ -246,7 +246,7 @@ impl Cache {
     /// Store entry in disk cache
     async fn set_disk_entry(&self, key: &str, entry: &CacheEntry) -> Result<()> {
         if let Some(_disk_dir) = &self.disk_cache_dir {
-            let file_path = self.get_disk_file_path(key);
+            let file_path = self.get_disk_file_path(key)?;
             let data = serde_json::to_vec(entry)?;
             fs::write(&file_path, data).await?;
             debug!("Stored disk cache entry: {}", file_path.display());
@@ -257,7 +257,7 @@ impl Cache {
     /// Get entry from disk cache
     async fn get_disk_entry(&self, key: &str) -> Result<Option<CacheEntry>> {
         if let Some(_) = &self.disk_cache_dir {
-            let file_path = self.get_disk_file_path(key);
+            let file_path = self.get_disk_file_path(key)?;
             
             if file_path.exists() {
                 let data = fs::read(&file_path).await?;
@@ -281,7 +281,7 @@ impl Cache {
     /// Check if disk entry exists
     async fn disk_entry_exists(&self, key: &str) -> Result<bool> {
         if let Some(_) = &self.disk_cache_dir {
-            let file_path = self.get_disk_file_path(key);
+            let file_path = self.get_disk_file_path(key)?;
             Ok(file_path.exists())
         } else {
             Ok(false)
@@ -291,7 +291,7 @@ impl Cache {
     /// Remove entry from disk cache
     async fn remove_disk_entry(&self, key: &str) -> Result<bool> {
         if let Some(_) = &self.disk_cache_dir {
-            let file_path = self.get_disk_file_path(key);
+            let file_path = self.get_disk_file_path(key)?;
             if file_path.exists() {
                 fs::remove_file(&file_path).await?;
                 return Ok(true);
@@ -301,10 +301,11 @@ impl Cache {
     }
 
     /// Get disk file path for cache key
-    fn get_disk_file_path(&self, key: &str) -> PathBuf {
-        let disk_dir = self.disk_cache_dir.as_ref().unwrap();
+    fn get_disk_file_path(&self, key: &str) -> Result<PathBuf> {
+        let disk_dir = self.disk_cache_dir.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Disk cache directory not configured"))?;
         let safe_key = key.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
-        disk_dir.join(format!("{}.cache", safe_key))
+        Ok(disk_dir.join(format!("{}.cache", safe_key)))
     }
 
     /// Get disk cache statistics

@@ -3,10 +3,9 @@
 //! This module provides TypeScript-specific utilities for parsing and analyzing
 //! TypeScript source code using tree-sitter.
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::query::Query;
 use crate::tree::{Node, SyntaxTree};
-use tree_sitter::Point;
 
 /// TypeScript-specific syntax utilities
 pub struct TypeScriptSyntax;

@@ -13,7 +13,7 @@ use crate::cli::output::OutputFormat;
 pub fn execute(
     path: &PathBuf,
     format: &str,
-    include_dev: bool,
+    _include_dev: bool,
     vulnerabilities: bool,
     licenses: bool,
     outdated: bool,
@@ -42,7 +42,7 @@ pub fn execute(
     
     // Run dependency analysis
     pb.set_message("Analyzing dependencies...");
-    let mut dependency_analyzer = DependencyAnalyzer::new();
+    let dependency_analyzer = DependencyAnalyzer::new();
     let dependency_result = dependency_analyzer.analyze(&analysis_result)
         .map_err(|e| CliError::Dependencies(e.to_string()))?;
     

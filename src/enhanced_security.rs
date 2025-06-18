@@ -4,6 +4,7 @@
 //! real vulnerability databases, secrets detection, and OWASP scanning.
 
 use crate::{AnalysisResult, Parser, Language, Result};
+use crate::constants::security::*;
 use crate::security::{VulnerabilityDatabase, SecretsDetector, OwaspDetector, SecretFinding, OwaspFinding};
 use crate::infrastructure::{DatabaseManager, Cache, MultiServiceRateLimiter, AppConfig, VulnerabilityRecord};
 use serde::{Serialize, Deserialize};
@@ -135,7 +136,7 @@ impl Default for EnhancedSecurityConfig {
             enable_vulnerability_db: true,
             enable_secrets_detection: true,
             enable_owasp_scanning: true,
-            min_confidence: 0.7,
+            min_confidence: DEFAULT_MIN_CONFIDENCE,
             max_findings_per_category: 50,
             enable_dependency_scanning: true,
         }
@@ -540,9 +541,9 @@ impl EnhancedSecurityScanner {
         // Calculate coverage percentage (simplified)
         let total_findings = critical_count + high_count + medium_count + low_count;
         let coverage_percentage = if total_findings > 0 {
-            (total_findings as f64 / (total_findings as f64 + 10.0)) * 100.0
+            (total_findings as f64 / (total_findings as f64 + COVERAGE_CALCULATION_DIVISOR)) * crate::constants::scoring::PERCENTAGE_FACTOR
         } else {
-            100.0
+            crate::constants::scoring::PERFECT_SCORE
         };
 
         SecurityMetrics {
@@ -592,9 +593,9 @@ impl EnhancedSecurityScanner {
 
         // Secrets compliance (based on secret findings)
         let secrets_compliance = if secret_findings.is_empty() {
-            100
+            HIGH_SECRETS_COMPLIANCE
         } else if secret_findings.iter().all(|s| !matches!(s.severity, crate::security::secrets_detector::SecretSeverity::Critical | crate::security::secrets_detector::SecretSeverity::High)) {
-            80
+            MEDIUM_SECRETS_COMPLIANCE
         } else {
             50
         };
@@ -626,7 +627,7 @@ impl EnhancedSecurityScanner {
 
     /// Calculate overall security score
     fn calculate_security_score(&self, metrics: &SecurityMetrics, compliance: &ComplianceAssessment) -> u8 {
-        let mut score = 100u8;
+        let mut score = BASE_SECURITY_SCORE;
 
         // Deduct points for findings
         score = score.saturating_sub(metrics.critical_count as u8 * 25);
@@ -635,14 +636,14 @@ impl EnhancedSecurityScanner {
         score = score.saturating_sub(metrics.low_count as u8 * 3);
 
         // Factor in compliance
-        let compliance_factor = compliance.overall_compliance as f64 / 100.0;
+        let compliance_factor = compliance.overall_compliance as f64 / crate::constants::scoring::PERCENTAGE_FACTOR;
         score = ((score as f64) * compliance_factor) as u8;
 
         // Factor in confidence
         let confidence_factor = metrics.avg_confidence;
         score = ((score as f64) * confidence_factor) as u8;
 
-        score.max(0).min(100)
+        score.max(0).min(MAX_SECURITY_SCORE)
     }
 
     /// Generate remediation roadmap

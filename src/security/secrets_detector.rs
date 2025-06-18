@@ -7,8 +7,13 @@ use crate::infrastructure::DatabaseManager;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::OnceLock;
 use tracing::{debug, warn};
 use anyhow::Result;
+
+/// Static regex patterns for secret extraction
+static QUOTE_REGEX: OnceLock<Regex> = OnceLock::new();
+static ASSIGNMENT_REGEX: OnceLock<Regex> = OnceLock::new();
 
 /// Real secrets detector with multiple detection methods
 pub struct SecretsDetector {
@@ -239,9 +244,11 @@ impl SecretsDetector {
     /// Extract potential secret strings from a line
     fn extract_potential_secrets(&self, line: &str) -> Vec<PotentialSecret> {
         let mut secrets = Vec::new();
-        
+
         // Look for quoted strings
-        let quote_regex = Regex::new(r#"["']([^"']{16,})["']"#).unwrap();
+        let quote_regex = QUOTE_REGEX.get_or_init(|| {
+            Regex::new(r#"["']([^"']{16,})["']"#).expect("Failed to compile quote regex")
+        });
         for mat in quote_regex.find_iter(line) {
             if let Some(captures) = quote_regex.captures(mat.as_str()) {
                 if let Some(content) = captures.get(1) {
@@ -255,7 +262,9 @@ impl SecretsDetector {
         }
 
         // Look for assignment values
-        let assignment_regex = Regex::new(r"=\s*([a-zA-Z0-9+/=]{16,})").unwrap();
+        let assignment_regex = ASSIGNMENT_REGEX.get_or_init(|| {
+            Regex::new(r"=\s*([a-zA-Z0-9+/=]{16,})").expect("Failed to compile assignment regex")
+        });
         for mat in assignment_regex.find_iter(line) {
             if let Some(captures) = assignment_regex.captures(mat.as_str()) {
                 if let Some(content) = captures.get(1) {

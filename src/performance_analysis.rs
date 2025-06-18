@@ -8,6 +8,7 @@
 //! - Performance bottleneck identification
 
 use crate::{AnalysisResult, FileInfo, Result};
+use crate::constants::performance::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -779,7 +780,7 @@ impl PerformanceAnalyzer {
                         title: "Long function detected".to_string(),
                         description: format!("Function '{}' is {} lines long, which may impact performance", symbol.name, function_length),
                         category: HotspotCategory::AlgorithmicComplexity,
-                        severity: if function_length > 100 { PerformanceSeverity::High } else { PerformanceSeverity::Medium },
+                        severity: if function_length > FUNCTION_LENGTH_HIGH_THRESHOLD { PerformanceSeverity::High } else { PerformanceSeverity::Medium },
                         impact: PerformanceImpact {
                             cpu_impact: 60,
                             memory_impact: 30,
@@ -1152,11 +1153,11 @@ impl PerformanceAnalyzer {
                                  else if complexity > 10.0 { PerformanceSeverity::High }
                                  else { PerformanceSeverity::Medium },
                         impact: PerformanceImpact {
-                            cpu_impact: (complexity * 5.0).min(100.0) as u8,
+                            cpu_impact: (complexity * COMPLEXITY_CPU_MULTIPLIER).min(MAX_CPU_IMPACT) as u8,
                             memory_impact: 20,
                             io_impact: 0,
                             network_impact: 0,
-                            overall_impact: (complexity * 4.0).min(100.0) as u8,
+                            overall_impact: (complexity * COMPLEXITY_OVERALL_MULTIPLIER).min(MAX_OVERALL_IMPACT) as u8,
                         },
                         location: HotspotLocation {
                             file: file.path.display().to_string(),
@@ -1301,7 +1302,7 @@ impl PerformanceAnalyzer {
         let mut hotspots = Vec::new();
 
         // Check for potential architectural issues
-        if analysis_result.total_files > 100 {
+        if analysis_result.total_files > LARGE_CODEBASE_THRESHOLD {
             hotspots.push(PerformanceHotspot {
                 id: "LARGE_CODEBASE".to_string(),
                 title: "Large codebase detected".to_string(),
@@ -1436,13 +1437,13 @@ impl PerformanceAnalyzer {
             } else {
                 // Fallback to simplified calculation if AST parsing failed
                 let symbol_complexity = file.symbols.len() as f64 * 1.5;
-                let size_complexity = (file.lines as f64 / 100.0).max(1.0);
+                let size_complexity = (file.lines as f64 / LINES_PER_COMPLEXITY_UNIT).max(1.0);
                 symbol_complexity + size_complexity
             }
         } else {
             // Fallback to simplified calculation
             let symbol_complexity = file.symbols.len() as f64 * 1.5;
-            let size_complexity = (file.lines as f64 / 100.0).max(1.0);
+            let size_complexity = (file.lines as f64 / LINES_PER_COMPLEXITY_UNIT).max(1.0);
             symbol_complexity + size_complexity
         }
     }
@@ -1784,7 +1785,7 @@ impl PerformanceAnalyzer {
         memory_allocations: usize,
         io_operations: usize,
     ) -> u8 {
-        let mut score = 100.0;
+        let mut score = BASE_PERFORMANCE_SCORE;
 
         // Deduct points for various performance issues
         score -= (complexity / 10.0).min(30.0);
@@ -2304,7 +2305,7 @@ impl PerformanceAnalyzer {
             score -= deduction;
         }
 
-        score.max(0.0).min(100.0) as u8
+        score.max(0.0).min(crate::constants::scoring::MAX_SCORE) as u8
     }
 }
 
