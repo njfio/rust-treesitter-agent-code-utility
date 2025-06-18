@@ -42,12 +42,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         thread_count: None,
     };
 
-    let mut analyzer = CodebaseAnalyzer::with_config(config);
+    let mut analyzer = CodebaseAnalyzer::with_config(config)?;
 
     // Analyze the directory
     println!("Starting analysis...\n");
     let start_time = std::time::Instant::now();
-    
+
     let result = analyzer.analyze_directory(target_dir)?;
     
     let analysis_time = start_time.elapsed();

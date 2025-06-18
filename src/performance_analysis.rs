@@ -142,7 +142,7 @@ pub enum HotspotCategory {
 }
 
 /// Performance severity levels
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PerformanceSeverity {
     Critical,
@@ -675,7 +675,7 @@ impl PerformanceAnalyzer {
         // Categorize hotspots by severity
         let mut hotspots_by_severity = HashMap::new();
         for hotspot in &hotspots {
-            *hotspots_by_severity.entry(hotspot.severity.clone()).or_insert(0) += 1;
+            *hotspots_by_severity.entry(hotspot.severity).or_insert(0) += 1;
         }
         
         // Perform specialized analyses
@@ -903,7 +903,7 @@ impl PerformanceAnalyzer {
             _ => return Ok(Vec::new()),
         };
 
-        let mut parser = match Parser::new(lang) {
+        let parser = match Parser::new(lang) {
             Ok(p) => p,
             Err(_) => return Ok(Vec::new()),
         };
@@ -928,7 +928,7 @@ impl PerformanceAnalyzer {
     }
 
     /// Detect nested loop hotspots using AST analysis
-    fn detect_nested_loop_hotspots(&self, tree: &crate::SyntaxTree, content: &str, file: &FileInfo) -> Result<Vec<PerformanceHotspot>> {
+    fn detect_nested_loop_hotspots(&self, tree: &crate::SyntaxTree, _content: &str, file: &FileInfo) -> Result<Vec<PerformanceHotspot>> {
         let mut hotspots = Vec::new();
 
         let loop_patterns = match file.language.to_lowercase().as_str() {
@@ -1185,7 +1185,7 @@ impl PerformanceAnalyzer {
     }
 
     /// Calculate complexity for a specific function node
-    fn calculate_function_complexity(&self, func_node: &crate::Node, content: &str, language: &str) -> f64 {
+    fn calculate_function_complexity(&self, func_node: &crate::Node, _content: &str, language: &str) -> f64 {
         let mut complexity = 1.0; // Base complexity
 
         // Define control flow patterns for different languages
@@ -1224,7 +1224,7 @@ impl PerformanceAnalyzer {
     }
 
     /// Extract function name from function node
-    fn extract_function_name(&self, func_node: &crate::Node, content: &str, language: &str) -> String {
+    fn extract_function_name(&self, func_node: &crate::Node, _content: &str, language: &str) -> String {
         match language.to_lowercase().as_str() {
             "rust" => {
                 if let Some(name_node) = func_node.child_by_field_name("name") {
@@ -1450,30 +1450,41 @@ impl PerformanceAnalyzer {
 
     /// Calculate cyclomatic complexity using AST analysis
     fn calculate_ast_complexity(&self, content: &str, language: &str) -> f64 {
-        use crate::{Language, Parser};
-
-        let lang = match language.to_lowercase().as_str() {
-            "rust" => Language::Rust,
-            "python" => Language::Python,
-            "javascript" => Language::JavaScript,
-            "typescript" => Language::TypeScript,
-            "c" => Language::C,
-            "cpp" | "c++" => Language::Cpp,
-            "go" => Language::Go,
-            _ => return 1.0, // Default complexity for unknown languages
+        let lang = match self.parse_language(language) {
+            Some(l) => l,
+            None => return 1.0,
         };
 
-        let mut parser = match Parser::new(lang) {
-            Ok(p) => p,
-            Err(_) => return 1.0,
-        };
-
-        let tree = match parser.parse(content, None) {
-            Ok(t) => t,
-            Err(_) => return 1.0,
+        let tree = match self.create_syntax_tree(content, lang) {
+            Some(t) => t,
+            None => return 1.0,
         };
 
         self.calculate_cyclomatic_complexity(&tree, content, language)
+    }
+
+    /// Parse language string to Language enum
+    fn parse_language(&self, language: &str) -> Option<crate::Language> {
+        use crate::Language;
+
+        match language.to_lowercase().as_str() {
+            "rust" => Some(Language::Rust),
+            "python" => Some(Language::Python),
+            "javascript" => Some(Language::JavaScript),
+            "typescript" => Some(Language::TypeScript),
+            "c" => Some(Language::C),
+            "cpp" | "c++" => Some(Language::Cpp),
+            "go" => Some(Language::Go),
+            _ => None,
+        }
+    }
+
+    /// Create syntax tree from content and language
+    fn create_syntax_tree(&self, content: &str, lang: crate::Language) -> Option<crate::SyntaxTree> {
+        use crate::Parser;
+
+        let parser = Parser::new(lang).ok()?;
+        parser.parse(content, None).ok()
     }
 
     /// Calculate cyclomatic complexity from AST
@@ -1566,7 +1577,7 @@ impl PerformanceAnalyzer {
             _ => return 0,
         };
 
-        let mut parser = match Parser::new(lang) {
+        let parser = match Parser::new(lang) {
             Ok(p) => p,
             Err(_) => return 0,
         };
@@ -1645,7 +1656,7 @@ impl PerformanceAnalyzer {
             _ => return 0,
         };
 
-        let mut parser = match Parser::new(lang) {
+        let parser = match Parser::new(lang) {
             Ok(p) => p,
             Err(_) => return 0,
         };
@@ -1659,7 +1670,7 @@ impl PerformanceAnalyzer {
     }
 
     /// Count memory allocation patterns in AST
-    fn count_allocation_patterns(&self, tree: &crate::SyntaxTree, content: &str, language: &str) -> usize {
+    fn count_allocation_patterns(&self, tree: &crate::SyntaxTree, _content: &str, language: &str) -> usize {
         let mut allocation_count = 0;
 
         match language.to_lowercase().as_str() {
@@ -2059,7 +2070,7 @@ impl PerformanceAnalyzer {
                                        trimmed.contains("format!(");
 
                     if has_allocation {
-                        let severity = if in_loop { "High" } else { "Medium" };
+                        let _severity = if in_loop { "High" } else { "Medium" };
 
                         hotspots.push(MemoryHotspot {
                             location: HotspotLocation {

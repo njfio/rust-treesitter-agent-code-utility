@@ -157,7 +157,7 @@ impl Clone for Parser {
         // Note: This creates a new parser instance rather than sharing the inner parser
         // This is safer for concurrent use
         Self::with_options(self.language, self.options.clone())
-            .expect("Failed to clone parser")
+            .expect("Failed to clone parser: parser creation should always succeed with valid language and options")
     }
 }
 

@@ -1,4 +1,4 @@
-use rust_tree_sitter::{CodebaseAnalyzer, EnhancedSecurityScanner, EnhancedSecurityConfig};
+use rust_tree_sitter::{CodebaseAnalyzer, AdvancedSecurityAnalyzer, AdvancedSecurityConfig};
 use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -10,122 +10,115 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Codebase Analysis Complete ===");
     println!("Analyzed {} files", analysis_result.total_files);
     
-    // Create security scanner with enhanced configuration
-    let security_config = EnhancedSecurityConfig {
-        enable_vulnerability_db: true,
-        enable_secrets_detection: true,
-        enable_owasp_scanning: true,
-        enable_dependency_scanning: true,
-        min_confidence: 0.7,
-        max_findings_per_category: 50,
+    // Create security scanner with advanced configuration
+    let security_config = AdvancedSecurityConfig {
+        owasp_analysis: true,
+        secrets_detection: true,
+        input_validation: true,
+        injection_analysis: true,
+        best_practices: true,
+        min_severity: rust_tree_sitter::SecuritySeverity::Medium,
+        custom_rules: Vec::new(),
     };
-    
-    let security_scanner = EnhancedSecurityScanner::with_config(security_config);
+
+    let security_scanner = AdvancedSecurityAnalyzer::with_config(security_config)?;
     
     // Run comprehensive security scan
     println!("\n=== Running Security Analysis ===");
-    let security_result = security_scanner.scan_analysis_result(&analysis_result)?;
+    let security_result = security_scanner.analyze(&analysis_result)?;
     
     // Display overall security metrics
     println!("\n=== Security Assessment Results ===");
     println!("Overall Security Score: {}/100", security_result.security_score);
-    println!("Total Findings: {}", security_result.total_findings);
-    println!("High Severity: {}", security_result.high_severity_count);
-    println!("Medium Severity: {}", security_result.medium_severity_count);
-    println!("Low Severity: {}", security_result.low_severity_count);
+    println!("Total Vulnerabilities: {}", security_result.total_vulnerabilities);
+
+    // Count vulnerabilities by severity
+    let critical_count = security_result.vulnerabilities_by_severity.get(&rust_tree_sitter::SecuritySeverity::Critical).unwrap_or(&0);
+    let high_count = security_result.vulnerabilities_by_severity.get(&rust_tree_sitter::SecuritySeverity::High).unwrap_or(&0);
+    let medium_count = security_result.vulnerabilities_by_severity.get(&rust_tree_sitter::SecuritySeverity::Medium).unwrap_or(&0);
+    let low_count = security_result.vulnerabilities_by_severity.get(&rust_tree_sitter::SecuritySeverity::Low).unwrap_or(&0);
+
+    println!("Critical Severity: {}", critical_count);
+    println!("High Severity: {}", high_count);
+    println!("Medium Severity: {}", medium_count);
+    println!("Low Severity: {}", low_count);
     
     // Display vulnerability findings
-    if !security_result.vulnerability_findings.is_empty() {
+    if !security_result.vulnerabilities.is_empty() {
         println!("\n=== Vulnerability Findings ===");
-        for (i, vuln) in security_result.vulnerability_findings.iter().enumerate() {
-            println!("{}. {} ({})", i + 1, vuln.title, vuln.severity);
+        for (i, vuln) in security_result.vulnerabilities.iter().enumerate() {
+            println!("{}. {} ({:?})", i + 1, vuln.title, vuln.severity);
             println!("   File: {}", vuln.location.file.display());
-            println!("   Line: {}", vuln.location.line);
-            println!("   Confidence: {:.2}", vuln.confidence);
+            println!("   Line: {}", vuln.location.start_line);
+            println!("   Confidence: {:?}", vuln.confidence);
             if let Some(cwe) = &vuln.cwe_id {
                 println!("   CWE: {}", cwe);
             }
-            if let Some(owasp) = &vuln.owasp_category {
-                println!("   OWASP: {}", owasp);
-            }
+            println!("   OWASP: {:?}", vuln.owasp_category);
             println!("   Description: {}", vuln.description);
-            if let Some(remediation) = &vuln.remediation {
-                println!("   Remediation: {}", remediation);
-            }
+            println!("   Remediation: {}", vuln.remediation.summary);
             println!();
         }
     }
     
     // Display secret findings
-    if !security_result.secret_findings.is_empty() {
+    if !security_result.secrets.is_empty() {
         println!("\n=== Secret Findings ===");
-        for (i, secret) in security_result.secret_findings.iter().enumerate() {
-            println!("{}. {} Secret", i + 1, secret.secret_type);
+        for (i, secret) in security_result.secrets.iter().enumerate() {
+            println!("{}. {:?} Secret", i + 1, secret.secret_type);
             println!("   File: {}", secret.location.file.display());
-            println!("   Line: {}", secret.location.line);
+            println!("   Line: {}", secret.location.start_line);
             println!("   Entropy: {:.2}", secret.entropy);
-            println!("   Confidence: {:.2}", secret.confidence);
-            println!("   Context: {}", secret.context);
+            println!("   Confidence: {:?}", secret.confidence);
+            println!("   Masked Value: {}", secret.masked_value);
             println!();
         }
     }
     
-    // Display dependency findings
-    if !security_result.dependency_findings.is_empty() {
-        println!("\n=== Dependency Vulnerability Findings ===");
-        for (i, dep) in security_result.dependency_findings.iter().enumerate() {
-            println!("{}. {} v{}", i + 1, dep.package_name, dep.version);
-            println!("   Vulnerability: {}", dep.vulnerability_id);
-            println!("   Severity: {}", dep.severity);
-            println!("   Description: {}", dep.description);
-            if let Some(fixed_version) = &dep.fixed_version {
-                println!("   Fixed in: {}", fixed_version);
-            }
+    // Display injection vulnerabilities
+    if !security_result.injection_vulnerabilities.is_empty() {
+        println!("\n=== Injection Vulnerability Findings ===");
+        for (i, injection) in security_result.injection_vulnerabilities.iter().enumerate() {
+            println!("{}. {:?} Injection", i + 1, injection.injection_type);
+            println!("   File: {}", injection.location.file.display());
+            println!("   Line: {}", injection.location.start_line);
+            println!("   Pattern: {}", injection.pattern);
+            println!("   Severity: {:?}", injection.severity);
             println!();
         }
     }
     
     // Display compliance assessment
     println!("\n=== Compliance Assessment ===");
-    let compliance = &security_result.compliance_assessment;
+    let compliance = &security_result.compliance;
     println!("OWASP Compliance Score: {}/100", compliance.owasp_score);
-    println!("CWE Coverage: {}/100", compliance.cwe_coverage);
-    
-    if !compliance.missing_controls.is_empty() {
-        println!("\nMissing Security Controls:");
-        for control in &compliance.missing_controls {
-            println!("  - {}", control);
-        }
-    }
-    
-    if !compliance.recommendations.is_empty() {
+    println!("Overall Status: {:?}", compliance.overall_status);
+
+    // Display security recommendations
+    if !security_result.recommendations.is_empty() {
         println!("\nSecurity Recommendations:");
-        for (i, rec) in compliance.recommendations.iter().enumerate() {
-            println!("{}. {} (Priority: {})", i + 1, rec.title, rec.priority);
-            println!("   Description: {}", rec.description);
-            if let Some(effort) = &rec.estimated_effort {
-                println!("   Estimated Effort: {}", effort);
-            }
+        for (i, rec) in security_result.recommendations.iter().enumerate() {
+            println!("{}. {} (Priority: {:?})", i + 1, rec.recommendation, rec.priority);
+            println!("   Category: {}", rec.category);
+            println!("   Security Improvement: {:.1}%", rec.security_improvement);
             println!();
         }
     }
     
     // Generate security report
-    if security_result.total_findings > 0 {
+    if security_result.total_vulnerabilities > 0 {
         println!("\n=== Security Report Summary ===");
         println!("⚠️  Security issues found!");
         println!("📊 Security Score: {}/100", security_result.security_score);
-        
-        if security_result.high_severity_count > 0 {
-            println!("🔴 {} high severity issues require immediate attention", 
-                     security_result.high_severity_count);
+
+        if *high_count > 0 {
+            println!("🔴 {} high severity issues require immediate attention", high_count);
         }
-        
-        if security_result.medium_severity_count > 0 {
-            println!("🟡 {} medium severity issues should be addressed", 
-                     security_result.medium_severity_count);
+
+        if *medium_count > 0 {
+            println!("🟡 {} medium severity issues should be addressed", medium_count);
         }
-        
+
         println!("\nNext Steps:");
         println!("1. Review and fix high severity vulnerabilities");
         println!("2. Implement missing security controls");
@@ -178,27 +171,27 @@ mod tests {
         let analysis_result = analyzer.analyze_directory(temp_dir.path())?;
         
         // Run security scan
-        let security_scanner = EnhancedSecurityScanner::new();
-        let security_result = security_scanner.scan_analysis_result(&analysis_result)?;
-        
+        let security_scanner = AdvancedSecurityAnalyzer::new()?;
+        let security_result = security_scanner.analyze(&analysis_result)?;
+
         // Should find security issues
-        assert!(security_result.total_findings > 0);
+        assert!(security_result.total_vulnerabilities > 0);
         assert!(security_result.security_score < 100);
-        
+
         // Should detect command injection
-        let has_command_injection = security_result.vulnerability_findings
+        let has_command_injection = security_result.vulnerabilities
             .iter()
             .any(|v| v.title.to_lowercase().contains("command injection"));
         assert!(has_command_injection);
-        
+
         // Should detect potential SQL injection
-        let has_sql_injection = security_result.vulnerability_findings
+        let has_sql_injection = security_result.vulnerabilities
             .iter()
             .any(|v| v.title.to_lowercase().contains("sql injection"));
         assert!(has_sql_injection);
-        
+
         // Should detect hardcoded secret
-        assert!(!security_result.secret_findings.is_empty());
+        assert!(!security_result.secrets.is_empty());
         
         Ok(())
     }
@@ -232,8 +225,8 @@ mod tests {
         let analysis_result = analyzer.analyze_directory(temp_dir.path())?;
         
         // Run security scan
-        let security_scanner = EnhancedSecurityScanner::new();
-        let security_result = security_scanner.scan_analysis_result(&analysis_result)?;
+        let security_scanner = AdvancedSecurityAnalyzer::new()?;
+        let security_result = security_scanner.analyze(&analysis_result)?;
         
         // Should have fewer or no security issues
         assert!(security_result.security_score > 80); // Should have a good security score

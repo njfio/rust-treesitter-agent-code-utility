@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     // Analyze a sample codebase (using current directory as example)
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
     let current_dir = std::env::current_dir()?;
     
     println!("📁 Analyzing codebase at: {}", current_dir.display());

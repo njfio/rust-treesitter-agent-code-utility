@@ -606,7 +606,7 @@ impl Default for SmartRefactoringConfig {
             performance_optimizations: true,
             modernization: true,
             architectural_improvements: true,
-            min_confidence: 0.7,
+            min_confidence: crate::constants::refactoring::DEFAULT_MIN_CONFIDENCE,
             max_suggestions_per_category: 10,
         }
     }
@@ -835,7 +835,7 @@ impl SmartRefactoringEngine {
     }
 
     /// Detect duplicate code patterns using AST analysis
-    fn detect_duplicate_code(&self, file: &crate::FileInfo, all_files: &[crate::FileInfo]) -> Result<Vec<CodeSmellFix>> {
+    fn detect_duplicate_code(&self, file: &crate::FileInfo, _all_files: &[crate::FileInfo]) -> Result<Vec<CodeSmellFix>> {
         let mut fixes = Vec::new();
 
         // Simple duplicate detection based on function names and patterns
@@ -892,52 +892,78 @@ impl SmartRefactoringEngine {
     fn detect_long_parameter_lists(&self, file: &crate::FileInfo) -> Result<Vec<CodeSmellFix>> {
         let mut fixes = Vec::new();
 
-        // This would require more detailed AST analysis to count parameters
-        // For now, we'll use a simplified approach based on function symbols
         for symbol in &file.symbols {
-            if symbol.kind == "function" || symbol.kind == "method" {
-                // Estimate parameter count from documentation or naming patterns
-                let estimated_params = self.estimate_parameter_count(&symbol.name);
-
-                if estimated_params > 5 {
-                    fixes.push(CodeSmellFix {
-                        id: format!("LONG_PARAM_LIST_{}_{}", file.path.display(), symbol.name),
-                        smell_name: "Long Parameter List".to_string(),
-                        description: format!(
-                            "Function '{}' appears to have many parameters (estimated: {})",
-                            symbol.name, estimated_params
-                        ),
-                        category: SmellCategory::LongParameterList,
-                        location: RefactoringLocation {
-                            file: file.path.clone(),
-                            function: Some(symbol.name.clone()),
-                            class: None,
-                            start_line: symbol.start_line,
-                            end_line: symbol.end_line,
-                            scope: "function".to_string(),
-                        },
-                        current_code: format!("fn {}(/* many parameters */) {{ }}", symbol.name),
-                        refactored_code: self.generate_parameter_object_refactoring(&symbol.name),
-                        explanation: "Replace long parameter list with a parameter object or configuration struct".to_string(),
-                        benefits: vec![
-                            "Improved readability".to_string(),
-                            "Easier to extend".to_string(),
-                            "Better encapsulation".to_string(),
-                            "Reduced coupling".to_string(),
-                        ],
-                        risks: vec![
-                            "May require API changes".to_string(),
-                            "Need to update all call sites".to_string(),
-                        ],
-                        confidence: 0.6,
-                        effort: 4.0,
-                        automated_fix: false,
-                    });
+            if self.is_function_or_method(symbol) {
+                if let Some(fix) = self.create_parameter_list_fix(file, symbol)? {
+                    fixes.push(fix);
                 }
             }
         }
 
         Ok(fixes)
+    }
+
+    /// Check if symbol is a function or method
+    fn is_function_or_method(&self, symbol: &crate::Symbol) -> bool {
+        symbol.kind == "function" || symbol.kind == "method"
+    }
+
+    /// Create a parameter list fix if needed
+    fn create_parameter_list_fix(&self, file: &crate::FileInfo, symbol: &crate::Symbol) -> Result<Option<CodeSmellFix>> {
+        let estimated_params = self.estimate_parameter_count(&symbol.name);
+
+        if estimated_params <= 5 {
+            return Ok(None);
+        }
+
+        Ok(Some(CodeSmellFix {
+            id: format!("LONG_PARAM_LIST_{}_{}", file.path.display(), symbol.name),
+            smell_name: "Long Parameter List".to_string(),
+            description: format!(
+                "Function '{}' appears to have many parameters (estimated: {})",
+                symbol.name, estimated_params
+            ),
+            category: SmellCategory::LongParameterList,
+            location: self.create_refactoring_location(file, symbol),
+            current_code: format!("fn {}(/* many parameters */) {{ }}", symbol.name),
+            refactored_code: self.generate_parameter_object_refactoring(&symbol.name),
+            explanation: "Replace long parameter list with a parameter object or configuration struct".to_string(),
+            benefits: self.get_parameter_list_benefits(),
+            risks: self.get_parameter_list_risks(),
+            confidence: 0.6,
+            effort: 4.0,
+            automated_fix: false,
+        }))
+    }
+
+    /// Create refactoring location for a symbol
+    fn create_refactoring_location(&self, file: &crate::FileInfo, symbol: &crate::Symbol) -> RefactoringLocation {
+        RefactoringLocation {
+            file: file.path.clone(),
+            function: Some(symbol.name.clone()),
+            class: None,
+            start_line: symbol.start_line,
+            end_line: symbol.end_line,
+            scope: "function".to_string(),
+        }
+    }
+
+    /// Get benefits for parameter list refactoring
+    fn get_parameter_list_benefits(&self) -> Vec<String> {
+        vec![
+            "Improved readability".to_string(),
+            "Easier to extend".to_string(),
+            "Better encapsulation".to_string(),
+            "Reduced coupling".to_string(),
+        ]
+    }
+
+    /// Get risks for parameter list refactoring
+    fn get_parameter_list_risks(&self) -> Vec<String> {
+        vec![
+            "May require API changes".to_string(),
+            "Need to update all call sites".to_string(),
+        ]
     }
 
     /// Detect complex conditional logic
@@ -981,7 +1007,7 @@ impl SmartRefactoringEngine {
                             "May require significant restructuring".to_string(),
                             "Need to ensure all cases are covered".to_string(),
                         ],
-                        confidence: 0.7,
+                        confidence: crate::constants::refactoring::DEFAULT_MIN_CONFIDENCE,
                         effort: 5.0,
                         automated_fix: false,
                     });
@@ -1426,7 +1452,7 @@ impl SmartRefactoringEngine {
                     "Better separation of concerns".to_string(),
                 ],
                 applicability: "When you have one-to-many dependencies between objects and want to notify multiple objects about state changes".to_string(),
-                confidence: 0.75,
+                confidence: crate::constants::refactoring::HIGH_CONFIDENCE_THRESHOLD,
                 complexity: ImplementationComplexity::Moderate,
             });
         }
@@ -1628,7 +1654,7 @@ impl SmartRefactoringEngine {
                     throughput_improvement: 65.0,
                 },
                 difficulty: ImplementationComplexity::Complex,
-                confidence: 0.7,
+                confidence: crate::constants::refactoring::DEFAULT_MIN_CONFIDENCE,
                 benchmarking: vec![
                     "Measure time complexity with different input sizes".to_string(),
                     "Profile CPU usage and cache performance".to_string(),

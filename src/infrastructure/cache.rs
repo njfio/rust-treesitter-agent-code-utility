@@ -154,15 +154,21 @@ impl Cache {
 
     /// Check if key exists in cache
     pub async fn exists(&self, key: &str) -> bool {
-        self.memory_cache.contains_key(key) || 
-        self.disk_entry_exists(key).await.unwrap_or(false)
+        self.memory_cache.contains_key(key) ||
+        self.disk_entry_exists(key).await.unwrap_or_else(|e| {
+            debug!("Failed to check disk cache existence for key '{}': {}", key, e);
+            false
+        })
     }
 
     /// Remove entry from cache
     pub async fn remove(&self, key: &str) -> Result<bool> {
         let memory_removed = self.memory_cache.remove(key).is_some();
-        let disk_removed = self.remove_disk_entry(key).await.unwrap_or(false);
-        
+        let disk_removed = self.remove_disk_entry(key).await.unwrap_or_else(|e| {
+            debug!("Failed to remove disk cache entry for key '{}': {}", key, e);
+            false
+        });
+
         Ok(memory_removed || disk_removed)
     }
 

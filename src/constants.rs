@@ -30,6 +30,9 @@ pub mod security {
     pub const HIGH_SEVERITY_EFFORT: f64 = 3.0;
     pub const MEDIUM_SEVERITY_EFFORT: f64 = 1.5;
     pub const LOW_SEVERITY_EFFORT: f64 = 0.5;
+
+    /// Entropy-based secret detection confidence multiplier
+    pub const ENTROPY_CONFIDENCE_MULTIPLIER: f64 = 0.7;
 }
 
 /// Intent mapping and traceability constants
@@ -112,9 +115,21 @@ pub mod test_coverage {
 pub mod refactoring {
     /// Large file threshold (lines of code)
     pub const LARGE_FILE_THRESHOLD: usize = 500;
-    
+
     /// Base refactoring score
     pub const BASE_REFACTORING_SCORE: u8 = 100;
+
+    /// Default minimum confidence for refactoring suggestions
+    pub const DEFAULT_MIN_CONFIDENCE: f64 = 0.7;
+
+    /// High confidence threshold for pattern recommendations
+    pub const HIGH_CONFIDENCE_THRESHOLD: f64 = 0.75;
+}
+
+/// Code evolution analysis constants
+pub mod code_evolution {
+    /// Default pattern confidence threshold for evolution analysis
+    pub const DEFAULT_PATTERN_CONFIDENCE_THRESHOLD: f64 = 0.7;
 }
 
 /// File size and processing constants

@@ -45,7 +45,7 @@ mod tests {
     fs::write(temp_dir.path().join("test_lib.rs"), test_code)?;
     
     // Analyze the codebase
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
     let analysis_result = analyzer.analyze_directory(temp_dir.path())?;
     
     // Run test coverage analysis
@@ -76,7 +76,7 @@ fn test_file_identification() -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir(temp_dir.path().join("tests"))?;
     fs::write(temp_dir.path().join("tests").join("integration.rs"), "#[test] fn integration_test() {}")?;
     
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
     let analysis_result = analyzer.analyze_directory(temp_dir.path())?;
     
     let coverage_analyzer = TestCoverageAnalyzer::new();
@@ -132,7 +132,7 @@ mod tests {
     fs::write(temp_dir.path().join("lib.rs"), source_code)?;
     fs::write(temp_dir.path().join("test_lib.rs"), test_code)?;
     
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
     let analysis_result = analyzer.analyze_directory(temp_dir.path())?;
     
     let coverage_analyzer = TestCoverageAnalyzer::new();
@@ -198,7 +198,7 @@ mod tests {
     
     fs::write(temp_dir.path().join("test_quality.rs"), test_code)?;
     
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
     let analysis_result = analyzer.analyze_directory(temp_dir.path())?;
     
     let coverage_analyzer = TestCoverageAnalyzer::new();

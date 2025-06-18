@@ -154,7 +154,7 @@ pub fn save_to_file<T: Serialize>(data: &T, path: &PathBuf) -> Result<(), Box<dy
 }
 
 /// Print analysis table
-pub fn print_analysis_table(result: &crate::AnalysisResult, detailed: bool) {
+pub fn print_analysis_table(result: &crate::AnalysisResult, _detailed: bool) {
     print_header("🔍 ANALYSIS RESULTS", "blue");
     
     if result.files.is_empty() {

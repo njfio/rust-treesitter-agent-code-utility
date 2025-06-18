@@ -173,13 +173,7 @@ pub struct QueryMatch<'a> {
 }
 
 impl<'a> QueryMatch<'a> {
-    /// Create a new query match
-    pub(crate) fn new(pattern_index: usize, captures: Vec<QueryCapture<'a>>) -> Self {
-        Self {
-            pattern_index,
-            captures,
-        }
-    }
+
 
     /// Get the pattern index
     pub fn pattern_index(&self) -> usize {
@@ -211,31 +205,7 @@ pub struct QueryCapture<'a> {
 }
 
 impl<'a> QueryCapture<'a> {
-    /// Create a new query capture
-    pub(crate) fn new(
-        capture: &tree_sitter::QueryCapture<'a>,
-        source: &'a str,
-        query: &tree_sitter::Query,
-    ) -> Self {
-        let name = query.capture_names()
-            .get(capture.index as usize)
-            .map(|s| s.to_string());
 
-        Self {
-            node: Node::new(capture.node, source),
-            index: capture.index,
-            name,
-        }
-    }
-
-    /// Create from a tree-sitter capture
-    pub(crate) fn from_capture(capture: &tree_sitter::QueryCapture<'a>, source: &'a str) -> Self {
-        Self {
-            node: Node::new(capture.node, source),
-            index: capture.index,
-            name: None,
-        }
-    }
 
     /// Get the captured node
     pub fn node(&self) -> Node<'a> {

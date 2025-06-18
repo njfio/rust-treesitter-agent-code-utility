@@ -408,7 +408,7 @@ function createUser() {
 "#)?;
 
     // Create analyzer with semantic graph enabled
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
     analyzer.enable_semantic_graph();
 
     assert!(analyzer.is_semantic_graph_enabled(), "Semantic graph should be enabled");

@@ -140,7 +140,7 @@ fn find_duplicates(data: &[i32]) -> Vec<i32> {
     fs::write(&rust_file, rust_code)?;
 
     // Analyze the code using the analyzer (like other tests)
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
     let analysis_result = analyzer.analyze_file(&rust_file)?;
 
     // Run smart refactoring analysis
@@ -256,7 +256,7 @@ struct Manager { name: String, team: String }
     let pattern_file = temp_dir.path().join("patterns.rs");
     fs::write(&pattern_file, pattern_code)?;
 
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
     let analysis_result = analyzer.analyze_file(&pattern_file)?;
 
     let refactoring_engine = SmartRefactoringEngine::new();

@@ -24,10 +24,10 @@
 use crate::{AnalysisResult, FileInfo, Result, Error};
 use crate::parser::Parser;
 use crate::tree::{SyntaxTree, Node};
-use crate::languages::{Language, detect_language_from_path};
+use crate::languages::detect_language_from_path;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use regex::Regex;
+
 
 #[cfg(feature = "serde")]
 use serde::{Serialize, Deserialize};
@@ -58,25 +58,6 @@ pub struct AdvancedSecurityConfig {
     pub min_severity: SecuritySeverity,
     /// Custom security rules
     pub custom_rules: Vec<CustomSecurityRule>,
-}
-
-/// Compiled regex patterns for security analysis
-#[derive(Debug, Clone)]
-struct SecurityPatterns {
-    /// Patterns for secrets detection
-    secrets: HashMap<String, Regex>,
-    /// Patterns for injection vulnerabilities
-    injections: HashMap<String, Regex>,
-    /// Patterns for insecure functions
-    insecure_functions: HashMap<String, Regex>,
-    /// Patterns for hardcoded credentials
-    credentials: HashMap<String, Regex>,
-}
-
-/// AST-based security analyzer for context-aware vulnerability detection
-struct AstSecurityAnalyzer {
-    /// Language-specific parsers cache
-    parsers: HashMap<Language, Parser>,
 }
 
 /// Context information for AST-based analysis
@@ -2488,53 +2469,7 @@ impl AdvancedSecurityAnalyzer {
         auth_keywords.iter().any(|&keyword| text.contains(keyword))
     }
 
-    /// Check for authorization patterns in string-based analysis
-    fn has_authorization_patterns(&self, line: &str) -> bool {
-        let line_lower = line.to_lowercase();
-        let auth_patterns = [
-            "auth", "check", "verify", "permission", "role", "access",
-            "token", "session", "login", "user.is", "has_role", "require"
-        ];
 
-        auth_patterns.iter().any(|&pattern| line_lower.contains(pattern))
-    }
-
-    /// Check if line is likely a false positive
-    fn is_likely_false_positive(&self, line: &str, line_num: usize, lines: &[&str]) -> bool {
-        let line_lower = line.to_lowercase();
-
-        // Skip comments
-        if line_lower.trim_start().starts_with("//") ||
-           line_lower.trim_start().starts_with("#") ||
-           line_lower.trim_start().starts_with("/*") {
-            return true;
-        }
-
-        // Skip documentation strings
-        if line_lower.contains("\"\"\"") || line_lower.contains("'''") {
-            return true;
-        }
-
-        // Skip variable names or class names that just contain "admin"
-        if line_lower.contains("admin") &&
-           (line_lower.contains("class ") || line_lower.contains("var ") ||
-            line_lower.contains("const ") || line_lower.contains("let ")) &&
-           !line_lower.contains("(") {
-            return true;
-        }
-
-        // Check surrounding context for authorization
-        let context_start = line_num.saturating_sub(3);
-        let context_end = (line_num + 3).min(lines.len());
-
-        for i in context_start..context_end {
-            if i != line_num && self.has_authorization_patterns(lines[i]) {
-                return true;
-            }
-        }
-
-        false
-    }
 
     /// Enhanced injection detection with better AST analysis
     fn detect_enhanced_injection_ast(&self, tree: &SyntaxTree, content: &str, file: &FileInfo, context: &SecurityContext) -> Result<Vec<SecurityVulnerability>> {
@@ -2990,87 +2925,7 @@ impl AdvancedSecurityAnalyzer {
 
 }
 
-impl SecurityPatterns {
-    /// Create new security patterns with compiled regex
-    fn new() -> Result<Self> {
-        // Common secret detection patterns
-        let secret_patterns = vec![
-            ("aws_access_key_id", r"AKIA[0-9A-Z]{16}"),
-            (
-                "aws_secret_key",
-                r"(?i)aws(.{0,20})?(secret|access)[_-]?key[^a-zA-Z0-9]*[A-Za-z0-9/+=]{40}",
-            ),
-            ("github_token", r"ghp_[A-Za-z0-9]{36}"),
-            (
-                "generic_api_key",
-                r#"(?i)(api[_-]?key|apikey)[\s:=\"']{0,6}[A-Za-z0-9_-]{16,}"#,
-            ),
-        ];
 
-        let mut secrets = HashMap::new();
-        for (name, pattern) in secret_patterns {
-            let regex = Regex::new(pattern)
-                .map_err(|e| Error::invalid_input_error("regex pattern", pattern, &format!("valid regex: {}", e)))?;
-            secrets.insert(name.to_string(), regex);
-        }
-
-        // Injection detection patterns
-        let injection_patterns = vec![
-            ("xss_script", r"(?i)<script[^>]*>"),
-            ("sql_union", r"(?i)\bUNION\b\s+SELECT"),
-            ("sql_comment", r"/\*.*\*/"),
-        ];
-        let mut injections = HashMap::new();
-        for (name, pattern) in injection_patterns {
-            let regex = Regex::new(pattern)
-                .map_err(|e| Error::invalid_input_error("regex pattern", pattern, &format!("valid regex: {}", e)))?;
-            injections.insert(name.to_string(), regex);
-        }
-
-        // Patterns for insecure function usage
-        let insecure_fn_patterns = vec![
-            ("strcpy", r"\bstrcpy\s*\("),
-            ("sprintf", r"\bsprintf\s*\("),
-            ("gets", r"\bgets\s*\("),
-            ("system", r"\bsystem\s*\("),
-        ];
-        let mut insecure_functions = HashMap::new();
-        for (name, pattern) in insecure_fn_patterns {
-            let regex = Regex::new(pattern)
-                .map_err(|e| Error::invalid_input_error("regex pattern", pattern, &format!("valid regex: {}", e)))?;
-            insecure_functions.insert(name.to_string(), regex);
-        }
-
-        // Hardcoded credential patterns
-        let credential_patterns = vec![
-            (
-                "password_assignment",
-                r#"(?i)password\s*[:=]\s*[\"'][^\"']{4,}[\"']"#,
-            ),
-            (
-                "username_assignment",
-                r#"(?i)user(name)?\s*[:=]\s*[\"']?[^\"']+[\"']?"#,
-            ),
-            (
-                "basic_auth_header",
-                r"(?i)Authorization:\s*Basic\s+[A-Za-z0-9+/=]{8,}",
-            ),
-        ];
-        let mut credentials = HashMap::new();
-        for (name, pattern) in credential_patterns {
-            let regex = Regex::new(pattern)
-                .map_err(|e| Error::invalid_input_error("regex pattern", pattern, &format!("valid regex: {}", e)))?;
-            credentials.insert(name.to_string(), regex);
-        }
-
-        Ok(Self {
-            secrets,
-            injections,
-            insecure_functions,
-            credentials,
-        })
-    }
-}
 
 // Display implementations
 impl std::fmt::Display for SecuritySeverity {
@@ -3110,16 +2965,25 @@ mod tests {
     use std::collections::HashMap;
 
     fn create_test_analysis_result() -> AnalysisResult {
-        use std::fs;
         use std::io::Write;
+        use tempfile::Builder;
 
-        // Create a temporary file for testing
-        let temp_file = std::env::temp_dir().join("test_security.rs");
-        let mut file = fs::File::create(&temp_file).unwrap();
-        writeln!(file, "fn vulnerable_function() {{").unwrap();
-        writeln!(file, "    let password = \"hardcoded_password\";").unwrap();
-        writeln!(file, "    println!(\"Password: {{}}\", password);").unwrap();
-        writeln!(file, "}}").unwrap();
+        // Create a temporary file for testing with automatic cleanup
+        // Use persist() to keep the file alive for the duration of the test
+        let temp_file = Builder::new()
+            .prefix("test_security_")
+            .suffix(".rs")
+            .tempfile()
+            .expect("Failed to create temporary file for testing");
+
+        let (mut file, temp_path) = temp_file.keep().expect("Failed to persist temporary file");
+        writeln!(file, "fn vulnerable_function() {{").expect("Failed to write function declaration to test file");
+        writeln!(file, "    let password = \"hardcoded_password\";").expect("Failed to write password line to test file");
+        writeln!(file, "    println!(\"Password: {{}}\", password);").expect("Failed to write println line to test file");
+        writeln!(file, "}}").expect("Failed to write function closing brace to test file");
+
+        // Ensure the file is flushed and closed
+        drop(file);
 
         let symbols = vec![
             Symbol {
@@ -3135,7 +2999,7 @@ mod tests {
         ];
 
         let file_info = FileInfo {
-            path: temp_file,
+            path: temp_path,
             language: "rust".to_string(),
             size: 500,
             lines: 4,
@@ -3160,7 +3024,7 @@ mod tests {
     #[test]
     fn test_advanced_security_scanner_creation() {
         let config = AdvancedSecurityConfig::default();
-        let scanner = AdvancedSecurityAnalyzer::new().unwrap();
+        let scanner = AdvancedSecurityAnalyzer::new().expect("Failed to create AdvancedSecurityAnalyzer with default config");
 
         assert!(scanner.config.owasp_analysis);
         assert!(scanner.config.secrets_detection);
@@ -3170,7 +3034,7 @@ mod tests {
     #[test]
     fn test_scan_analysis_result() {
         let config = AdvancedSecurityConfig::default();
-        let scanner = AdvancedSecurityAnalyzer::new().unwrap();
+        let scanner = AdvancedSecurityAnalyzer::new().expect("Failed to create AdvancedSecurityAnalyzer for scan test");
         let analysis = create_test_analysis_result();
 
         let result = scanner.analyze(&analysis);
@@ -3179,7 +3043,7 @@ mod tests {
         }
         assert!(result.is_ok());
 
-        let security_result = result.unwrap();
+        let security_result = result.expect("Security analysis should succeed with test data");
         assert!(security_result.total_vulnerabilities >= 0);
         assert!(security_result.security_score <= 100);
     }
@@ -3187,7 +3051,7 @@ mod tests {
     #[test]
     fn test_user_input_function_detection() {
         let config = AdvancedSecurityConfig::default();
-        let scanner = AdvancedSecurityAnalyzer::new().unwrap();
+        let scanner = AdvancedSecurityAnalyzer::new().expect("Failed to create AdvancedSecurityAnalyzer for user input test");
 
         // Test user input function detection
         assert!(scanner.is_user_input_function("request"));
@@ -3214,7 +3078,7 @@ mod tests {
     #[test]
     fn test_entropy_calculation() {
         let config = AdvancedSecurityConfig::default();
-        let scanner = AdvancedSecurityAnalyzer::new().unwrap();
+        let scanner = AdvancedSecurityAnalyzer::new().expect("Failed to create AdvancedSecurityAnalyzer for entropy test");
 
         // High entropy string (likely secret)
         let high_entropy = "sk-1234567890abcdef1234567890abcdef";

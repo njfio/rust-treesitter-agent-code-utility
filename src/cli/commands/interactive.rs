@@ -319,7 +319,7 @@ fn find_symbols(result: &crate::AnalysisResult, query: &str) {
     }
 }
 
-fn explain_symbol(ai_analyzer: &AIAnalyzer, result: &crate::AnalysisResult, symbol_name: &str) {
+fn explain_symbol(_ai_analyzer: &AIAnalyzer, result: &crate::AnalysisResult, symbol_name: &str) {
     println!("{} '{}'", "🤖 Explaining symbol".blue(), symbol_name.cyan());
     println!("{}", "─".repeat(40).blue());
 

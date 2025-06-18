@@ -8,6 +8,7 @@ use crate::languages::Language;
 use crate::parser::Parser;
 use crate::advanced_security::{AdvancedSecurityAnalyzer, SecurityVulnerability};
 use crate::semantic_graph::SemanticGraphQuery;
+use crate::file_cache::FileCache;
 
 use crate::tree::SyntaxTree;
 use std::collections::HashMap;
@@ -189,6 +190,7 @@ pub struct CodebaseAnalyzer {
     parsers: HashMap<Language, Parser>,
     security_analyzer: AdvancedSecurityAnalyzer,
     semantic_graph: Option<SemanticGraphQuery>,
+    file_cache: FileCache,
 }
 
 impl CodebaseAnalyzer {
@@ -204,6 +206,7 @@ impl CodebaseAnalyzer {
             parsers: HashMap::new(),
             security_analyzer: AdvancedSecurityAnalyzer::new()?,
             semantic_graph: None,
+            file_cache: FileCache::new(),
         })
     }
 
@@ -629,8 +632,8 @@ impl CodebaseAnalyzer {
             }
         }
 
-        // Read file content
-        let content = fs::read_to_string(file_path)?;
+        // Read file content using cache
+        let content = self.file_cache.read_to_string(file_path)?;
         let line_count = content.lines().count();
 
         // Get relative path
@@ -1434,6 +1437,26 @@ impl CodebaseAnalyzer {
     pub fn is_semantic_graph_enabled(&self) -> bool {
         self.semantic_graph.is_some()
     }
+
+    /// Get file cache statistics
+    pub fn cache_stats(&self) -> crate::file_cache::CacheStats {
+        self.file_cache.stats()
+    }
+
+    /// Get cache hit ratio
+    pub fn cache_hit_ratio(&self) -> f64 {
+        self.file_cache.hit_ratio()
+    }
+
+    /// Clear the file cache
+    pub fn clear_cache(&self) {
+        self.file_cache.clear();
+    }
+
+    /// Check if a file is cached
+    pub fn is_cached<P: AsRef<Path>>(&self, path: P) -> bool {
+        self.file_cache.contains(path)
+    }
 }
 
 impl Default for CodebaseAnalyzer {
@@ -1445,6 +1468,7 @@ impl Default for CodebaseAnalyzer {
                 parsers: HashMap::new(),
                 security_analyzer: AdvancedSecurityAnalyzer::default(),
                 semantic_graph: None,
+                file_cache: FileCache::new(),
             }
         })
     }

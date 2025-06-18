@@ -664,7 +664,7 @@ impl TestCoverageAnalyzer {
 
     /// Calculate quality score for a test file
     fn calculate_test_file_quality_score(&self, _file: &FileInfo, test_functions: &[&crate::Symbol], issues: &[TestIssue]) -> u8 {
-        let mut score = 100.0;
+        let mut score = crate::constants::test_coverage::MAX_COVERAGE_SCORE;
 
         // Deduct points for issues
         for issue in issues {
@@ -682,7 +682,7 @@ impl TestCoverageAnalyzer {
             .count();
         score -= (poorly_named_tests as f64 * 5.0).min(25.0);
 
-        score.max(0.0).min(100.0) as u8
+        score.max(crate::constants::scoring::MIN_SCORE).min(crate::constants::test_coverage::MAX_COVERAGE_SCORE) as u8
     }
 
     /// Analyze coverage for source files
@@ -733,9 +733,9 @@ impl TestCoverageAnalyzer {
         }
 
         let coverage_percentage = if total_functions > 0 {
-            (tested_functions as f64 / total_functions as f64) * 100.0
+            (tested_functions as f64 / total_functions as f64) * crate::constants::test_coverage::PERCENTAGE_MULTIPLIER
         } else {
-            100.0 // No functions to test
+            crate::constants::test_coverage::PERFECT_COVERAGE_SCORE // No functions to test
         };
 
         let status = match coverage_percentage {
@@ -846,7 +846,7 @@ impl TestCoverageAnalyzer {
             .flat_map(|a| &a.issues)
             .filter(|issue| !matches!(issue.issue_type, TestIssueType::UnclearTestName))
             .count();
-        let naming_quality = ((well_named_tests as f64 / total_tests as f64) * 100.0) as u8;
+        let naming_quality = ((well_named_tests as f64 / total_tests as f64) * crate::constants::test_coverage::PERCENTAGE_MULTIPLIER) as u8;
 
         // Calculate assertion density (simplified)
         let assertion_density = 2.5; // Average assertions per test
@@ -856,7 +856,7 @@ impl TestCoverageAnalyzer {
             .flat_map(|a| &a.issues)
             .filter(|issue| !matches!(issue.issue_type, TestIssueType::MissingDocumentation))
             .count();
-        let documentation_coverage = (documented_tests as f64 / total_tests as f64) * 100.0;
+        let documentation_coverage = (documented_tests as f64 / total_tests as f64) * crate::constants::test_coverage::PERCENTAGE_MULTIPLIER;
 
         // Calculate maintainability score
         let avg_quality_score = test_file_analyses.iter()
@@ -903,7 +903,7 @@ impl TestCoverageAnalyzer {
         let structure_quality = if test_file_analyses.is_empty() {
             0
         } else {
-            ((organized_files as f64 / test_file_analyses.len() as f64) * 100.0)
+            ((organized_files as f64 / test_file_analyses.len() as f64) * crate::constants::test_coverage::PERCENTAGE_MULTIPLIER)
                 .round() as u8
         };
 
@@ -911,7 +911,7 @@ impl TestCoverageAnalyzer {
         let consistent_naming = test_file_analyses.iter()
             .filter(|a| a.file.file_name().unwrap_or_default().to_str().unwrap_or("").contains("test"))
             .count();
-        let naming_consistency = ((consistent_naming as f64 / test_file_analyses.len() as f64) * 100.0) as u8;
+        let naming_consistency = ((consistent_naming as f64 / test_file_analyses.len() as f64) * crate::constants::test_coverage::PERCENTAGE_MULTIPLIER) as u8;
 
         // Categorize tests
         let mut tests_by_type = HashMap::new();
@@ -1069,9 +1069,9 @@ impl TestCoverageAnalyzer {
         let tested_functions: usize = file_coverage.iter().map(|fc| fc.tested_functions).sum();
 
         if total_functions > 0 {
-            (tested_functions as f64 / total_functions as f64) * 100.0
+            (tested_functions as f64 / total_functions as f64) * crate::constants::test_coverage::PERCENTAGE_MULTIPLIER
         } else {
-            100.0
+            crate::constants::test_coverage::PERFECT_COVERAGE_SCORE
         }
     }
 
@@ -1080,7 +1080,7 @@ impl TestCoverageAnalyzer {
         let coverage_score = estimated_coverage * 0.6; // 60% weight on coverage
         let quality_score = quality_metrics.maintainability_score as f64 * 0.4; // 40% weight on quality
 
-        (coverage_score + quality_score).min(100.0) as u8
+        (coverage_score + quality_score).min(crate::constants::test_coverage::MAX_COVERAGE_SCORE) as u8
     }
 }
 

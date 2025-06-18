@@ -232,7 +232,7 @@ impl RateLimiter {
 
         let quota = Quota::per_minute(
             NonZeroU32::new(requests_per_minute.max(1))
-                .expect("Rate limit should be at least 1 request per minute")
+                .expect("Rate limit creation failed: requests_per_minute.max(1) should always be >= 1, but NonZeroU32::new returned None")
         );
         let limiter = GovRateLimiter::direct(quota);
 

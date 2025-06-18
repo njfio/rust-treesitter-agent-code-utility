@@ -133,7 +133,7 @@ pub fn build_module_graph(result: &AnalysisResult) -> ModuleGraph {
 }
 
 /// Resolve a dependency name to an actual file in the project
-fn resolve_dependency_to_file(result: &AnalysisResult, dep_name: &str, current_file: &PathBuf) -> String {
+fn resolve_dependency_to_file(result: &AnalysisResult, dep_name: &str, _current_file: &PathBuf) -> String {
     // Try to find a file that matches the dependency name
     for file in &result.files {
         let file_stem = file.path.file_stem()
@@ -159,14 +159,7 @@ fn resolve_dependency_to_file(result: &AnalysisResult, dep_name: &str, current_f
     dep_name.to_string()
 }
 
-fn read_symbol_content(root: &PathBuf, file: &FileInfo, sym: &Symbol) -> std::io::Result<String> {
-    let path = root.join(&file.path);
-    let content = fs::read_to_string(path)?;
-    let lines: Vec<&str> = content.lines().collect();
-    let start = sym.start_line.saturating_sub(1);
-    let end = sym.end_line.min(lines.len());
-    Ok(lines[start..end].join("\n"))
-}
+
 
 /// Extract function calls using simple string-based pattern matching
 fn extract_function_calls_simple(content: &str) -> Vec<String> {

@@ -167,7 +167,7 @@ impl Default for EvolutionConfig {
         Self {
             max_commits: 1000,
             time_window_days: 90,
-            pattern_confidence_threshold: 0.7,
+            pattern_confidence_threshold: crate::constants::code_evolution::DEFAULT_PATTERN_CONFIDENCE_THRESHOLD,
             hotspot_threshold: 10,
             coupling_threshold: 0.3,
         }

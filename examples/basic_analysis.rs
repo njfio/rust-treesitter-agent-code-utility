@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut symbol_counts = std::collections::HashMap::new();
     for file_info in &result.files {
         for symbol in &file_info.symbols {
-            *symbol_counts.entry(symbol.symbol_type.clone()).or_insert(0) += 1;
+            *symbol_counts.entry(symbol.kind.clone()).or_insert(0) += 1;
         }
     }
     
