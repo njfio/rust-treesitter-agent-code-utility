@@ -32,6 +32,11 @@ pub mod advanced_ai_analysis;
 pub mod advanced_security;
 pub mod ai_analysis;
 pub mod analysis_utils;
+pub mod control_flow;
+pub mod complexity_analysis;
+pub mod taint_analysis;
+pub mod sql_injection_detector;
+pub mod command_injection_detector;
 pub mod analyzer;
 pub mod cli;
 pub mod code_evolution;
@@ -75,6 +80,11 @@ pub use smart_refactoring::{SmartRefactoringEngine, SmartRefactoringResult, Smar
 pub use test_coverage::{TestCoverageAnalyzer, TestCoverageResult, TestCoverageConfig, MissingTest};
 pub use code_map::{CallGraph, ModuleGraph, build_call_graph, build_module_graph};
 pub use tree::{Node, SyntaxTree, TreeCursor, TreeEdit};
+pub use control_flow::{ControlFlowGraph, CfgBuilder, CfgNodeType};
+pub use complexity_analysis::{ComplexityAnalyzer, ComplexityMetrics, HalsteadMetrics};
+pub use taint_analysis::{TaintAnalyzer, TaintFlow, TaintSource, TaintSink, VulnerabilityType};
+pub use sql_injection_detector::{SqlInjectionDetector, SqlInjectionVulnerability, SqlInjectionType};
+pub use command_injection_detector::{CommandInjectionDetector, CommandInjectionVulnerability, CommandInjectionType};
 pub use semantic_graph::{SemanticGraphQuery, GraphNode, GraphEdge, NodeType, RelationshipType, QueryResult, QueryConfig, GraphStatistics};
 pub use code_evolution::{CodeEvolutionTracker, EvolutionAnalysisResult, EvolutionConfig, ChangePattern, PatternType, EvolutionMetrics, FileInsight, EvolutionRecommendation, ChangeType, RiskLevel};
 pub use intent_mapping::{
