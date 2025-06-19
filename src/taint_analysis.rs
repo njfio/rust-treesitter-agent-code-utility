@@ -142,7 +142,7 @@ pub enum TaintStepType {
     Conversion,
 }
 
-/// Taint analysis engine
+/// Taint analysis engine with enhanced inter-procedural analysis
 pub struct TaintAnalyzer {
     language: String,
     /// Known taint sources for the language
@@ -151,6 +151,68 @@ pub struct TaintAnalyzer {
     sinks: HashMap<String, (TaintSinkType, VulnerabilityType)>,
     /// Known sanitization functions
     sanitizers: HashMap<String, Vec<VulnerabilityType>>,
+    /// Variable assignments and aliasing tracking
+    variable_assignments: HashMap<String, Vec<VariableAssignment>>,
+    /// Function definitions and their parameters
+    function_definitions: HashMap<String, FunctionDefinition>,
+    /// Call graph for inter-procedural analysis
+    call_graph: HashMap<String, Vec<FunctionCall>>,
+}
+
+/// Represents a variable assignment for tracking data flow
+#[derive(Debug, Clone)]
+pub struct VariableAssignment {
+    /// Variable being assigned to
+    pub target: String,
+    /// Source of the assignment (variable, function call, literal, etc.)
+    pub source: AssignmentSource,
+    /// Location of the assignment
+    pub location: TaintLocation,
+    /// Whether this assignment propagates taint
+    pub propagates_taint: bool,
+}
+
+/// Source of a variable assignment
+#[derive(Debug, Clone)]
+pub enum AssignmentSource {
+    /// Assignment from another variable
+    Variable(String),
+    /// Assignment from function call
+    FunctionCall(String, Vec<String>), // function name, arguments
+    /// Assignment from literal value
+    Literal(String),
+    /// Assignment from concatenation
+    Concatenation(Vec<String>),
+    /// Assignment from array/object access
+    Access(String, String), // object, index/key
+}
+
+/// Function definition information for inter-procedural analysis
+#[derive(Debug, Clone)]
+pub struct FunctionDefinition {
+    /// Function name
+    pub name: String,
+    /// Parameter names in order
+    pub parameters: Vec<String>,
+    /// Return variable (if any)
+    pub return_variable: Option<String>,
+    /// Location of function definition
+    pub location: TaintLocation,
+    /// Whether function can propagate taint from parameters to return
+    pub can_propagate_taint: bool,
+}
+
+/// Function call information for call graph construction
+#[derive(Debug, Clone)]
+pub struct FunctionCall {
+    /// Called function name
+    pub function_name: String,
+    /// Arguments passed to the function
+    pub arguments: Vec<String>,
+    /// Variable receiving return value (if any)
+    pub return_target: Option<String>,
+    /// Location of the call
+    pub location: TaintLocation,
 }
 
 impl TaintAnalyzer {
@@ -161,8 +223,11 @@ impl TaintAnalyzer {
             sources: HashMap::new(),
             sinks: HashMap::new(),
             sanitizers: HashMap::new(),
+            variable_assignments: HashMap::new(),
+            function_definitions: HashMap::new(),
+            call_graph: HashMap::new(),
         };
-        
+
         analyzer.initialize_language_rules();
         analyzer
     }
@@ -296,25 +361,253 @@ impl TaintAnalyzer {
         self.sinks.insert("write".to_string(), (TaintSinkType::HtmlOutput, VulnerabilityType::CrossSiteScripting));
     }
     
-    /// Perform taint analysis on a syntax tree
-    pub fn analyze(&self, tree: &SyntaxTree) -> Result<Vec<TaintFlow>> {
+    /// Perform enhanced taint analysis on a syntax tree with inter-procedural analysis
+    pub fn analyze(&mut self, tree: &SyntaxTree) -> Result<Vec<TaintFlow>> {
         let mut flows = Vec::new();
-        
-        // Find all taint sources in the code
+
+        // Phase 1: Build program structure (functions, assignments, call graph)
+        self.build_program_structure(tree)?;
+
+        // Phase 2: Find all taint sources in the code
         let sources = self.find_taint_sources(tree)?;
-        
-        // Find all taint sinks in the code
+
+        // Phase 3: Find all taint sinks in the code
         let sinks = self.find_taint_sinks(tree)?;
-        
-        // For each source, try to find flows to sinks
+
+        // Phase 4: Perform enhanced data flow analysis
         for source in &sources {
-            let source_flows = self.trace_taint_flows(tree, source, &sinks)?;
+            let source_flows = self.trace_enhanced_taint_flows(tree, source, &sinks)?;
             flows.extend(source_flows);
         }
-        
+
         Ok(flows)
     }
-    
+
+    /// Build program structure for inter-procedural analysis
+    fn build_program_structure(&mut self, tree: &SyntaxTree) -> Result<()> {
+        // Clear previous analysis data
+        self.variable_assignments.clear();
+        self.function_definitions.clear();
+        self.call_graph.clear();
+
+        // Traverse AST to build structure
+        self.traverse_for_structure(tree.inner().root_node(), None)?;
+
+        Ok(())
+    }
+
+    /// Traverse AST to build program structure (functions, assignments, calls)
+    fn traverse_for_structure(&mut self, node: Node, current_function: Option<&str>) -> Result<()> {
+        let _node_kind = node.kind();
+
+        // Check for function definitions
+        if self.is_function_definition(node) {
+            if let Some(func_def) = self.extract_function_definition(node)? {
+                self.function_definitions.insert(func_def.name.clone(), func_def.clone());
+
+                // Traverse function body with this function as context
+                let mut cursor = node.walk();
+                if cursor.goto_first_child() {
+                    loop {
+                        self.traverse_for_structure(cursor.node(), Some(&func_def.name))?;
+                        if !cursor.goto_next_sibling() {
+                            break;
+                        }
+                    }
+                }
+                return Ok(());
+            }
+        }
+
+        // Check for variable assignments
+        if self.is_assignment(node) {
+            if let Some(assignment) = self.extract_assignment(node, current_function)? {
+                let func_key = current_function.unwrap_or("global").to_string();
+                self.variable_assignments.entry(func_key).or_insert_with(Vec::new).push(assignment);
+            }
+        }
+
+        // Check for function calls
+        if self.is_function_call(node.kind()) {
+            if let Some(call) = self.extract_function_call(node, current_function)? {
+                let func_key = current_function.unwrap_or("global").to_string();
+                self.call_graph.entry(func_key).or_insert_with(Vec::new).push(call);
+            }
+        }
+
+        // Traverse children
+        let mut cursor = node.walk();
+        if cursor.goto_first_child() {
+            loop {
+                self.traverse_for_structure(cursor.node(), current_function)?;
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Extract function definition information from AST node
+    fn extract_function_definition(&self, node: Node) -> Result<Option<FunctionDefinition>> {
+        let function_name = self.extract_function_name(node);
+        if function_name.is_none() {
+            return Ok(None);
+        }
+
+        let name = function_name.unwrap();
+        let parameters = self.extract_function_parameters(node);
+
+        Ok(Some(FunctionDefinition {
+            name: name.clone(),
+            parameters,
+            return_variable: None, // Would need more sophisticated analysis
+            location: TaintLocation {
+                file: "current_file".to_string(),
+                line: node.start_position().row + 1,
+                column: node.start_position().column,
+                function: Some(name),
+            },
+            can_propagate_taint: true, // Conservative assumption
+        }))
+    }
+
+    /// Extract function parameters from function definition node
+    fn extract_function_parameters(&self, node: Node) -> Vec<String> {
+        let mut parameters = Vec::new();
+        let mut cursor = node.walk();
+
+        // Look for parameter list
+        if cursor.goto_first_child() {
+            loop {
+                let child = cursor.node();
+                if self.is_parameter_list(child.kind()) {
+                    parameters.extend(self.extract_parameter_names(child));
+                    break;
+                }
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+
+        parameters
+    }
+
+    /// Extract parameter names from parameter list node
+    fn extract_parameter_names(&self, node: Node) -> Vec<String> {
+        let mut names = Vec::new();
+        let mut cursor = node.walk();
+
+        if cursor.goto_first_child() {
+            loop {
+                let child = cursor.node();
+                if child.kind() == "identifier" {
+                    if let Ok(name) = child.utf8_text(b"") {
+                        names.push(name.to_string());
+                    }
+                }
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+
+        names
+    }
+
+    /// Check if node represents an assignment
+    fn is_assignment(&self, node: Node) -> bool {
+        let node_kind = node.kind();
+        match self.language.as_str() {
+            "rust" => matches!(node_kind, "assignment_expression" | "let_declaration"),
+            "javascript" | "typescript" => matches!(node_kind, "assignment_expression" | "variable_declarator"),
+            "python" => matches!(node_kind, "assignment"),
+            "c" | "cpp" | "c++" => matches!(node_kind, "assignment_expression" | "init_declarator"),
+            "go" => matches!(node_kind, "assignment_statement" | "var_declaration"),
+            _ => node_kind.contains("assignment") || node_kind.contains("declaration"),
+        }
+    }
+
+    /// Extract assignment information from AST node
+    fn extract_assignment(&self, node: Node, current_function: Option<&str>) -> Result<Option<VariableAssignment>> {
+        let (target, source) = self.extract_assignment_parts(node)?;
+        if target.is_none() || source.is_none() {
+            return Ok(None);
+        }
+
+        let source_value = source.unwrap();
+        let propagates_taint = self.assignment_propagates_taint(&source_value);
+
+        Ok(Some(VariableAssignment {
+            target: target.unwrap(),
+            source: source_value,
+            location: TaintLocation {
+                file: "current_file".to_string(),
+                line: node.start_position().row + 1,
+                column: node.start_position().column,
+                function: current_function.map(|s| s.to_string()),
+            },
+            propagates_taint,
+        }))
+    }
+
+    /// Extract target and source from assignment node
+    fn extract_assignment_parts(&self, node: Node) -> Result<(Option<String>, Option<AssignmentSource>)> {
+        let mut cursor = node.walk();
+        let mut target = None;
+        let mut source = None;
+
+        if cursor.goto_first_child() {
+            // First child is usually the target
+            let target_node = cursor.node();
+            if target_node.kind() == "identifier" {
+                if let Ok(name) = target_node.utf8_text(b"") {
+                    target = Some(name.to_string());
+                }
+            }
+
+            // Look for assignment operator and source
+            while cursor.goto_next_sibling() {
+                let child = cursor.node();
+                if self.is_assignment_operator(child.kind()) {
+                    if cursor.goto_next_sibling() {
+                        source = self.extract_assignment_source(cursor.node());
+                        break;
+                    }
+                }
+            }
+        }
+
+        Ok((target, source))
+    }
+
+    /// Extract assignment source from AST node
+    fn extract_assignment_source(&self, node: Node) -> Option<AssignmentSource> {
+        let node_kind = node.kind();
+
+        if node_kind == "identifier" {
+            if let Ok(name) = node.utf8_text(b"") {
+                return Some(AssignmentSource::Variable(name.to_string()));
+            }
+        } else if self.is_function_call(node_kind) {
+            if let Some(func_name) = self.extract_function_call_name(node) {
+                let args = self.extract_function_arguments(node);
+                return Some(AssignmentSource::FunctionCall(func_name, args));
+            }
+        } else if self.is_string_literal(node_kind) || self.is_number_literal(node_kind) {
+            if let Ok(value) = node.utf8_text(b"") {
+                return Some(AssignmentSource::Literal(value.to_string()));
+            }
+        } else if self.is_concatenation(node) {
+            let parts = self.extract_concatenation_parts(node);
+            return Some(AssignmentSource::Concatenation(parts));
+        }
+
+        None
+    }
+
     /// Find all taint sources in the syntax tree
     fn find_taint_sources(&self, tree: &SyntaxTree) -> Result<Vec<TaintSource>> {
         let mut sources = Vec::new();
@@ -533,10 +826,167 @@ impl TaintAnalyzer {
         user_input_patterns.iter().any(|&pattern| name_lower.contains(pattern))
     }
     
-    /// Trace taint flows from a source to potential sinks
+    /// Enhanced taint flow tracing with inter-procedural analysis
+    fn trace_enhanced_taint_flows(&self, _tree: &SyntaxTree, source: &TaintSource, sinks: &[TaintSink]) -> Result<Vec<TaintFlow>> {
+        let mut flows = Vec::new();
+
+        for sink in sinks {
+            if let Some(flow) = self.find_data_flow_path(source, sink)? {
+                flows.push(flow);
+            }
+        }
+
+        Ok(flows)
+    }
+
+    /// Find data flow path from source to sink using enhanced analysis
+    fn find_data_flow_path(&self, source: &TaintSource, sink: &TaintSink) -> Result<Option<TaintFlow>> {
+        // Start with the source variable/function
+        let mut tainted_variables = std::collections::HashSet::new();
+        tainted_variables.insert(source.name.clone());
+
+        // Build path through variable assignments and function calls
+        let path = self.build_taint_path(source, sink, &mut tainted_variables)?;
+
+        if path.is_empty() && !self.has_potential_flow(source, sink) {
+            return Ok(None);
+        }
+
+        // Calculate confidence based on path quality
+        let confidence = self.calculate_path_confidence(&path, source, sink);
+
+        // Check for sanitization along the path
+        let (is_sanitized, sanitizers) = self.check_path_sanitization(&path, &sink.vulnerability_type);
+
+        Ok(Some(TaintFlow {
+            source: source.clone(),
+            sink: sink.clone(),
+            path,
+            confidence,
+            is_sanitized,
+            sanitizers,
+        }))
+    }
+
+    /// Build taint propagation path through assignments and function calls
+    fn build_taint_path(&self, source: &TaintSource, sink: &TaintSink, tainted_variables: &mut std::collections::HashSet<String>) -> Result<Vec<TaintStep>> {
+        let mut path = Vec::new();
+        let source_function = source.location.function.as_deref().unwrap_or("global");
+        let sink_function = sink.location.function.as_deref().unwrap_or("global");
+
+        // Trace within source function
+        if let Some(assignments) = self.variable_assignments.get(source_function) {
+            for assignment in assignments {
+                if self.assignment_propagates_to_tainted(&assignment, tainted_variables) {
+                    tainted_variables.insert(assignment.target.clone());
+
+                    let step = TaintStep {
+                        step_type: TaintStepType::Assignment,
+                        name: assignment.target.clone(),
+                        location: assignment.location.clone(),
+                        is_sanitizer: self.is_sanitizer_assignment(&assignment),
+                        sanitizer_method: self.get_sanitizer_method(&assignment),
+                    };
+                    path.push(step);
+                }
+            }
+        }
+
+        // Handle inter-procedural flows
+        if source_function != sink_function {
+            if let Some(inter_path) = self.trace_inter_procedural_flow(source_function, sink_function, tainted_variables)? {
+                path.extend(inter_path);
+            }
+        }
+
+        // Trace within sink function if different from source
+        if source_function != sink_function {
+            if let Some(assignments) = self.variable_assignments.get(sink_function) {
+                for assignment in assignments {
+                    if self.assignment_propagates_to_tainted(&assignment, tainted_variables) {
+                        tainted_variables.insert(assignment.target.clone());
+
+                        let step = TaintStep {
+                            step_type: TaintStepType::Assignment,
+                            name: assignment.target.clone(),
+                            location: assignment.location.clone(),
+                            is_sanitizer: self.is_sanitizer_assignment(&assignment),
+                            sanitizer_method: self.get_sanitizer_method(&assignment),
+                        };
+                        path.push(step);
+                    }
+                }
+            }
+        }
+
+        Ok(path)
+    }
+
+    /// Trace taint flow between functions (inter-procedural analysis)
+    fn trace_inter_procedural_flow(&self, source_func: &str, sink_func: &str, tainted_variables: &mut std::collections::HashSet<String>) -> Result<Option<Vec<TaintStep>>> {
+        let mut path = Vec::new();
+
+        // Look for function calls from source function
+        if let Some(calls) = self.call_graph.get(source_func) {
+            for call in calls {
+                // Check if any tainted variables are passed as arguments
+                for (i, arg) in call.arguments.iter().enumerate() {
+                    if tainted_variables.contains(arg) {
+                        // Check if called function can reach sink function
+                        if self.can_reach_function(&call.function_name, sink_func) {
+                            // Add function call step
+                            path.push(TaintStep {
+                                step_type: TaintStepType::FunctionCall,
+                                name: call.function_name.clone(),
+                                location: call.location.clone(),
+                                is_sanitizer: self.is_sanitizer_function(&call.function_name),
+                                sanitizer_method: if self.is_sanitizer_function(&call.function_name) {
+                                    Some(call.function_name.clone())
+                                } else {
+                                    None
+                                },
+                            });
+
+                            // Mark function parameters as tainted
+                            if let Some(func_def) = self.function_definitions.get(&call.function_name) {
+                                if i < func_def.parameters.len() {
+                                    tainted_variables.insert(func_def.parameters[i].clone());
+                                }
+                            }
+
+                            return Ok(Some(path));
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Check if one function can reach another through call graph
+    fn can_reach_function(&self, from: &str, to: &str) -> bool {
+        if from == to {
+            return true;
+        }
+
+        // Simple reachability check (could be enhanced with proper graph traversal)
+        if let Some(calls) = self.call_graph.get(from) {
+            for call in calls {
+                if call.function_name == to {
+                    return true;
+                }
+                // Could add recursive check here for deeper analysis
+            }
+        }
+
+        false
+    }
+
+    /// Trace taint flows from a source to potential sinks (legacy method for compatibility)
     fn trace_taint_flows(&self, _tree: &SyntaxTree, source: &TaintSource, sinks: &[TaintSink]) -> Result<Vec<TaintFlow>> {
         let mut flows = Vec::new();
-        
+
         // This is a simplified implementation
         // In practice, would need sophisticated data flow analysis
         for sink in sinks {
@@ -553,7 +1003,7 @@ impl TaintAnalyzer {
                 flows.push(flow);
             }
         }
-        
+
         Ok(flows)
     }
     
@@ -563,12 +1013,249 @@ impl TaintAnalyzer {
         source.location.function == sink.location.function ||
         (source.location.line as i32 - sink.location.line as i32).abs() < 50
     }
+
+    /// Helper methods for enhanced analysis
+
+    /// Check if assignment propagates taint to any tainted variables
+    fn assignment_propagates_to_tainted(&self, assignment: &VariableAssignment, tainted_vars: &std::collections::HashSet<String>) -> bool {
+        match &assignment.source {
+            AssignmentSource::Variable(var) => tainted_vars.contains(var),
+            AssignmentSource::FunctionCall(func, args) => {
+                // Check if any arguments are tainted or if function is a taint source
+                args.iter().any(|arg| tainted_vars.contains(arg)) ||
+                self.sources.contains_key(func)
+            },
+            AssignmentSource::Concatenation(parts) => {
+                parts.iter().any(|part| tainted_vars.contains(part))
+            },
+            AssignmentSource::Access(obj, _) => tainted_vars.contains(obj),
+            AssignmentSource::Literal(_) => false,
+        }
+    }
+
+    /// Check if assignment source propagates taint
+    fn assignment_propagates_taint(&self, source: &AssignmentSource) -> bool {
+        match source {
+            AssignmentSource::Variable(_) => true,
+            AssignmentSource::FunctionCall(func, _) => self.sources.contains_key(func),
+            AssignmentSource::Concatenation(_) => true,
+            AssignmentSource::Access(_, _) => true,
+            AssignmentSource::Literal(_) => false,
+        }
+    }
+
+    /// Check if assignment involves a sanitizer
+    fn is_sanitizer_assignment(&self, assignment: &VariableAssignment) -> bool {
+        match &assignment.source {
+            AssignmentSource::FunctionCall(func, _) => self.sanitizers.contains_key(func),
+            _ => false,
+        }
+    }
+
+    /// Get sanitizer method name if assignment is sanitization
+    fn get_sanitizer_method(&self, assignment: &VariableAssignment) -> Option<String> {
+        match &assignment.source {
+            AssignmentSource::FunctionCall(func, _) if self.sanitizers.contains_key(func) => {
+                Some(func.clone())
+            },
+            _ => None,
+        }
+    }
+
+    /// Check if function is a sanitizer
+    fn is_sanitizer_function(&self, func_name: &str) -> bool {
+        self.sanitizers.contains_key(func_name)
+    }
+
+    /// Calculate confidence based on path quality
+    fn calculate_path_confidence(&self, path: &[TaintStep], source: &TaintSource, _sink: &TaintSink) -> f64 {
+        let mut confidence = source.confidence;
+
+        // Reduce confidence for longer paths
+        confidence *= 0.95_f64.powi(path.len() as i32);
+
+        // Reduce confidence if path goes through multiple functions
+        let function_changes = path.iter()
+            .filter(|step| step.step_type == TaintStepType::FunctionCall)
+            .count();
+        confidence *= 0.9_f64.powi(function_changes as i32);
+
+        // Increase confidence for direct assignments
+        let direct_assignments = path.iter()
+            .filter(|step| step.step_type == TaintStepType::Assignment)
+            .count();
+        confidence *= 1.0 + (direct_assignments as f64 * 0.1);
+
+        // Ensure confidence stays within bounds
+        confidence.max(0.1).min(1.0)
+    }
+
+    /// Check for sanitization along the path
+    fn check_path_sanitization(&self, path: &[TaintStep], vuln_type: &VulnerabilityType) -> (bool, Vec<String>) {
+        let mut sanitizers = Vec::new();
+        let mut is_sanitized = false;
+
+        for step in path {
+            if step.is_sanitizer {
+                if let Some(method) = &step.sanitizer_method {
+                    if let Some(sanitizer_vulns) = self.sanitizers.get(method) {
+                        if sanitizer_vulns.contains(vuln_type) {
+                            sanitizers.push(method.clone());
+                            is_sanitized = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        (is_sanitized, sanitizers)
+    }
+
+    /// Additional helper methods for AST analysis
+
+    /// Check if node kind represents a parameter list
+    fn is_parameter_list(&self, node_kind: &str) -> bool {
+        match self.language.as_str() {
+            "rust" => matches!(node_kind, "parameters"),
+            "javascript" | "typescript" => matches!(node_kind, "formal_parameters"),
+            "python" => matches!(node_kind, "parameters"),
+            "c" | "cpp" | "c++" => matches!(node_kind, "parameter_list"),
+            "go" => matches!(node_kind, "parameter_list"),
+            _ => node_kind.contains("parameter"),
+        }
+    }
+
+    /// Check if node kind represents an assignment operator
+    fn is_assignment_operator(&self, node_kind: &str) -> bool {
+        matches!(node_kind, "=" | ":=" | "+=" | "-=" | "*=" | "/=" | "assignment_operator")
+    }
+
+    /// Check if node kind represents a string literal
+    fn is_string_literal(&self, node_kind: &str) -> bool {
+        node_kind.contains("string") && node_kind.contains("literal")
+    }
+
+    /// Check if node kind represents a number literal
+    fn is_number_literal(&self, node_kind: &str) -> bool {
+        matches!(node_kind, "number" | "integer" | "float" | "decimal") ||
+        (node_kind.contains("number") && node_kind.contains("literal"))
+    }
+
+    /// Check if node represents concatenation
+    fn is_concatenation(&self, node: Node) -> bool {
+        let node_kind = node.kind();
+        match self.language.as_str() {
+            "rust" => node_kind == "binary_expression", // Would need to check operator
+            "javascript" | "typescript" => node_kind == "binary_expression",
+            "python" => node_kind == "binary_operator",
+            "c" | "cpp" | "c++" => node_kind == "binary_expression",
+            "go" => node_kind == "binary_expression",
+            _ => node_kind.contains("binary") || node_kind.contains("concat"),
+        }
+    }
+
+    /// Extract function arguments from function call node
+    fn extract_function_arguments(&self, node: Node) -> Vec<String> {
+        let mut args = Vec::new();
+        let mut cursor = node.walk();
+
+        if cursor.goto_first_child() {
+            // Skip function name, look for arguments
+            while cursor.goto_next_sibling() {
+                let child = cursor.node();
+                if self.is_argument_list(child.kind()) {
+                    args.extend(self.extract_argument_names(child));
+                    break;
+                }
+            }
+        }
+
+        args
+    }
+
+    /// Check if node kind represents an argument list
+    fn is_argument_list(&self, node_kind: &str) -> bool {
+        match self.language.as_str() {
+            "rust" => matches!(node_kind, "arguments"),
+            "javascript" | "typescript" => matches!(node_kind, "arguments"),
+            "python" => matches!(node_kind, "argument_list"),
+            "c" | "cpp" | "c++" => matches!(node_kind, "argument_list"),
+            "go" => matches!(node_kind, "argument_list"),
+            _ => node_kind.contains("argument"),
+        }
+    }
+
+    /// Extract argument names from argument list
+    fn extract_argument_names(&self, node: Node) -> Vec<String> {
+        let mut names = Vec::new();
+        let mut cursor = node.walk();
+
+        if cursor.goto_first_child() {
+            loop {
+                let child = cursor.node();
+                if child.kind() == "identifier" {
+                    if let Ok(name) = child.utf8_text(b"") {
+                        names.push(name.to_string());
+                    }
+                }
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+
+        names
+    }
+
+    /// Extract concatenation parts
+    fn extract_concatenation_parts(&self, node: Node) -> Vec<String> {
+        let mut parts = Vec::new();
+        let mut cursor = node.walk();
+
+        if cursor.goto_first_child() {
+            loop {
+                let child = cursor.node();
+                if child.kind() == "identifier" {
+                    if let Ok(name) = child.utf8_text(b"") {
+                        parts.push(name.to_string());
+                    }
+                }
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+
+        parts
+    }
+
+    /// Extract function call information for call graph
+    fn extract_function_call(&self, node: Node, current_function: Option<&str>) -> Result<Option<FunctionCall>> {
+        let function_name = self.extract_function_call_name(node);
+        if function_name.is_none() {
+            return Ok(None);
+        }
+
+        let name = function_name.unwrap();
+        let arguments = self.extract_function_arguments(node);
+
+        Ok(Some(FunctionCall {
+            function_name: name,
+            arguments,
+            return_target: None, // Would need more analysis to determine
+            location: TaintLocation {
+                file: "current_file".to_string(),
+                line: node.start_position().row + 1,
+                column: node.start_position().column,
+                function: current_function.map(|s| s.to_string()),
+            },
+        }))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Parser;
 
     #[test]
     fn test_taint_analyzer_creation() {
@@ -576,6 +1263,9 @@ mod tests {
         assert_eq!(analyzer.language, "rust");
         assert!(!analyzer.sources.is_empty());
         assert!(!analyzer.sinks.is_empty());
+        assert!(analyzer.variable_assignments.is_empty());
+        assert!(analyzer.function_definitions.is_empty());
+        assert!(analyzer.call_graph.is_empty());
     }
 
     #[test]
@@ -590,5 +1280,139 @@ mod tests {
         let analyzer = TaintAnalyzer::new("python");
         assert!(analyzer.sources.contains_key("request.args"));
         assert!(analyzer.sinks.contains_key("cursor.execute"));
+    }
+
+    #[test]
+    fn test_assignment_source_types() {
+        let var_source = AssignmentSource::Variable("user_input".to_string());
+        let func_source = AssignmentSource::FunctionCall("get_input".to_string(), vec!["param1".to_string()]);
+        let literal_source = AssignmentSource::Literal("constant".to_string());
+        let concat_source = AssignmentSource::Concatenation(vec!["part1".to_string(), "part2".to_string()]);
+
+        match var_source {
+            AssignmentSource::Variable(name) => assert_eq!(name, "user_input"),
+            _ => panic!("Expected Variable source"),
+        }
+
+        match func_source {
+            AssignmentSource::FunctionCall(name, args) => {
+                assert_eq!(name, "get_input");
+                assert_eq!(args.len(), 1);
+            },
+            _ => panic!("Expected FunctionCall source"),
+        }
+
+        match literal_source {
+            AssignmentSource::Literal(value) => assert_eq!(value, "constant"),
+            _ => panic!("Expected Literal source"),
+        }
+
+        match concat_source {
+            AssignmentSource::Concatenation(parts) => assert_eq!(parts.len(), 2),
+            _ => panic!("Expected Concatenation source"),
+        }
+    }
+
+    #[test]
+    fn test_function_definition_creation() {
+        let func_def = FunctionDefinition {
+            name: "test_function".to_string(),
+            parameters: vec!["param1".to_string(), "param2".to_string()],
+            return_variable: Some("result".to_string()),
+            location: TaintLocation {
+                file: "test.rs".to_string(),
+                line: 10,
+                column: 5,
+                function: Some("test_function".to_string()),
+            },
+            can_propagate_taint: true,
+        };
+
+        assert_eq!(func_def.name, "test_function");
+        assert_eq!(func_def.parameters.len(), 2);
+        assert_eq!(func_def.parameters[0], "param1");
+        assert!(func_def.can_propagate_taint);
+    }
+
+    #[test]
+    fn test_taint_step_types() {
+        let assignment_step = TaintStep {
+            step_type: TaintStepType::Assignment,
+            name: "variable".to_string(),
+            location: TaintLocation {
+                file: "test.rs".to_string(),
+                line: 5,
+                column: 10,
+                function: Some("main".to_string()),
+            },
+            is_sanitizer: false,
+            sanitizer_method: None,
+        };
+
+        assert_eq!(assignment_step.step_type, TaintStepType::Assignment);
+        assert!(!assignment_step.is_sanitizer);
+
+        let function_call_step = TaintStep {
+            step_type: TaintStepType::FunctionCall,
+            name: "sanitize".to_string(),
+            location: TaintLocation {
+                file: "test.rs".to_string(),
+                line: 8,
+                column: 15,
+                function: Some("main".to_string()),
+            },
+            is_sanitizer: true,
+            sanitizer_method: Some("html_escape".to_string()),
+        };
+
+        assert_eq!(function_call_step.step_type, TaintStepType::FunctionCall);
+        assert!(function_call_step.is_sanitizer);
+        assert_eq!(function_call_step.sanitizer_method.unwrap(), "html_escape");
+    }
+
+    #[test]
+    fn test_assignment_propagation_logic() {
+        let analyzer = TaintAnalyzer::new("rust");
+
+        // Test variable assignment propagation
+        let var_source = AssignmentSource::Variable("tainted_var".to_string());
+        assert!(analyzer.assignment_propagates_taint(&var_source));
+
+        // Test literal assignment (should not propagate)
+        let literal_source = AssignmentSource::Literal("safe_string".to_string());
+        assert!(!analyzer.assignment_propagates_taint(&literal_source));
+
+        // Test function call from taint source
+        let source_func = AssignmentSource::FunctionCall("std::env::args".to_string(), vec![]);
+        assert!(analyzer.assignment_propagates_taint(&source_func));
+
+        // Test function call from non-source
+        let safe_func = AssignmentSource::FunctionCall("safe_function".to_string(), vec![]);
+        assert!(!analyzer.assignment_propagates_taint(&safe_func));
+    }
+
+    #[test]
+    fn test_sanitizer_detection() {
+        let analyzer = TaintAnalyzer::new("rust");
+
+        // Test sanitizer function detection
+        assert!(analyzer.is_sanitizer_function("html_escape::encode_text"));
+        assert!(!analyzer.is_sanitizer_function("regular_function"));
+
+        // Test sanitizer assignment
+        let sanitizer_assignment = VariableAssignment {
+            target: "clean_data".to_string(),
+            source: AssignmentSource::FunctionCall("html_escape::encode_text".to_string(), vec!["dirty_data".to_string()]),
+            location: TaintLocation {
+                file: "test.rs".to_string(),
+                line: 10,
+                column: 5,
+                function: Some("main".to_string()),
+            },
+            propagates_taint: false,
+        };
+
+        assert!(analyzer.is_sanitizer_assignment(&sanitizer_assignment));
+        assert_eq!(analyzer.get_sanitizer_method(&sanitizer_assignment).unwrap(), "html_escape::encode_text");
     }
 }
