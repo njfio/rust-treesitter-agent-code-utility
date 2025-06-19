@@ -1,8 +1,8 @@
 # Rust Tree-sitter Agent Code Utility
 
-A comprehensive Rust library for parsing and analyzing source code using tree-sitter. Provides advanced abstractions for parsing, navigating, and querying syntax trees across multiple programming languages with sophisticated analysis capabilities for security, performance, code quality, and AI-assisted development.
+A Rust library for parsing and analyzing source code using tree-sitter. Provides abstractions for parsing, navigating, and querying syntax trees across multiple programming languages with analysis capabilities for security, performance, and code quality.
 
-Built for developers, security researchers, and AI systems that need deep code analysis tools and insights into code structure, quality, and security posture.
+Built for developers and AI systems that need code analysis tools and insights into code structure and quality.
 
 ## Table of Contents
 
@@ -22,31 +22,30 @@ Built for developers, security researchers, and AI systems that need deep code a
 - **7 Programming Languages**: Rust, JavaScript, TypeScript, Python, C, C++, Go
 - **Language Detection**: Automatic detection from file extensions and content analysis
 - **Symbol Extraction**: Functions, classes, structs, methods, types, interfaces, implementations
-- **Advanced Language Features**: Language-specific construct detection and analysis
+- **Language Features**: Language-specific construct detection and analysis
 
-### Enhanced Analysis Capabilities
+### Analysis Capabilities
 
-- **Codebase Analysis**: Comprehensive directory analysis with file metrics, symbol extraction, and statistics
-- **Advanced Security Scanning**: Multi-layered vulnerability detection with OWASP categorization, secrets detection, and dependency analysis
-- **Performance Analysis**: Cyclomatic complexity calculation, hotspot detection, and optimization recommendations
-- **Dependency Analysis**: Package manager file parsing with vulnerability scanning (package.json, requirements.txt, Cargo.toml, go.mod)
-- **Code Quality Analysis**: Code smell detection, refactoring suggestions, and improvement recommendations
-- **Intent Mapping**: AI-assisted mapping between requirements and implementation for development workflow optimization
+- **Codebase Analysis**: Directory analysis with file metrics, symbol extraction, and statistics
+- **Security Scanning**: Pattern-based vulnerability detection with OWASP categorization
+- **Performance Analysis**: Cyclomatic complexity calculation and optimization recommendations
+- **Dependency Analysis**: Package manager file parsing (package.json, requirements.txt, Cargo.toml, go.mod)
+- **Code Quality Analysis**: Code smell detection and refactoring suggestions
+- **Intent Mapping**: Requirements to implementation mapping for development workflow
 
-### AI-Assisted Features
+### Advanced Features
 
-- **Semantic Knowledge Graphs**: Build and query semantic relationships between code elements
+- **Semantic Knowledge Graphs**: Build and query relationships between code elements
 - **Automated Reasoning**: Logic-based code analysis and inference capabilities
-- **Intent-to-Implementation Mapping**: Track requirements to code implementation relationships
-- **Smart Refactoring Engine**: AI-powered code improvement suggestions and automated refactoring
+- **Smart Refactoring Engine**: Code improvement suggestions and automated refactoring
 
 ### CLI Interface
 
-- **Comprehensive Commands**: analyze, security, refactor, dependencies, symbols, query, find, map, explain, insights, interactive
-- **Multiple Output Formats**: JSON, table, markdown, summary with detailed reporting
-- **Progress Tracking**: Real-time progress indicators for long-running operations
-- **Advanced Filtering**: Severity levels, file types, symbol types, confidence thresholds
-- **Interactive Mode**: Real-time code exploration and analysis
+- **Available Commands**: analyze, security, refactor, dependencies, symbols, query, find, map, explain, insights, interactive
+- **Output Formats**: JSON, table, markdown, summary
+- **Progress Tracking**: Real-time progress indicators
+- **Filtering**: Severity levels, file types, symbol types
+- **Interactive Mode**: Real-time code exploration
 
 ## CLI Commands
 
@@ -67,9 +66,9 @@ Options:
 tree-sitter-cli analyze ./src --format json
 ```
 
-### `security` - Advanced Security Vulnerability Scanning
+### `security` - Security Vulnerability Scanning
 
-Comprehensive security analysis with multi-layered vulnerability detection, secrets scanning, and dependency analysis.
+Pattern-based security analysis with vulnerability detection and compliance assessment.
 
 ```bash
 tree-sitter-cli security <PATH> [OPTIONS]
@@ -77,27 +76,25 @@ tree-sitter-cli security <PATH> [OPTIONS]
 Options:
   -f, --format <FORMAT>         Output format: table, json, markdown [default: table]
   --min-severity <SEVERITY>     Minimum severity: critical, high, medium, low, info [default: medium]
-  --save-report <FILE>          Save detailed report to file
-  --enable-secrets              Enable secrets detection
-  --enable-dependencies         Enable dependency vulnerability scanning
-  --confidence <THRESHOLD>      Minimum confidence threshold (0.0-1.0) [default: 0.7]
+  --output <FILE>               Save detailed report to file
+  --summary-only                Show summary only
+  --compliance                  Include compliance assessment
+  --depth <LEVEL>               Analysis depth: basic, deep, full [default: full]
 ```
 
 **Example:**
 
 ```bash
-tree-sitter-cli security ./src --min-severity high --format json --enable-secrets
+tree-sitter-cli security ./src --min-severity high --format json
 ```
 
-**Advanced Detection Capabilities:**
+**Detection Capabilities:**
 
-- **OWASP Top 10**: SQL injection, XSS, insecure deserialization, broken authentication
-- **Secrets Detection**: API keys, passwords, tokens, certificates with entropy analysis
-- **Dependency Vulnerabilities**: Known CVEs in project dependencies
-- **Cryptographic Issues**: Weak algorithms, insecure practices, key management
-- **Input Validation**: Missing validation patterns and sanitization
-- **Authorization Flaws**: Missing access controls and privilege escalation
+- **OWASP Patterns**: SQL injection, XSS, insecure deserialization, broken authentication
 - **Code Injection**: Command injection, code execution vulnerabilities
+- **Input Validation**: Missing validation patterns and sanitization
+- **Authorization**: Missing access controls and privilege escalation
+- **Cryptographic Issues**: Weak algorithms and insecure practices
 - **Compliance Assessment**: OWASP and CWE compliance scoring
 
 ### `symbols` - Symbol Extraction
@@ -126,139 +123,142 @@ tree-sitter-cli symbols ./src --format json
 
 ### `refactor` - Smart Refactoring Engine
 
-AI-powered code improvement suggestions with automated refactoring capabilities.
+Code improvement suggestions with refactoring capabilities.
 
 ```bash
 tree-sitter-cli refactor <PATH> [OPTIONS]
 
 Options:
   -f, --format <FORMAT>    Output format: table, json, markdown [default: table]
-  --auto-apply             Automatically apply safe refactoring suggestions
-  --complexity-threshold   Maximum complexity threshold for suggestions
+  --category <CATEGORY>    Focus category: all, code_smells, patterns, performance
+  --quick-wins             Show only quick wins
+  --major-only             Show only major improvements
+  --min-priority <LEVEL>   Minimum priority: low, medium, high, critical
+  --output <FILE>          Save detailed report to file
 ```
 
-**Advanced Capabilities:**
+**Capabilities:**
 
 - **Code Smell Detection**: Identify anti-patterns and code quality issues
 - **Design Pattern Recommendations**: Suggest appropriate design patterns
 - **Modernization Suggestions**: Update code to use modern language features
 - **Performance Optimization**: Identify and suggest performance improvements
-- **Automated Refactoring**: Safe, automated code transformations
 - **Complexity Reduction**: Simplify overly complex code structures
 
-### `dependencies` - Enhanced Dependency Analysis
+### `dependencies` - Dependency Analysis
 
-Comprehensive dependency analysis with vulnerability scanning and license compliance.
+Dependency analysis with package manager integration.
 
 ```bash
 tree-sitter-cli dependencies <PATH> [OPTIONS]
 
 Options:
   -f, --format <FORMAT>    Output format: table, json, markdown [default: table]
-  --check-vulnerabilities  Check for known vulnerabilities in dependencies
-  --license-compliance     Analyze license compatibility
+  --include-dev            Include development dependencies
+  --vulnerabilities        Enable vulnerability scanning
+  --licenses               Enable license compliance checking
   --outdated               Show outdated dependencies
+  --graph                  Show dependency graph analysis
+  --output <FILE>          Save detailed report to file
 ```
 
-**Enhanced Features:**
+**Features:**
 
 - **Multi-Language Support**: package.json (Node.js), requirements.txt (Python), Cargo.toml (Rust), go.mod (Go)
-- **Vulnerability Scanning**: Check dependencies against known CVE databases
-- **License Analysis**: Identify license conflicts and compliance issues
-- **Dependency Tree**: Visualize dependency relationships and conflicts
-- **Update Recommendations**: Suggest safe dependency updates
+- **Dependency Tree**: Visualize dependency relationships
+- **License Analysis**: Identify license information
+- **Update Information**: Show outdated dependencies
 
-### `query` - Advanced Code Querying
+### `query` - Code Querying
 
-Powerful code search and analysis using semantic queries.
+Code search and analysis using tree-sitter queries.
 
 ```bash
-tree-sitter-cli query <PATH> <QUERY> [OPTIONS]
+tree-sitter-cli query <PATH> [OPTIONS]
 
 Options:
+  -p, --pattern <PATTERN>  Tree-sitter query pattern
+  -l, --language <LANG>    Target specific language
+  -c, --context <LINES>    Show context lines around matches [default: 2]
   -f, --format <FORMAT>    Output format: table, json [default: table]
-  --language <LANG>        Target specific language
-  --context <LINES>        Show context lines around matches
 ```
 
-**Example:**
+### `find` - Symbol Search
+
+Find symbols and patterns across the codebase.
 
 ```bash
-tree-sitter-cli query ./src "function.*authenticate" --language rust
-```
-
-### `find` - Semantic Code Search
-
-Find code patterns, symbols, and relationships across the codebase.
-
-```bash
-tree-sitter-cli find <PATH> <PATTERN> [OPTIONS]
+tree-sitter-cli find <PATH> [OPTIONS]
 
 Options:
-  -t, --type <TYPE>        Search type: symbol, pattern, reference
-  --case-sensitive         Case-sensitive search
-  --whole-word             Match whole words only
+  --name <PATTERN>         Symbol name pattern
+  --symbol-type <TYPE>     Symbol type filter
+  --language <LANG>        Target specific language
+  --public-only            Show only public symbols
 ```
 
-### `map` - Intent-to-Implementation Mapping
+### `map` - Code Structure Mapping
 
-Map business requirements and user stories to code implementations.
+Generate visual maps of code structure and relationships.
 
 ```bash
 tree-sitter-cli map <PATH> [OPTIONS]
 
 Options:
-  -f, --format <FORMAT>    Output format: table, json, markdown [default: table]
-  --requirements <FILE>    Requirements specification file
-  --confidence <THRESHOLD> Minimum mapping confidence threshold
+  --map-type <TYPE>        Map type: overview, tree, symbols, dependencies
+  -f, --format <FORMAT>    Output format: unicode, ascii, json, mermaid
+  --max-depth <DEPTH>      Maximum depth to show
+  --show-sizes             Show file sizes
+  --show-symbols           Show symbol counts
+  --languages <LANGS>      Filter by languages
+  --collapse-empty         Collapse empty directories
 ```
 
-**Capabilities:**
+### `explain` - Code Explanation
 
-- **Requirement Tracing**: Track requirements to implementation
-- **Coverage Analysis**: Identify missing or incomplete implementations
-- **Quality Assessment**: Evaluate implementation quality against requirements
-- **Gap Analysis**: Find unimplemented requirements and orphaned code
-
-### `explain` - AI Code Explanation
-
-Generate comprehensive explanations of code functionality and architecture.
+Generate explanations of code functionality and architecture.
 
 ```bash
 tree-sitter-cli explain <PATH> [OPTIONS]
 
 Options:
+  --file <FILE>            Specific file to explain
+  --symbol <SYMBOL>        Specific symbol to explain
   -f, --format <FORMAT>    Output format: markdown, json [default: markdown]
-  --detail-level <LEVEL>   Explanation detail: basic, detailed, comprehensive
-  --include-examples       Include usage examples
+  --detailed               Include detailed analysis
+  --learning               Include learning recommendations
 ```
 
 ### `insights` - Codebase Insights
 
-Generate high-level insights and recommendations for the codebase.
+Generate insights and recommendations for the codebase.
 
 ```bash
 tree-sitter-cli insights <PATH> [OPTIONS]
 
 Options:
-  -f, --format <FORMAT>    Output format: table, json, markdown [default: table]
-  --focus <AREA>           Focus area: security, performance, quality, architecture
+  --focus <AREA>           Focus area: all, architecture, quality, complexity
+  -f, --format <FORMAT>    Output format: markdown, json, text [default: markdown]
 ```
 
-### `interactive` - Interactive Analysis Mode
+### `interactive` - Interactive Mode
 
-Enter interactive mode for real-time code exploration and analysis.
+Enter interactive mode for real-time code exploration.
 
 ```bash
 tree-sitter-cli interactive <PATH>
 ```
 
-**Interactive Features:**
+### `stats` - Codebase Statistics
 
-- **Real-time Analysis**: Instant feedback as you explore code
-- **Command History**: Navigate through previous commands
-- **Context-Aware Suggestions**: Smart suggestions based on current context
-- **Multi-format Output**: Switch between output formats dynamically
+Show comprehensive statistics about the codebase.
+
+```bash
+tree-sitter-cli stats <PATH> [OPTIONS]
+
+Options:
+  --top <N>                Show top N files by various metrics [default: 10]
+```
 
 ## Quick Start
 
@@ -336,33 +336,27 @@ for file_info in &result.files {
 }
 ```
 
-### Advanced Security Analysis
+### Security Analysis
 
 ```rust
-use rust_tree_sitter::{CodebaseAnalyzer, EnhancedSecurityScanner};
+use rust_tree_sitter::{CodebaseAnalyzer, AdvancedSecurityAnalyzer};
 use std::path::PathBuf;
 
 // Analyze codebase
 let mut analyzer = CodebaseAnalyzer::new()?;
 let analysis = analyzer.analyze_directory(&PathBuf::from("./src"))?;
 
-// Run enhanced security scan
-let security_scanner = EnhancedSecurityScanner::new();
-let security_result = security_scanner.scan_analysis_result(&analysis)?;
+// Run security scan
+let security_analyzer = AdvancedSecurityAnalyzer::new();
+let security_result = security_analyzer.scan_analysis_result(&analysis)?;
 
 println!("Security Score: {}/100", security_result.security_score);
-println!("Found {} total findings", security_result.total_findings);
+println!("Found {} vulnerabilities", security_result.vulnerabilities.len());
 
 // Display vulnerabilities
-for vuln in &security_result.vulnerability_findings {
-    println!("🔒 {}: {} (confidence: {:.2})",
-             vuln.severity, vuln.title, vuln.confidence);
-}
-
-// Display secrets
-for secret in &security_result.secret_findings {
-    println!("🔑 {}: {} (entropy: {:.2})",
-             secret.secret_type, secret.location.file.display(), secret.entropy);
+for vuln in &security_result.vulnerabilities {
+    println!("🔒 {}: {} (line {})",
+             vuln.severity, vuln.title, vuln.location.line);
 }
 ```
 
@@ -391,7 +385,6 @@ let requirement = Requirement {
     ],
     stakeholders: vec!["Product Owner".to_string()],
     tags: vec!["authentication".to_string(), "security".to_string()],
-    status: RequirementStatus::Approved,
 };
 
 mapping_system.add_requirement(requirement);
@@ -399,11 +392,6 @@ mapping_system.add_requirement(requirement);
 // Generate mappings
 let mappings = mapping_system.generate_mappings(&analysis)?;
 println!("Generated {} mappings", mappings.len());
-
-// Build traceability matrix
-let traceability = mapping_system.build_traceability_matrix()?;
-println!("Requirement coverage: {:.1}%",
-         traceability.coverage_metrics.requirement_coverage * 100.0);
 ```
 
 ### Performance Analysis
@@ -418,14 +406,14 @@ let analysis = analyzer.analyze_directory(&PathBuf::from("./src"))?;
 
 // Run performance analysis
 let perf_analyzer = PerformanceAnalyzer::new();
-let perf_result = perf_analyzer.analyze_performance(&analysis)?;
+let perf_result = perf_analyzer.analyze(&analysis)?;
 
-println!("Performance Score: {}/100", perf_result.overall_score);
+println!("Performance Score: {}/100", perf_result.performance_score);
 println!("Found {} hotspots", perf_result.hotspots.len());
 
 for hotspot in &perf_result.hotspots {
-    println!("⚡ {}: {} (impact: {})",
-             hotspot.hotspot_type, hotspot.location.file.display(), hotspot.impact_score);
+    println!("⚡ {}: {} (severity: {:?})",
+             hotspot.category, hotspot.location.file.display(), hotspot.severity);
 }
 ```
 
@@ -453,6 +441,7 @@ for hotspot in &perf_result.hotspots {
 ### Security Vulnerability Detection
 
 Pattern-based detection for:
+
 - **SQL Injection**: Unsafe query construction
 - **Command Injection**: Unsafe command execution
 - **XSS**: Cross-site scripting patterns
@@ -465,26 +454,26 @@ Pattern-based detection for:
 
 ### Current Test Status
 
-- **156 Total Tests Passing**: Comprehensive test suite covering all functionality
-- **Core Parsing**: All parsing functionality working across 7 languages with full coverage
-- **Symbol Extraction**: Working for all supported languages with comprehensive symbol detection
-- **Enhanced Security Analysis**: Multi-layered security scanning with OWASP categorization, secrets detection, and dependency analysis
-- **Performance Analysis**: Cyclomatic complexity calculation, hotspot detection, and optimization recommendations
-- **Intent Mapping**: Requirements-to-implementation mapping with validation and traceability
-- **AI-Assisted Features**: Semantic analysis, automated reasoning, and code explanation
-- **CLI Commands**: All 11 commands working with comprehensive option support
-- **Output Formats**: JSON, table, markdown, summary formats with detailed reporting
-- **Error Handling**: Robust Result<T,E> patterns throughout with comprehensive error coverage
-- **Constants Management**: Centralized configuration with validation and consistency checks
+- **313 Total Tests Passing**: Comprehensive test suite covering all functionality
+- **Core Parsing**: All parsing functionality working across 7 languages
+- **Symbol Extraction**: Working for all supported languages with symbol detection
+- **Security Analysis**: Pattern-based security scanning with OWASP categorization
+- **Performance Analysis**: Cyclomatic complexity calculation and optimization recommendations
+- **Intent Mapping**: Requirements-to-implementation mapping with validation
+- **Advanced Features**: Semantic analysis, automated reasoning, and code explanation
+- **CLI Commands**: All commands working with comprehensive option support
+- **Output Formats**: JSON, table, markdown, summary formats
+- **Error Handling**: Robust Result<T,E> patterns throughout
+- **Constants Management**: Centralized configuration with validation
 
 ### Test Categories
 
-- **Unit Tests**: 156 tests covering individual components and functions
+- **Unit Tests**: 313 tests covering individual components and functions
 - **Integration Tests**: End-to-end testing of CLI commands and workflows
 - **Error Handling Tests**: Comprehensive error condition and edge case testing
 - **Configuration Tests**: Validation of all configuration options and defaults
-- **Security Tests**: Vulnerability detection accuracy and false positive prevention
-- **Performance Tests**: Analysis accuracy and optimization recommendation validation
+- **Security Tests**: Vulnerability detection and pattern matching
+- **Performance Tests**: Analysis accuracy and recommendation validation
 
 ## Contributing
 

@@ -8,6 +8,9 @@
 //! - Performance bottleneck identification
 
 use crate::{AnalysisResult, FileInfo, Result};
+use crate::analysis_utils::{
+    LanguageParser, ComplexityCalculator, PatternDetector
+};
 use crate::constants::performance::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -1471,89 +1474,17 @@ impl PerformanceAnalyzer {
 
     /// Parse language string to Language enum
     fn parse_language(&self, language: &str) -> Option<crate::Language> {
-        use crate::Language;
-
-        match language.to_lowercase().as_str() {
-            "rust" => Some(Language::Rust),
-            "python" => Some(Language::Python),
-            "javascript" => Some(Language::JavaScript),
-            "typescript" => Some(Language::TypeScript),
-            "c" => Some(Language::C),
-            "cpp" | "c++" => Some(Language::Cpp),
-            "go" => Some(Language::Go),
-            _ => None,
-        }
+        LanguageParser::parse_language(language)
     }
 
     /// Create syntax tree from content and language
     fn create_syntax_tree(&self, content: &str, lang: crate::Language) -> Option<crate::SyntaxTree> {
-        use crate::Parser;
-
-        let parser = Parser::new(lang).ok()?;
-        parser.parse(content, None).ok()
+        LanguageParser::create_syntax_tree(content, lang)
     }
 
     /// Calculate cyclomatic complexity from AST
     fn calculate_cyclomatic_complexity(&self, tree: &crate::SyntaxTree, _content: &str, language: &str) -> f64 {
-        let mut complexity = 1.0; // Base complexity
-
-        // Define control flow patterns for different languages
-        let control_patterns = match language.to_lowercase().as_str() {
-            "rust" => vec![
-                "if_expression", "if_let_expression", "while_expression", "while_let_expression",
-                "for_expression", "loop_expression", "match_expression", "match_arm",
-                "try_expression", "catch_clause"
-            ],
-            "python" => vec![
-                "if_statement", "elif_clause", "while_statement", "for_statement",
-                "try_statement", "except_clause", "with_statement", "match_statement", "case_clause"
-            ],
-            "javascript" | "typescript" => vec![
-                "if_statement", "while_statement", "for_statement", "for_in_statement", "for_of_statement",
-                "switch_statement", "case_clause", "try_statement", "catch_clause", "conditional_expression"
-            ],
-            "c" | "cpp" | "c++" => vec![
-                "if_statement", "while_statement", "for_statement", "do_statement",
-                "switch_statement", "case_statement", "conditional_expression"
-            ],
-            "go" => vec![
-                "if_statement", "for_statement", "switch_statement", "type_switch_statement",
-                "case_clause", "select_statement", "communication_clause"
-            ],
-            _ => vec!["if_statement", "while_statement", "for_statement", "switch_statement"],
-        };
-
-        // Count control flow nodes
-        for pattern in control_patterns {
-            let nodes = tree.find_nodes_by_kind(pattern);
-            complexity += nodes.len() as f64;
-        }
-
-        // Special handling for match arms in Rust
-        if language.to_lowercase() == "rust" {
-            let match_expressions = tree.find_nodes_by_kind("match_expression");
-            for match_expr in match_expressions {
-                // Count match arms by looking for match_arm children
-                let arms = match_expr.children().into_iter().filter(|child| child.kind() == "match_arm").count();
-                if arms > 1 {
-                    complexity += (arms - 1) as f64; // Each additional arm adds complexity
-                }
-            }
-        }
-
-        // Special handling for switch cases
-        if matches!(language.to_lowercase().as_str(), "javascript" | "typescript" | "c" | "cpp" | "c++" | "go") {
-            let switch_statements = tree.find_nodes_by_kind("switch_statement");
-            for switch_stmt in switch_statements {
-                // Count case clauses by looking for case_clause children
-                let cases = switch_stmt.children().into_iter().filter(|child| child.kind() == "case_clause").count();
-                if cases > 1 {
-                    complexity += (cases - 1) as f64;
-                }
-            }
-        }
-
-        complexity
+        ComplexityCalculator::calculate_cyclomatic_complexity(tree, language)
     }
 
     fn count_nested_loops(&self, file: &FileInfo) -> usize {
@@ -1570,58 +1501,10 @@ impl PerformanceAnalyzer {
 
     /// Detect nested loops using AST analysis
     fn detect_nested_loops(&self, content: &str, language: &str) -> usize {
-        use crate::{Language, Parser};
-
-        let lang = match language.to_lowercase().as_str() {
-            "rust" => Language::Rust,
-            "python" => Language::Python,
-            "javascript" => Language::JavaScript,
-            "typescript" => Language::TypeScript,
-            "c" => Language::C,
-            "cpp" | "c++" => Language::Cpp,
-            "go" => Language::Go,
-            _ => return 0,
-        };
-
-        let parser = match Parser::new(lang) {
-            Ok(p) => p,
-            Err(_) => return 0,
-        };
-
-        let tree = match parser.parse(content, None) {
-            Ok(t) => t,
-            Err(_) => return 0,
-        };
-
-        self.count_nested_loop_patterns(&tree, language)
+        PatternDetector::count_nested_loops(content, language)
     }
 
-    /// Count nested loop patterns in AST
-    fn count_nested_loop_patterns(&self, tree: &crate::SyntaxTree, language: &str) -> usize {
-        let loop_patterns = match language.to_lowercase().as_str() {
-            "rust" => vec!["for_expression", "while_expression", "while_let_expression", "loop_expression"],
-            "python" => vec!["for_statement", "while_statement"],
-            "javascript" | "typescript" => vec!["for_statement", "for_in_statement", "for_of_statement", "while_statement", "do_statement"],
-            "c" | "cpp" | "c++" => vec!["for_statement", "while_statement", "do_statement"],
-            "go" => vec!["for_statement"],
-            _ => vec!["for_statement", "while_statement"],
-        };
 
-        let mut nested_count = 0;
-
-        for pattern in &loop_patterns {
-            let loops = tree.find_nodes_by_kind(pattern);
-            for loop_node in loops {
-                // Check if this loop contains other loops (nested)
-                let nested_loops = self.find_nested_loops_in_node(&loop_node, &loop_patterns);
-                if nested_loops > 0 {
-                    nested_count += 1;
-                }
-            }
-        }
-
-        nested_count
-    }
 
 
 

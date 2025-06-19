@@ -4,6 +4,9 @@
 //! to improve code quality, maintainability, and performance.
 
 use crate::{FileInfo, Symbol, AnalysisResult};
+use crate::analysis_utils::{
+    AnalysisThresholds, SymbolFilter, FileAnalyzer
+};
 use std::collections::HashMap;
 
 #[cfg(feature = "serde")]
@@ -274,8 +277,16 @@ impl RefactoringAnalyzer {
         }
         
         // Analyze symbol-level issues
-        for symbol in &file.symbols {
+        let function_symbols = SymbolFilter::filter_functions(&file.symbols);
+        for symbol in function_symbols {
             suggestions.extend(self.analyze_symbol(symbol, file));
+        }
+
+        // Also analyze other symbols
+        for symbol in &file.symbols {
+            if !SymbolFilter::is_function_or_method(symbol) {
+                suggestions.extend(self.analyze_symbol(symbol, file));
+            }
         }
         
         suggestions
@@ -313,7 +324,8 @@ impl RefactoringAnalyzer {
 
     /// Check if file is too large and create suggestion
     fn check_large_file(&self, file: &FileInfo) -> Option<RefactoringSuggestion> {
-        if file.lines <= 500 {
+        let thresholds = AnalysisThresholds::default();
+        if !FileAnalyzer::is_large_file(file, thresholds.large_file_lines) {
             return None;
         }
 

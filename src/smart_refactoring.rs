@@ -8,6 +8,9 @@
 //! - Architectural improvements with refactoring roadmaps
 
 use crate::{AnalysisResult, Result};
+use crate::analysis_utils::{
+    AnalysisThresholds, SymbolFilter, PatternDetector
+};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -1089,66 +1092,10 @@ impl SmartRefactoringEngine {
 
     /// Calculate function similarity based on name and structure
     fn calculate_function_similarity(&self, func1: &crate::Symbol, func2: &crate::Symbol) -> f64 {
-        // Simple similarity based on name patterns and size
-        let name_similarity = self.calculate_name_similarity(&func1.name, &func2.name);
-        let size_similarity = self.calculate_size_similarity(
-            func1.end_line - func1.start_line,
-            func2.end_line - func2.start_line
-        );
-
-        (name_similarity * 0.6 + size_similarity * 0.4).min(1.0)
+        PatternDetector::calculate_function_similarity(func1, func2)
     }
 
-    /// Calculate name similarity between two strings
-    fn calculate_name_similarity(&self, name1: &str, name2: &str) -> f64 {
-        if name1 == name2 {
-            return 1.0;
-        }
 
-        let common_prefixes = ["get", "set", "create", "build", "make", "process", "handle"];
-        let common_suffixes = ["data", "info", "result", "value", "item", "object"];
-
-        let mut similarity = 0.0;
-
-        // Check for common prefixes
-        for prefix in &common_prefixes {
-            if name1.starts_with(prefix) && name2.starts_with(prefix) {
-                similarity += 0.3;
-                break;
-            }
-        }
-
-        // Check for common suffixes
-        for suffix in &common_suffixes {
-            if name1.ends_with(suffix) && name2.ends_with(suffix) {
-                similarity += 0.3;
-                break;
-            }
-        }
-
-        // Check for common substrings
-        let common_chars = name1.chars()
-            .filter(|c| name2.contains(*c))
-            .count();
-        let max_len = name1.len().max(name2.len());
-        if max_len > 0 {
-            similarity += (common_chars as f64 / max_len as f64) * 0.4;
-        }
-
-        similarity.min(1.0)
-    }
-
-    /// Calculate size similarity between two functions
-    fn calculate_size_similarity(&self, size1: usize, size2: usize) -> f64 {
-        let diff = (size1 as i32 - size2 as i32).abs() as f64;
-        let max_size = size1.max(size2) as f64;
-
-        if max_size == 0.0 {
-            return 1.0;
-        }
-
-        (1.0 - (diff / max_size)).max(0.0)
-    }
 
     /// Generate duplicate code refactoring suggestion
     fn generate_duplicate_code_refactoring(&self, func1: &str, func2: &str) -> String {
@@ -1261,19 +1208,15 @@ impl SmartRefactoringEngine {
     fn detect_long_methods(&self, file: &crate::FileInfo) -> Result<Vec<CodeSmellFix>> {
         let mut fixes = Vec::new();
 
-        for symbol in &file.symbols {
-            if symbol.kind == "function" || symbol.kind == "method" {
-                let line_count = symbol.end_line.saturating_sub(symbol.start_line) + 1;
+        let thresholds = AnalysisThresholds::default();
+        let function_symbols = SymbolFilter::filter_functions(&file.symbols);
 
-                // Use different thresholds based on language (more sensitive for testing)
-                let threshold = match file.language.as_str() {
-                    "rust" => 15,  // Lowered for better detection
-                    "javascript" | "typescript" => 15,
-                    "python" => 20,
-                    "c" | "cpp" => 25,
-                    "go" => 15,
-                    _ => 20,
-                };
+        for symbol in function_symbols {
+            let line_count = SymbolFilter::calculate_line_count(symbol);
+            let threshold = thresholds.long_method_lines
+                .get(&file.language)
+                .copied()
+                .unwrap_or(20);
 
                 if line_count > threshold {
                     // Calculate complexity score based on multiple factors
@@ -1315,7 +1258,6 @@ impl SmartRefactoringEngine {
                         });
                     }
                 }
-            }
         }
 
         Ok(fixes)
@@ -1505,37 +1447,14 @@ impl SmartRefactoringEngine {
     fn detect_string_concatenation_issues(&self, content: &str, file: &crate::FileInfo) -> Result<Vec<PerformanceOptimization>> {
         let mut optimizations = Vec::new();
 
-        // Look for patterns like: result = result + &something or result += &something
-        let lines: Vec<&str> = content.lines().collect();
-        let mut in_loop = false;
-        let mut loop_depth = 0;
-
-        for (line_num, line) in lines.iter().enumerate() {
-            let trimmed = line.trim();
-
-            // Track loop nesting
-            if trimmed.contains("for ") || trimmed.contains("while ") || trimmed.contains("loop ") {
-                in_loop = true;
-                loop_depth += 1;
-            }
-            if trimmed.contains('}') && loop_depth > 0 {
-                loop_depth -= 1;
-                if loop_depth == 0 {
-                    in_loop = false;
-                }
-            }
-
-            // Detect string concatenation patterns in loops
-            if in_loop && (
-                (trimmed.contains(" = ") && trimmed.contains(" + ") && (trimmed.contains("String") || trimmed.contains("&") || trimmed.contains(".to_string()"))) ||
-                (trimmed.contains("+=") && (trimmed.contains("&") || trimmed.contains(".to_string()")))
-            ) {
-                optimizations.push(PerformanceOptimization {
-                    id: format!("STRING_CONCAT_LOOP_{}_{}", file.path.display(), line_num),
+        // Use shared utility to detect string concatenation in loops
+        if PatternDetector::detect_string_concatenation_in_loops(content) {
+            optimizations.push(PerformanceOptimization {
+                    id: format!("STRING_CONCAT_LOOP_{}", file.path.display()),
                     name: "String Concatenation in Loop".to_string(),
                     optimization_type: OptimizationType::Algorithm,
                     description: "String concatenation in loop detected. This creates new string objects on each iteration, causing performance issues.".to_string(),
-                    current_code: format!("// Line {}: {}", line_num + 1, trimmed),
+                    current_code: "// String concatenation in loop detected".to_string(),
                     optimized_code: "// Use String::with_capacity() and push_str() instead:\nlet mut result = String::with_capacity(estimated_size);\nfor item in items {\n    result.push_str(&item.to_string());\n}\n// Or use iterator methods:\nlet result = items.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(\"\");".to_string(),
                     improvement_explanation: "Using push_str() or pre-allocating capacity avoids repeated memory allocations and string copying".to_string(),
                     expected_gain: PerformanceGain {
@@ -1552,8 +1471,6 @@ impl SmartRefactoringEngine {
                         "Profile string creation overhead".to_string(),
                     ],
                 });
-                break; // Only report one per file to avoid duplicates
-            }
         }
 
         Ok(optimizations)
@@ -1614,31 +1531,11 @@ impl SmartRefactoringEngine {
     fn detect_nested_loop_issues(&self, content: &str, file: &crate::FileInfo) -> Result<Vec<PerformanceOptimization>> {
         let mut optimizations = Vec::new();
 
-        // Count nested for loops more accurately
-        let lines: Vec<&str> = content.lines().collect();
-        let mut loop_depth = 0;
-        let mut max_depth = 0;
-        let mut has_nested_loops = false;
+        // Use shared utility to count nested loops
+        let max_depth = PatternDetector::count_nested_loops(content, &file.language);
+        let thresholds = AnalysisThresholds::default();
 
-        for line in &lines {
-            let trimmed = line.trim();
-
-            // Count opening braces after for statements
-            if trimmed.contains("for ") {
-                loop_depth += 1;
-                max_depth = max_depth.max(loop_depth);
-                if loop_depth > 1 {
-                    has_nested_loops = true;
-                }
-            }
-
-            // Count closing braces (simplified - assumes proper nesting)
-            if trimmed == "}" && loop_depth > 0 {
-                loop_depth -= 1;
-            }
-        }
-
-        if has_nested_loops && max_depth >= 2 {
+        if max_depth >= thresholds.nested_loop_threshold {
             optimizations.push(PerformanceOptimization {
                 id: format!("NESTED_LOOPS_{}", file.path.display()),
                 name: "Nested Loop Optimization".to_string(),
