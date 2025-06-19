@@ -387,11 +387,14 @@ impl ControlFlowGraph {
         let nodes = self.graph.node_count();
         let components = 1; // Assuming single connected component for now
 
-        if nodes == 0 {
-            return 1; // Minimum complexity
+        if nodes <= 2 {
+            return 1; // Minimum complexity for entry/exit only
         }
 
-        edges.saturating_sub(nodes) + (2 * components)
+        // For a simple linear flow with entry and exit, complexity should be 1
+        // Decision points add to complexity
+        let decision_points = self.decision_points().len();
+        1 + decision_points
     }
 
     /// Get all decision points in the CFG
