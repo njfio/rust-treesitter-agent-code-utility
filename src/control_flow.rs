@@ -196,9 +196,56 @@ impl CfgBuilder {
             kind if self.is_return(kind) => {
                 self.build_return_cfg(graph, byte_to_node, node, entry, exit)?;
             }
-            // Sequential statements
+            // Sequential statements - traverse children to find control flow
             _ => {
-                self.build_sequential_cfg(graph, byte_to_node, node, entry, exit)?;
+                self.traverse_and_build_cfg(graph, byte_to_node, node, entry, exit)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Traverse AST node and build CFG for any control flow found
+    fn traverse_and_build_cfg(
+        &self,
+        graph: &mut DiGraph<CfgNodeType, ()>,
+        byte_to_node: &mut HashMap<usize, NodeIndex>,
+        node: tree_sitter::Node<'_>,
+        entry: NodeIndex,
+        exit: NodeIndex,
+    ) -> Result<()> {
+        let mut cursor = node.walk();
+        let mut current_entry = entry;
+
+        if cursor.goto_first_child() {
+            loop {
+                let child = cursor.node();
+
+                // Check if this child is a control flow statement
+                if self.is_conditional(child.kind()) || self.is_loop(child.kind()) || self.is_return(child.kind()) {
+                    // Create intermediate node if needed
+                    let intermediate_exit = if cursor.goto_next_sibling() {
+                        cursor.goto_previous_sibling(); // Go back to current child
+                        graph.add_node(CfgNodeType::BasicBlock {
+                            statements: vec!["intermediate".to_string()],
+                            start_byte: child.end_byte(),
+                            end_byte: child.end_byte(),
+                        })
+                    } else {
+                        exit
+                    };
+
+                    // Build CFG for this control flow node
+                    self.build_cfg_for_node(graph, byte_to_node, child, current_entry, intermediate_exit)?;
+                    current_entry = intermediate_exit;
+                } else {
+                    // Recursively traverse non-control-flow nodes
+                    self.traverse_and_build_cfg(graph, byte_to_node, child, current_entry, exit)?;
+                }
+
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
             }
         }
 
@@ -329,7 +376,7 @@ impl CfgBuilder {
         Ok(())
     }
 
-    /// Build CFG for sequential statements
+    /// Build CFG for sequential statements (now simplified since traverse_and_build_cfg handles complexity)
     fn build_sequential_cfg(
         &self,
         graph: &mut DiGraph<CfgNodeType, ()>,
@@ -338,36 +385,17 @@ impl CfgBuilder {
         entry: NodeIndex,
         exit: NodeIndex,
     ) -> Result<()> {
-        let mut statements = Vec::new();
-        let mut cursor = node.walk();
+        // Create a basic block for this sequential statement
+        let statement = node.kind().to_string();
+        let basic_block = graph.add_node(CfgNodeType::BasicBlock {
+            statements: vec![statement],
+            start_byte: node.start_byte(),
+            end_byte: node.end_byte(),
+        });
 
-        if cursor.goto_first_child() {
-            loop {
-                let child = cursor.node();
-                if !self.is_control_flow_node(child.kind()) {
-                    let statement = format!("{:?}", child.kind());
-                    statements.push(statement);
-                } else {
-                    // Handle control flow nodes recursively
-                    self.build_cfg_for_node(graph, byte_to_node, child, entry, exit)?;
-                }
-                if !cursor.goto_next_sibling() {
-                    break;
-                }
-            }
-        }
-
-        if !statements.is_empty() {
-            let basic_block = graph.add_node(CfgNodeType::BasicBlock {
-                statements,
-                start_byte: node.start_byte(),
-                end_byte: node.end_byte(),
-            });
-
-            byte_to_node.insert(node.start_byte(), basic_block);
-            graph.add_edge(entry, basic_block, ());
-            graph.add_edge(basic_block, exit, ());
-        }
+        byte_to_node.insert(node.start_byte(), basic_block);
+        graph.add_edge(entry, basic_block, ());
+        graph.add_edge(basic_block, exit, ());
 
         Ok(())
     }
@@ -383,9 +411,9 @@ impl ControlFlowGraph {
     pub fn cyclomatic_complexity(&self) -> usize {
         // McCabe's formula: CC = E - N + 2P
         // Where E = edges, N = nodes, P = connected components
-        let edges = self.graph.edge_count();
+        let _edges = self.graph.edge_count();
         let nodes = self.graph.node_count();
-        let components = 1; // Assuming single connected component for now
+        let _components = 1; // Assuming single connected component for now
 
         if nodes <= 2 {
             return 1; // Minimum complexity for entry/exit only
