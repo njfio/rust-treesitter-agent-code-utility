@@ -93,7 +93,7 @@ impl SyntaxTree {
         let end = range.end_byte;
         
         if end > self.source.len() {
-            return Err(Error::tree("Range extends beyond source text"));
+            return Err(Error::tree_error("Range extends beyond source text"));
         }
         
         Ok(&self.source[start..end])
@@ -134,7 +134,7 @@ impl<'a> Node<'a> {
     /// Get the text content of this node
     pub fn text(&self) -> Result<&'a str> {
         self.inner.utf8_text(self.source.as_bytes())
-            .map_err(|e| Error::tree(format!("Failed to get node text: {}", e)))
+            .map_err(|e| Error::tree_error(&format!("Failed to get node text: {}", e)))
     }
 
     /// Get the byte range of this node

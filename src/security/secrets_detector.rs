@@ -7,8 +7,13 @@ use crate::infrastructure::DatabaseManager;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::OnceLock;
 use tracing::{debug, warn};
 use anyhow::Result;
+
+/// Static regex patterns for secret extraction
+static QUOTE_REGEX: OnceLock<Regex> = OnceLock::new();
+static ASSIGNMENT_REGEX: OnceLock<Regex> = OnceLock::new();
 
 /// Real secrets detector with multiple detection methods
 pub struct SecretsDetector {
@@ -75,7 +80,6 @@ pub enum SecretSeverity {
 /// Context analyzer for reducing false positives
 pub struct ContextAnalyzer {
     test_file_patterns: Vec<Regex>,
-    example_patterns: Vec<Regex>,
     comment_patterns: Vec<Regex>,
 }
 
@@ -193,7 +197,7 @@ impl SecretsDetector {
                     let finding = SecretFinding {
                         id: uuid::Uuid::new_v4().to_string(),
                         secret_type: SecretType::HighEntropy,
-                        confidence: (entropy / 8.0).min(1.0) * 0.7, // Lower confidence for entropy-only
+                        confidence: (entropy / 8.0).min(1.0) * crate::constants::security::ENTROPY_CONFIDENCE_MULTIPLIER, // Lower confidence for entropy-only
                         entropy,
                         line_number: line_num + 1,
                         column_start: word.start,
@@ -239,9 +243,11 @@ impl SecretsDetector {
     /// Extract potential secret strings from a line
     fn extract_potential_secrets(&self, line: &str) -> Vec<PotentialSecret> {
         let mut secrets = Vec::new();
-        
+
         // Look for quoted strings
-        let quote_regex = Regex::new(r#"["']([^"']{16,})["']"#).unwrap();
+        let quote_regex = QUOTE_REGEX.get_or_init(|| {
+            Regex::new(r#"["']([^"']{16,})["']"#).expect("Failed to compile quote regex: hardcoded regex pattern should be valid")
+        });
         for mat in quote_regex.find_iter(line) {
             if let Some(captures) = quote_regex.captures(mat.as_str()) {
                 if let Some(content) = captures.get(1) {
@@ -255,7 +261,9 @@ impl SecretsDetector {
         }
 
         // Look for assignment values
-        let assignment_regex = Regex::new(r"=\s*([a-zA-Z0-9+/=]{16,})").unwrap();
+        let assignment_regex = ASSIGNMENT_REGEX.get_or_init(|| {
+            Regex::new(r"=\s*([a-zA-Z0-9+/=]{16,})").expect("Failed to compile assignment regex: hardcoded regex pattern should be valid")
+        });
         for mat in assignment_regex.find_iter(line) {
             if let Some(captures) = assignment_regex.captures(mat.as_str()) {
                 if let Some(content) = captures.get(1) {
@@ -425,12 +433,7 @@ impl ContextAnalyzer {
             Regex::new(r"demo")?,
         ];
 
-        let example_patterns = vec![
-            Regex::new(r"example")?,
-            Regex::new(r"sample")?,
-            Regex::new(r"demo")?,
-            Regex::new(r"placeholder")?,
-        ];
+
 
         let comment_patterns = vec![
             Regex::new(r"^\s*//")?,
@@ -441,7 +444,6 @@ impl ContextAnalyzer {
 
         Ok(Self {
             test_file_patterns,
-            example_patterns,
             comment_patterns,
         })
     }

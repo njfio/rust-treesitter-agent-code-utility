@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 #[test]
 fn analyzer_extracts_symbols() -> Result<(), Box<dyn std::error::Error>> {
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
     let analysis = analyzer.analyze_directory(PathBuf::from("test_files"))?;
     let total_symbols: usize = analysis.files.iter().map(|f| f.symbols.len()).sum();
     assert!(total_symbols > 0);

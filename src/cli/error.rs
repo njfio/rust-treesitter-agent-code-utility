@@ -95,6 +95,12 @@ impl From<crate::error::Error> for CliError {
     }
 }
 
+impl From<String> for CliError {
+    fn from(err: String) -> Self {
+        CliError::Analysis(err)
+    }
+}
+
 /// Result type for CLI operations
 pub type CliResult<T> = Result<T, CliError>;
 

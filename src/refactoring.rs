@@ -4,6 +4,9 @@
 //! to improve code quality, maintainability, and performance.
 
 use crate::{FileInfo, Symbol, AnalysisResult};
+use crate::analysis_utils::{
+    AnalysisThresholds, SymbolFilter, FileAnalyzer
+};
 use std::collections::HashMap;
 
 #[cfg(feature = "serde")]
@@ -122,7 +125,7 @@ pub struct ImpactSummary {
 }
 
 /// Categories of refactoring
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum RefactoringCategory {
     /// Complexity reduction
@@ -231,7 +234,7 @@ impl RefactoringAnalyzer {
         // Categorize suggestions
         let mut suggestions_by_category = HashMap::new();
         for suggestion in &suggestions {
-            *suggestions_by_category.entry(suggestion.category.clone()).or_insert(0) += 1;
+            *suggestions_by_category.entry(suggestion.category).or_insert(0) += 1;
         }
         
         // Separate quick wins and major improvements
@@ -274,8 +277,16 @@ impl RefactoringAnalyzer {
         }
         
         // Analyze symbol-level issues
-        for symbol in &file.symbols {
+        let function_symbols = SymbolFilter::filter_functions(&file.symbols);
+        for symbol in function_symbols {
             suggestions.extend(self.analyze_symbol(symbol, file));
+        }
+
+        // Also analyze other symbols
+        for symbol in &file.symbols {
+            if !SymbolFilter::is_function_or_method(symbol) {
+                suggestions.extend(self.analyze_symbol(symbol, file));
+            }
         }
         
         suggestions
@@ -299,90 +310,146 @@ impl RefactoringAnalyzer {
     /// Analyze file complexity and suggest improvements
     fn analyze_file_complexity(&self, file: &FileInfo) -> Vec<RefactoringSuggestion> {
         let mut suggestions = Vec::new();
-        
-        // Check if file is too large
-        if file.lines > 500 {
-            suggestions.push(RefactoringSuggestion {
-                id: format!("LARGE_FILE_{}", file.path.display()),
-                title: "Large file detected".to_string(),
-                description: format!("File {} has {} lines, which may be too large for easy maintenance", 
-                    file.path.display(), file.lines),
-                category: RefactoringCategory::ComplexityReduction,
-                priority: RefactoringPriority::Medium,
-                effort: ImplementationEffort::Medium,
-                impact: ExpectedImpact {
-                    maintainability: 70,
-                    performance: 10,
-                    readability: 80,
-                    bug_risk_reduction: 40,
-                },
-                location: RefactoringLocation {
-                    file: file.path.display().to_string(),
-                    start_line: 1,
-                    end_line: file.lines,
-                    symbol: None,
-                    scope: "file".to_string(),
-                },
-                current_code: format!("File with {} lines", file.lines),
-                suggested_code: None,
-                instructions: vec![
-                    "Identify logical groups of functionality".to_string(),
-                    "Extract related functions into separate modules".to_string(),
-                    "Consider using composition over large monolithic files".to_string(),
-                ],
-                benefits: vec![
-                    "Improved maintainability".to_string(),
-                    "Better code organization".to_string(),
-                    "Easier testing and debugging".to_string(),
-                ],
-                risks: vec![
-                    "May require updating import statements".to_string(),
-                    "Could temporarily break existing code".to_string(),
-                ],
-            });
+
+        if let Some(large_file_suggestion) = self.check_large_file(file) {
+            suggestions.push(large_file_suggestion);
         }
-        
-        // Check symbol density
-        let symbol_density = file.symbols.len() as f64 / file.lines as f64;
-        if symbol_density > 0.1 {
-            suggestions.push(RefactoringSuggestion {
-                id: format!("HIGH_SYMBOL_DENSITY_{}", file.path.display()),
-                title: "High symbol density detected".to_string(),
-                description: "File has many symbols relative to its size, suggesting it might be doing too much".to_string(),
-                category: RefactoringCategory::ComplexityReduction,
-                priority: RefactoringPriority::Low,
-                effort: ImplementationEffort::Medium,
-                impact: ExpectedImpact {
-                    maintainability: 60,
-                    performance: 5,
-                    readability: 70,
-                    bug_risk_reduction: 30,
-                },
-                location: RefactoringLocation {
-                    file: file.path.display().to_string(),
-                    start_line: 1,
-                    end_line: file.lines,
-                    symbol: None,
-                    scope: "file".to_string(),
-                },
-                current_code: format!("{} symbols in {} lines", file.symbols.len(), file.lines),
-                suggested_code: None,
-                instructions: vec![
-                    "Group related symbols together".to_string(),
-                    "Consider extracting some symbols to separate files".to_string(),
-                    "Apply single responsibility principle".to_string(),
-                ],
-                benefits: vec![
-                    "Clearer code organization".to_string(),
-                    "Easier to locate specific functionality".to_string(),
-                ],
-                risks: vec![
-                    "May require restructuring imports".to_string(),
-                ],
-            });
+
+        if let Some(density_suggestion) = self.check_symbol_density(file) {
+            suggestions.push(density_suggestion);
         }
-        
+
         suggestions
+    }
+
+    /// Check if file is too large and create suggestion
+    fn check_large_file(&self, file: &FileInfo) -> Option<RefactoringSuggestion> {
+        let thresholds = AnalysisThresholds::default();
+        if !FileAnalyzer::is_large_file(file, thresholds.large_file_lines) {
+            return None;
+        }
+
+        Some(RefactoringSuggestion {
+            id: format!("LARGE_FILE_{}", file.path.display()),
+            title: "Large file detected".to_string(),
+            description: format!("File {} has {} lines, which may be too large for easy maintenance",
+                file.path.display(), file.lines),
+            category: RefactoringCategory::ComplexityReduction,
+            priority: RefactoringPriority::Medium,
+            effort: ImplementationEffort::Medium,
+            impact: self.create_large_file_impact(),
+            location: self.create_file_location(file),
+            current_code: format!("File with {} lines", file.lines),
+            suggested_code: None,
+            instructions: self.get_large_file_instructions(),
+            benefits: self.get_large_file_benefits(),
+            risks: self.get_large_file_risks(),
+        })
+    }
+
+    /// Check symbol density and create suggestion
+    fn check_symbol_density(&self, file: &FileInfo) -> Option<RefactoringSuggestion> {
+        let symbol_density = file.symbols.len() as f64 / file.lines as f64;
+        if symbol_density <= 0.1 {
+            return None;
+        }
+
+        Some(RefactoringSuggestion {
+            id: format!("HIGH_SYMBOL_DENSITY_{}", file.path.display()),
+            title: "High symbol density detected".to_string(),
+            description: "File has many symbols relative to its size, suggesting it might be doing too much".to_string(),
+            category: RefactoringCategory::ComplexityReduction,
+            priority: RefactoringPriority::Low,
+            effort: ImplementationEffort::Medium,
+            impact: self.create_density_impact(),
+            location: self.create_file_location(file),
+            current_code: format!("{} symbols in {} lines", file.symbols.len(), file.lines),
+            suggested_code: None,
+            instructions: self.get_density_instructions(),
+            benefits: self.get_density_benefits(),
+            risks: self.get_density_risks(),
+        })
+    }
+
+    /// Create file location for refactoring suggestions
+    fn create_file_location(&self, file: &FileInfo) -> RefactoringLocation {
+        RefactoringLocation {
+            file: file.path.display().to_string(),
+            start_line: 1,
+            end_line: file.lines,
+            symbol: None,
+            scope: "file".to_string(),
+        }
+    }
+
+    /// Create impact for large file suggestions
+    fn create_large_file_impact(&self) -> ExpectedImpact {
+        ExpectedImpact {
+            maintainability: 70,
+            performance: 10,
+            readability: 80,
+            bug_risk_reduction: 40,
+        }
+    }
+
+    /// Create impact for symbol density suggestions
+    fn create_density_impact(&self) -> ExpectedImpact {
+        ExpectedImpact {
+            maintainability: 60,
+            performance: 5,
+            readability: 70,
+            bug_risk_reduction: 30,
+        }
+    }
+
+    /// Get instructions for large file refactoring
+    fn get_large_file_instructions(&self) -> Vec<String> {
+        vec![
+            "Identify logical groups of functionality".to_string(),
+            "Extract related functions into separate modules".to_string(),
+            "Consider using composition over large monolithic files".to_string(),
+        ]
+    }
+
+    /// Get benefits for large file refactoring
+    fn get_large_file_benefits(&self) -> Vec<String> {
+        vec![
+            "Improved maintainability".to_string(),
+            "Better code organization".to_string(),
+            "Easier testing and debugging".to_string(),
+        ]
+    }
+
+    /// Get risks for large file refactoring
+    fn get_large_file_risks(&self) -> Vec<String> {
+        vec![
+            "May require updating import statements".to_string(),
+            "Could temporarily break existing code".to_string(),
+        ]
+    }
+
+    /// Get instructions for symbol density refactoring
+    fn get_density_instructions(&self) -> Vec<String> {
+        vec![
+            "Group related symbols together".to_string(),
+            "Consider extracting some symbols to separate files".to_string(),
+            "Apply single responsibility principle".to_string(),
+        ]
+    }
+
+    /// Get benefits for symbol density refactoring
+    fn get_density_benefits(&self) -> Vec<String> {
+        vec![
+            "Clearer code organization".to_string(),
+            "Easier to locate specific functionality".to_string(),
+        ]
+    }
+
+    /// Get risks for symbol density refactoring
+    fn get_density_risks(&self) -> Vec<String> {
+        vec![
+            "May require restructuring imports".to_string(),
+        ]
     }
 
     // Helper methods for refactoring analysis
@@ -392,7 +459,7 @@ impl RefactoringAnalyzer {
             return 95; // High score if no issues found
         }
 
-        let mut score: u8 = 100;
+        let mut score: u8 = crate::constants::refactoring::BASE_REFACTORING_SCORE;
         for suggestion in suggestions {
             let deduction = match suggestion.priority {
                 RefactoringPriority::Critical => 20,

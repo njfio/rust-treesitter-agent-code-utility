@@ -31,26 +31,29 @@
 pub mod advanced_ai_analysis;
 pub mod advanced_security;
 pub mod ai_analysis;
+pub mod analysis_utils;
 pub mod analyzer;
 pub mod cli;
+pub mod code_evolution;
+pub mod code_map;
+pub mod constants;
 pub mod dependency_analysis;
 pub mod enhanced_security;
 pub mod error;
+pub mod file_cache;
 pub mod infrastructure;
+pub mod intent_mapping;
 pub mod languages;
 pub mod parser;
 pub mod performance_analysis;
 pub mod query;
+pub mod reasoning_engine;
 pub mod refactoring;
 pub mod security;
+pub mod semantic_graph;
 pub mod smart_refactoring;
 pub mod test_coverage;
 pub mod tree;
-pub mod code_map;
-pub mod semantic_graph;
-pub mod code_evolution;
-pub mod intent_mapping;
-pub mod reasoning_engine;
 
 // Re-export commonly used types
 pub use advanced_ai_analysis::{AdvancedAIAnalyzer, AdvancedAIResult, AdvancedAIConfig, SemanticAnalysis, ArchitecturePattern};
@@ -59,6 +62,7 @@ pub use ai_analysis::{AIAnalyzer, AIAnalysisResult, AIConfig, CodebaseExplanatio
 pub use analyzer::{CodebaseAnalyzer, AnalysisConfig, AnalysisDepth, AnalysisResult, FileInfo, Symbol};
 pub use dependency_analysis::{DependencyAnalyzer, DependencyAnalysisResult, DependencyConfig, Dependency, PackageManager};
 pub use error::{Error, Result};
+pub use file_cache::{FileCache, CacheStats};
 pub use languages::Language;
 pub use parser::{Parser, ParseOptions, create_edit};
 pub use performance_analysis::{PerformanceAnalyzer, PerformanceAnalysisResult, PerformanceConfig, PerformanceHotspot};

@@ -32,7 +32,7 @@ pub fn execute(path: &PathBuf, top: usize) -> CliResult<()> {
     use crate::analyzer::CodebaseAnalyzer;
 
     // Initialize analyzer
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
 
     // Analyze the target path
     let analysis_result = if path.is_file() {

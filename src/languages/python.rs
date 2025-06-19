@@ -3,7 +3,7 @@
 //! This module provides Python-specific utilities for parsing and analyzing
 //! Python source code using tree-sitter.
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::query::Query;
 use crate::tree::{Node, SyntaxTree};
 use tree_sitter::Point;
@@ -79,7 +79,7 @@ impl PythonSyntax {
     }
 
     /// Extract function name from a function definition node
-    pub fn function_name(node: &Node, source: &str) -> Option<String> {
+    pub fn function_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_function_definition(node) {
             return None;
         }
@@ -90,7 +90,7 @@ impl PythonSyntax {
     }
 
     /// Extract class name from a class definition node
-    pub fn class_name(node: &Node, source: &str) -> Option<String> {
+    pub fn class_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_class_definition(node) {
             return None;
         }
@@ -101,7 +101,7 @@ impl PythonSyntax {
     }
 
     /// Get function parameters
-    pub fn function_parameters(node: &Node, source: &str) -> Vec<String> {
+    pub fn function_parameters(node: &Node, _source: &str) -> Vec<String> {
         if !Self::is_function_definition(node) {
             return Vec::new();
         }
@@ -146,7 +146,7 @@ impl PythonSyntax {
     }
 
     /// Get class base classes (inheritance)
-    pub fn class_bases(node: &Node, source: &str) -> Vec<String> {
+    pub fn class_bases(node: &Node, _source: &str) -> Vec<String> {
         if !Self::is_class_definition(node) {
             return Vec::new();
         }
@@ -171,7 +171,7 @@ impl PythonSyntax {
     }
 
     /// Get decorators applied to a function or class
-    pub fn get_decorators(node: &Node, source: &str) -> Vec<String> {
+    pub fn get_decorators(node: &Node, _source: &str) -> Vec<String> {
         let mut decorators = Vec::new();
 
         // Check if this function is inside a decorated_definition
@@ -227,7 +227,7 @@ impl PythonSyntax {
     }
 
     /// Get docstring from a function or class
-    pub fn get_docstring(node: &Node, source: &str) -> Option<String> {
+    pub fn get_docstring(node: &Node, _source: &str) -> Option<String> {
         if let Some(body_node) = node.child_by_field_name("body") {
             for child in body_node.children() {
                 if child.kind() == "expression_statement" {
@@ -279,7 +279,7 @@ impl PythonSyntax {
     }
 
     /// Get all import statements in a syntax tree
-    pub fn find_imports(tree: &SyntaxTree, source: &str) -> Vec<String> {
+    pub fn find_imports(tree: &SyntaxTree, _source: &str) -> Vec<String> {
         let mut imports = Vec::new();
         
         let import_nodes = tree.find_nodes_by_kind("import_statement");
@@ -300,7 +300,7 @@ impl PythonSyntax {
     }
 
     /// Get all global variables in a syntax tree
-    pub fn find_global_variables(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point)> {
+    pub fn find_global_variables(tree: &SyntaxTree, _source: &str) -> Vec<(String, tree_sitter::Point)> {
         let mut globals = Vec::new();
 
         // Find assignment statements at module level
@@ -521,7 +521,7 @@ impl PythonSyntax {
     }
 
     /// Get method resolution order for a class
-    pub fn get_method_resolution_order(class_node: &Node, source: &str, tree: &SyntaxTree) -> Vec<String> {
+    pub fn get_method_resolution_order(class_node: &Node, source: &str, _tree: &SyntaxTree) -> Vec<String> {
         let mut mro = Vec::new();
 
         if let Some(class_name) = Self::class_name(class_node, source) {
@@ -643,7 +643,7 @@ impl PythonSyntax {
     }
 
     /// Find methods within classes
-    pub fn find_methods(tree: &SyntaxTree, content: &str) -> Vec<(String, String, tree_sitter::Point)> {
+    pub fn find_methods(tree: &SyntaxTree, _content: &str) -> Vec<(String, String, tree_sitter::Point)> {
         let mut methods = Vec::new();
 
         // Find all class definitions
@@ -709,7 +709,7 @@ impl PythonSyntax {
     }
 
     /// Find context managers (with statements) in a syntax tree
-    pub fn find_context_managers(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
+    pub fn find_context_managers(tree: &SyntaxTree, _source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut context_managers = Vec::new();
         let with_nodes = tree.find_nodes_by_kind("with_statement");
 
@@ -870,7 +870,7 @@ impl PythonSyntax {
     }
 
     /// Find lambda functions in a syntax tree
-    pub fn find_lambda_functions(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
+    pub fn find_lambda_functions(tree: &SyntaxTree, _source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut lambdas = Vec::new();
         let lambda_nodes = tree.find_nodes_by_kind("lambda");
 
@@ -961,7 +961,7 @@ def class_method(cls):
     return cls()
         "#;
 
-        let mut parser = Parser::new(crate::Language::Python).unwrap();
+        let parser = Parser::new(crate::Language::Python).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let function_nodes = tree.find_nodes_by_kind("function_definition");
@@ -997,7 +997,7 @@ with open("file.txt") as f:
 lambda_func = lambda x: x * 2
         "#;
 
-        let mut parser = Parser::new(crate::Language::Python).unwrap();
+        let parser = Parser::new(crate::Language::Python).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let features = PythonSyntax::detect_python_features(&tree);
@@ -1019,7 +1019,7 @@ def complex_function(a, b, c=None, *args, **kwargs):
     return a + b
         "#;
 
-        let mut parser = Parser::new(crate::Language::Python).unwrap();
+        let parser = Parser::new(crate::Language::Python).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let function_nodes = tree.find_nodes_by_kind("function_definition");

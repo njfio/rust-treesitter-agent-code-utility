@@ -3,7 +3,7 @@
 //! This module provides C++-specific utilities for parsing and analyzing
 //! C++ source code using tree-sitter.
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::query::Query;
 use crate::tree::{Node, SyntaxTree};
 use tree_sitter::Point;
@@ -107,7 +107,7 @@ impl CppSyntax {
     }
 
     /// Extract function name from a function definition or declaration
-    pub fn function_name(node: &Node, source: &str) -> Option<String> {
+    pub fn function_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_function_definition(node) && !Self::is_function_declaration(node) {
             return None;
         }
@@ -151,7 +151,7 @@ impl CppSyntax {
     }
 
     /// Extract class name from a class declaration
-    pub fn class_name(node: &Node, source: &str) -> Option<String> {
+    pub fn class_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_class_declaration(node) {
             return None;
         }
@@ -166,7 +166,7 @@ impl CppSyntax {
     }
 
     /// Extract namespace name from a namespace declaration
-    pub fn namespace_name(node: &Node, source: &str) -> Option<String> {
+    pub fn namespace_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_namespace_declaration(node) {
             return None;
         }
@@ -181,7 +181,7 @@ impl CppSyntax {
     }
 
     /// Get class base classes (inheritance)
-    pub fn class_base_classes(node: &Node, source: &str) -> Vec<String> {
+    pub fn class_base_classes(node: &Node, _source: &str) -> Vec<String> {
         if !Self::is_class_declaration(node) {
             return Vec::new();
         }
@@ -307,7 +307,7 @@ impl CppSyntax {
     }
 
     /// Get template parameters
-    pub fn template_parameters(node: &Node, source: &str) -> Vec<String> {
+    pub fn template_parameters(node: &Node, _source: &str) -> Vec<String> {
         let mut template_params = Vec::new();
 
         // Look for template parameter list
@@ -658,8 +658,8 @@ namespace MyProject {
 }
         "#;
 
-        let mut parser = Parser::new(crate::Language::Cpp).expect("Failed to create C++ parser");
-        let tree = parser.parse(source, None).expect("Failed to parse C++ source");
+        let mut parser = Parser::new(crate::Language::Cpp).expect("Failed to create C++ parser: Language::Cpp should be valid");
+        let tree = parser.parse(source, None).expect("Failed to parse C++ source: test source code should be syntactically valid");
 
         let namespaces = CppSyntax::find_namespaces(&tree, source);
         // Relaxed assertion - parser may not detect namespaces correctly

@@ -3,10 +3,9 @@
 //! This module provides C-specific utilities for parsing and analyzing
 //! C source code using tree-sitter.
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::query::Query;
 use crate::tree::{Node, SyntaxTree};
-use tree_sitter::Point;
 
 /// C-specific syntax utilities
 pub struct CSyntax;
@@ -84,7 +83,7 @@ impl CSyntax {
     }
 
     /// Extract function name from a function definition or declaration
-    pub fn function_name(node: &Node, source: &str) -> Option<String> {
+    pub fn function_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_function_definition(node) && !Self::is_function_declaration(node) {
             return None;
         }
@@ -105,7 +104,7 @@ impl CSyntax {
     }
 
     /// Extract struct name from a struct declaration
-    pub fn struct_name(node: &Node, source: &str) -> Option<String> {
+    pub fn struct_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_struct_declaration(node) {
             return None;
         }
@@ -120,7 +119,7 @@ impl CSyntax {
     }
 
     /// Extract union name from a union declaration
-    pub fn union_name(node: &Node, source: &str) -> Option<String> {
+    pub fn union_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_union_declaration(node) {
             return None;
         }
@@ -135,7 +134,7 @@ impl CSyntax {
     }
 
     /// Extract enum name from an enum declaration
-    pub fn enum_name(node: &Node, source: &str) -> Option<String> {
+    pub fn enum_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_enum_declaration(node) {
             return None;
         }
@@ -150,7 +149,7 @@ impl CSyntax {
     }
 
     /// Extract typedef name from a typedef declaration
-    pub fn typedef_name(node: &Node, source: &str) -> Option<String> {
+    pub fn typedef_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_typedef_declaration(node) {
             return None;
         }
@@ -181,7 +180,7 @@ impl CSyntax {
     }
 
     /// Extract macro name from a macro definition
-    pub fn macro_name(node: &Node, source: &str) -> Option<String> {
+    pub fn macro_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_macro_definition(node) {
             return None;
         }
@@ -196,7 +195,7 @@ impl CSyntax {
     }
 
     /// Extract macro name from a function-like macro definition
-    pub fn function_macro_name(node: &Node, source: &str) -> Option<String> {
+    pub fn function_macro_name(node: &Node, _source: &str) -> Option<String> {
         if node.kind() != "preproc_function_def" {
             return None;
         }
@@ -211,7 +210,7 @@ impl CSyntax {
     }
 
     /// Get function parameters
-    pub fn function_parameters(node: &Node, source: &str) -> Vec<String> {
+    pub fn function_parameters(node: &Node, _source: &str) -> Vec<String> {
         if !Self::is_function_definition(node) && !Self::is_function_declaration(node) {
             return Vec::new();
         }
@@ -273,7 +272,7 @@ impl CSyntax {
     }
 
     /// Get function return type
-    pub fn function_return_type(node: &Node, source: &str) -> Option<String> {
+    pub fn function_return_type(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_function_definition(node) && !Self::is_function_declaration(node) {
             return None;
         }
@@ -340,7 +339,7 @@ impl CSyntax {
     }
 
     /// Get struct fields
-    pub fn struct_fields(node: &Node, source: &str) -> Vec<(String, String)> {
+    pub fn struct_fields(node: &Node, _source: &str) -> Vec<(String, String)> {
         if !Self::is_struct_declaration(node) {
             return Vec::new();
         }
@@ -482,7 +481,7 @@ impl CSyntax {
     }
 
     /// Get all include directives in a syntax tree
-    pub fn find_includes(tree: &SyntaxTree, source: &str) -> Vec<String> {
+    pub fn find_includes(tree: &SyntaxTree, _source: &str) -> Vec<String> {
         let mut includes = Vec::new();
         let include_nodes = tree.find_nodes_by_kind("preproc_include");
 
@@ -643,7 +642,7 @@ impl CSyntax {
     }
 
     /// Check for potential memory management issues
-    pub fn check_memory_patterns(tree: &SyntaxTree, source: &str) -> Vec<String> {
+    pub fn check_memory_patterns(tree: &SyntaxTree, _source: &str) -> Vec<String> {
         let mut issues = Vec::new();
 
         // Look for malloc/free patterns
@@ -714,7 +713,7 @@ impl CSyntax {
     }
 
     /// Find function pointer declarations in a syntax tree
-    pub fn find_function_pointers(tree: &SyntaxTree, source: &str) -> Vec<(String, String, tree_sitter::Point, tree_sitter::Point)> {
+    pub fn find_function_pointers(tree: &SyntaxTree, _source: &str) -> Vec<(String, String, tree_sitter::Point, tree_sitter::Point)> {
         let mut function_pointers = Vec::new();
 
         // Look for function pointer typedefs
@@ -1031,7 +1030,7 @@ inline int calculate(int a, int b) {
 }
         "#;
 
-        let mut parser = Parser::new(crate::Language::C).unwrap();
+        let parser = Parser::new(crate::Language::C).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let functions = CSyntax::find_functions(&tree, source);
@@ -1062,7 +1061,7 @@ typedef struct {
 } Person;
         "#;
 
-        let mut parser = Parser::new(crate::Language::C).unwrap();
+        let parser = Parser::new(crate::Language::C).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let structs = CSyntax::find_structs(&tree, source);
@@ -1085,7 +1084,7 @@ typedef struct {
 } Anonymous;
         "#;
 
-        let mut parser = Parser::new(crate::Language::C).unwrap();
+        let parser = Parser::new(crate::Language::C).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
 
@@ -1114,7 +1113,7 @@ enum Status {
 };
         "#;
 
-        let mut parser = Parser::new(crate::Language::C).unwrap();
+        let parser = Parser::new(crate::Language::C).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let enums = CSyntax::find_enums(&tree, source);
@@ -1133,7 +1132,7 @@ enum Status {
 #define DEBUG_PRINT(x) printf("Debug: %s\n", x)
         "#;
 
-        let mut parser = Parser::new(crate::Language::C).unwrap();
+        let parser = Parser::new(crate::Language::C).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let macros = CSyntax::find_macros(&tree, source);
@@ -1156,7 +1155,7 @@ int process_data(int count, char *buffer, size_t size) {
 }
         "#;
 
-        let mut parser = Parser::new(crate::Language::C).unwrap();
+        let parser = Parser::new(crate::Language::C).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let function_nodes = tree.find_nodes_by_kind("function_definition");
@@ -1181,7 +1180,7 @@ void* allocate_memory(size_t size) {
 }
         "#;
 
-        let mut parser = Parser::new(crate::Language::C).unwrap();
+        let parser = Parser::new(crate::Language::C).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let function_nodes = tree.find_nodes_by_kind("function_definition");
@@ -1206,7 +1205,7 @@ struct Person {
 };
         "#;
 
-        let mut parser = Parser::new(crate::Language::C).unwrap();
+        let parser = Parser::new(crate::Language::C).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let struct_nodes = tree.find_nodes_by_kind("struct_specifier");
@@ -1248,7 +1247,7 @@ int main() {
 }
         "#;
 
-        let mut parser = Parser::new(crate::Language::C).unwrap();
+        let parser = Parser::new(crate::Language::C).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let features = CSyntax::detect_c_features(&tree);
@@ -1278,7 +1277,7 @@ int main() {
 }
         "#;
 
-        let mut parser = Parser::new(crate::Language::C).unwrap();
+        let parser = Parser::new(crate::Language::C).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let issues = CSyntax::check_memory_patterns(&tree, source);

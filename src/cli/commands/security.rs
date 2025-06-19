@@ -33,7 +33,8 @@ pub fn execute(
     
     // Configure analyzer
     let config = create_analysis_config(1024, 20, depth, false, None, None)?;
-    let mut analyzer = CodebaseAnalyzer::with_config(config);
+    let mut analyzer = CodebaseAnalyzer::with_config(config)
+        .map_err(|e| CliError::Security(e.to_string()))?;
     
     // Run analysis first to get file content
     pb.set_message("Analyzing codebase...");

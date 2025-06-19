@@ -15,8 +15,7 @@ use serde::{Serialize, Deserialize};
 pub struct AutomatedReasoningEngine {
     /// Knowledge base of facts and rules
     knowledge_base: KnowledgeBase,
-    /// Inference engine
-    inference_engine: InferenceEngine,
+
     /// Constraint solver
     constraint_solver: ConstraintSolver,
     /// Theorem prover
@@ -211,12 +210,6 @@ pub struct FunctionSignature {
 /// Inference engine for logical reasoning
 #[derive(Debug, Clone)]
 pub struct InferenceEngine {
-    /// Reasoning strategy
-    strategy: ReasoningStrategy,
-    /// Maximum inference depth
-    max_depth: usize,
-    /// Inference cache
-    cache: HashMap<String, Vec<Fact>>,
 }
 
 /// Reasoning strategies
@@ -237,8 +230,6 @@ pub struct ConstraintSolver {
     variables: HashMap<String, ConstraintVariable>,
     /// Constraints
     constraints: Vec<Constraint>,
-    /// Solver configuration
-    config: SolverConfig,
 }
 
 /// Constraint variable
@@ -377,8 +368,6 @@ pub struct SolverConfig {
 pub struct TheoremProver {
     /// Axioms
     axioms: Vec<Axiom>,
-    /// Proof strategies
-    strategies: Vec<ProofStrategy>,
     /// Proof cache
     cache: HashMap<String, ProofResult>,
 }
@@ -606,7 +595,6 @@ impl AutomatedReasoningEngine {
     pub fn new() -> Self {
         Self {
             knowledge_base: KnowledgeBase::new(),
-            inference_engine: InferenceEngine::new(),
             constraint_solver: ConstraintSolver::new(),
             theorem_prover: TheoremProver::new(),
             config: ReasoningConfig::default(),
@@ -618,7 +606,6 @@ impl AutomatedReasoningEngine {
     pub fn with_config(config: ReasoningConfig) -> Self {
         Self {
             knowledge_base: KnowledgeBase::new(),
-            inference_engine: InferenceEngine::new(),
             constraint_solver: ConstraintSolver::new(),
             theorem_prover: TheoremProver::new(),
             config,
@@ -1329,8 +1316,8 @@ mod tests {
         assert!(result.is_ok());
 
         let reasoning_result = result.unwrap();
-        // Time measurement might be 0 for very fast operations in tests
-        assert!(reasoning_result.metrics.total_time_ms >= 0);
+        // Time measurement should be non-negative (u64 is always >= 0, but this documents the expectation)
+        // assert!(reasoning_result.metrics.total_time_ms >= 0); // Removed: u64 is always >= 0
         assert_eq!(reasoning_result.metrics.facts_processed, 4); // Should extract facts from the test file
     }
 
@@ -1444,26 +1431,13 @@ impl KnowledgeBase {
     }
 }
 
-impl InferenceEngine {
-    fn new() -> Self {
-        Self {
-            strategy: ReasoningStrategy::Hybrid,
-            max_depth: 10,
-            cache: HashMap::new(),
-        }
-    }
-}
+
 
 impl ConstraintSolver {
     fn new() -> Self {
         Self {
             variables: HashMap::new(),
             constraints: Vec::new(),
-            config: SolverConfig {
-                max_iterations: 1000,
-                tolerance: 1e-6,
-                timeout_ms: 5000,
-            },
         }
     }
 
@@ -1482,7 +1456,6 @@ impl TheoremProver {
     fn new() -> Self {
         Self {
             axioms: Vec::new(),
-            strategies: vec![ProofStrategy::Resolution, ProofStrategy::Tableau],
             cache: HashMap::new(),
         }
     }

@@ -3,7 +3,7 @@
 //! This module provides JavaScript-specific utilities for parsing and analyzing
 //! JavaScript source code using tree-sitter.
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::query::Query;
 use crate::tree::{Node, SyntaxTree};
 
@@ -98,7 +98,7 @@ impl JavaScriptSyntax {
     }
 
     /// Extract function name from a function node
-    pub fn function_name(node: &Node, source: &str) -> Option<String> {
+    pub fn function_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_function(node) {
             return None;
         }
@@ -123,7 +123,7 @@ impl JavaScriptSyntax {
     }
 
     /// Extract class name from a class node
-    pub fn class_name(node: &Node, source: &str) -> Option<String> {
+    pub fn class_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_class(node) {
             return None;
         }
@@ -134,7 +134,7 @@ impl JavaScriptSyntax {
     }
 
     /// Extract method name from a method definition node
-    pub fn method_name(node: &Node, source: &str) -> Option<String> {
+    pub fn method_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_method_definition(node) {
             return None;
         }
@@ -145,7 +145,7 @@ impl JavaScriptSyntax {
     }
 
     /// Extract variable names from a variable declaration
-    pub fn variable_names(node: &Node, source: &str) -> Vec<String> {
+    pub fn variable_names(node: &Node, _source: &str) -> Vec<String> {
         if !Self::is_variable_declaration(node) {
             return Vec::new();
         }
@@ -182,7 +182,7 @@ impl JavaScriptSyntax {
     }
 
     /// Get function parameters
-    pub fn function_parameters(node: &Node, source: &str) -> Vec<String> {
+    pub fn function_parameters(node: &Node, _source: &str) -> Vec<String> {
         if !Self::is_function(node) {
             return Vec::new();
         }
@@ -271,7 +271,7 @@ impl JavaScriptSyntax {
     }
 
     /// Get all import statements in a syntax tree
-    pub fn find_imports(tree: &SyntaxTree, source: &str) -> Vec<String> {
+    pub fn find_imports(tree: &SyntaxTree, _source: &str) -> Vec<String> {
         let mut imports = Vec::new();
         let import_nodes = tree.find_nodes_by_kind("import_statement");
         
@@ -285,7 +285,7 @@ impl JavaScriptSyntax {
     }
 
     /// Get all export statements in a syntax tree
-    pub fn find_exports(tree: &SyntaxTree, source: &str) -> Vec<String> {
+    pub fn find_exports(tree: &SyntaxTree, _source: &str) -> Vec<String> {
         let mut exports = Vec::new();
 
         let export_nodes = tree.find_nodes_by_kind("export_statement");
@@ -396,7 +396,7 @@ impl JavaScriptSyntax {
     }
 
     /// Find destructuring patterns in a syntax tree
-    pub fn find_destructuring_patterns(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
+    pub fn find_destructuring_patterns(tree: &SyntaxTree, _source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut patterns = Vec::new();
 
         // Find array destructuring patterns

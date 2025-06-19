@@ -34,7 +34,7 @@ pub struct QueryErrorDetails {
 }
 
 /// Types of query errors
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum QueryErrorType {
     SyntaxError,
     CompilationError,

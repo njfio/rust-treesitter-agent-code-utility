@@ -41,7 +41,7 @@ impl Parser {
         let ts_language = language.tree_sitter_language()?;
         
         parser.set_language(&ts_language)
-            .map_err(|e| Error::language(format!("Failed to set language {}: {:?}", language.name(), e)))?;
+            .map_err(|e| Error::language_error_with_cause(language.name(), "parser initialization", format!("{:?}", e)))?;
 
         Ok(Self {
             inner: Arc::new(Mutex::new(parser)),
@@ -75,7 +75,7 @@ impl Parser {
     /// Parse source code into a syntax tree
     pub fn parse(&self, source: &str, old_tree: Option<&SyntaxTree>) -> Result<SyntaxTree> {
         let mut parser = self.inner.lock()
-            .map_err(|e| Error::internal(format!("Failed to acquire parser lock: {}", e)))?;
+            .map_err(|e| Error::internal_error("parser", format!("Failed to acquire parser lock: {}", e)))?;
 
         // Apply parsing options
         if let Some(timeout) = self.options.timeout_millis {
@@ -87,7 +87,7 @@ impl Parser {
 
         // Parse the source
         let tree = parser.parse(source, old_ts_tree)
-            .ok_or_else(|| Error::parse("Failed to parse source code"))?;
+            .ok_or_else(|| Error::parse_error("Failed to parse source code"))?;
 
         // Note: We allow trees with errors to be returned, as they can still be useful
         // The caller can check tree.has_error() if they need to know about parse errors
@@ -126,7 +126,7 @@ impl Parser {
     /// Reset the parser state
     pub fn reset(&self) -> Result<()> {
         let mut parser = self.inner.lock()
-            .map_err(|e| Error::internal(format!("Failed to acquire parser lock: {}", e)))?;
+            .map_err(|e| Error::internal_error("parser", format!("Failed to acquire parser lock: {}", e)))?;
         
         parser.reset();
         Ok(())
@@ -137,10 +137,10 @@ impl Parser {
         let ts_language = language.tree_sitter_language()?;
         
         let mut parser = self.inner.lock()
-            .map_err(|e| Error::internal(format!("Failed to acquire parser lock: {}", e)))?;
+            .map_err(|e| Error::internal_error("parser", format!("Failed to acquire parser lock: {}", e)))?;
         
         parser.set_language(&ts_language)
-            .map_err(|e| Error::language(format!("Failed to set language {}: {:?}", language.name(), e)))?;
+            .map_err(|e| Error::language_error_with_cause(language.name(), "language change", format!("{:?}", e)))?;
         
         self.language = language;
         Ok(())
@@ -157,7 +157,7 @@ impl Clone for Parser {
         // Note: This creates a new parser instance rather than sharing the inner parser
         // This is safer for concurrent use
         Self::with_options(self.language, self.options.clone())
-            .expect("Failed to clone parser")
+            .expect("Failed to clone parser: parser creation should always succeed with valid language and options")
     }
 }
 

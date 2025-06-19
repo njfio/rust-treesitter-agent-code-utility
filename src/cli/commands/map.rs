@@ -19,7 +19,8 @@ pub fn execute(
     validate_path(path)?;
 
     // Analyze the codebase
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()
+        .map_err(|e| format!("Failed to create analyzer: {}", e))?;
     let result = analyzer.analyze_directory(path)
         .map_err(|e| crate::cli::error::CliError::Analysis(e.to_string()))?;
 

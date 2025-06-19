@@ -32,7 +32,8 @@ pub fn execute(
     
     // Configure analyzer
     let config = create_analysis_config(1024, 20, "full", false, None, None)?;
-    let mut analyzer = CodebaseAnalyzer::with_config(config);
+    let mut analyzer = CodebaseAnalyzer::with_config(config)
+        .map_err(|e| CliError::Refactoring(e.to_string()))?;
     
     // Run analysis first
     pb.set_message("Analyzing codebase...");
@@ -41,7 +42,7 @@ pub fn execute(
     
     // Run refactoring analysis
     pb.set_message("Identifying refactoring opportunities...");
-    let mut refactoring_engine = SmartRefactoringEngine::new();
+    let refactoring_engine = SmartRefactoringEngine::new();
     let refactoring_result = refactoring_engine.analyze(&analysis_result)
         .map_err(|e| CliError::Refactoring(e.to_string()))?;
     
@@ -85,8 +86,8 @@ pub fn execute(
 fn print_refactoring_table(
     refactoring_result: &crate::SmartRefactoringResult,
     _category: Option<&String>,
-    quick_wins: bool,
-    major_only: bool,
+    _quick_wins: bool,
+    _major_only: bool,
     _min_priority: &str,
 ) {
     println!("\n{}", "🎯 REFACTORING ANALYSIS".bright_yellow().bold());
@@ -140,8 +141,8 @@ fn print_refactoring_table(
 fn print_refactoring_markdown(
     refactoring_result: &crate::SmartRefactoringResult,
     _category: Option<&String>,
-    quick_wins: bool,
-    major_only: bool,
+    _quick_wins: bool,
+    _major_only: bool,
     _min_priority: &str,
 ) {
     println!("# 🎯 Refactoring Analysis Report\n");
@@ -184,8 +185,8 @@ fn print_refactoring_markdown(
 fn render_refactoring_markdown(
     refactoring_result: &crate::SmartRefactoringResult,
     _category: Option<&String>,
-    quick_wins: bool,
-    major_only: bool,
+    _quick_wins: bool,
+    _major_only: bool,
     _min_priority: &str,
 ) -> String {
     use std::fmt::Write;

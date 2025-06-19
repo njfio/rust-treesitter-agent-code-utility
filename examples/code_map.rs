@@ -3,7 +3,7 @@ use std::env;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let target = env::args().nth(1).unwrap_or_else(|| ".".to_string());
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
     let result = analyzer.analyze_directory(&target)?;
 
     let call_graph = build_call_graph(&result);

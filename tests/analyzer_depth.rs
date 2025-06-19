@@ -14,7 +14,7 @@ fn respects_max_depth_setting() -> Result<(), Box<dyn std::error::Error>> {
     fs::write(nested.join("deep.rs"), "fn deep() {}")?;
 
     let config = AnalysisConfig { max_depth: Some(1), ..AnalysisConfig::default() };
-    let mut analyzer = CodebaseAnalyzer::with_config(config);
+    let mut analyzer = CodebaseAnalyzer::with_config(config)?;
     let result = analyzer.analyze_directory(tmp.path())?;
     assert_eq!(result.total_files, 2);
     assert!(!result.files.iter().any(|f| f.path.ends_with("deep.rs")));

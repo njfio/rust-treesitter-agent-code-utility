@@ -28,7 +28,7 @@ fn call_graph_simple() -> Result<(), Box<dyn std::error::Error>> {
     fs::write(temp.path().join("util.rs"), "pub fn helper() {}")?;
     fs::write(temp.path().join("main.rs"), "mod util; fn main() { util::helper(); }")?;
 
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
     let result = analyzer.analyze_directory(temp.path())?;
     let graph = build_call_graph(&result);
     let dot = graph.to_dot();
@@ -57,7 +57,7 @@ fn module_graph_simple() -> Result<(), Box<dyn std::error::Error>> {
     fs::write(temp.path().join("moda.rs"), "pub fn a() {}")?;
     fs::write(temp.path().join("modb.rs"), "use crate::moda; fn b() { moda::a(); }")?;
 
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
     let result = analyzer.analyze_directory(temp.path())?;
     let graph = build_module_graph(&result);
     let dot = graph.to_dot();

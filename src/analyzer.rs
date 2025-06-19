@@ -8,6 +8,7 @@ use crate::languages::Language;
 use crate::parser::Parser;
 use crate::advanced_security::{AdvancedSecurityAnalyzer, SecurityVulnerability};
 use crate::semantic_graph::SemanticGraphQuery;
+use crate::file_cache::FileCache;
 
 use crate::tree::SyntaxTree;
 use std::collections::HashMap;
@@ -189,22 +190,24 @@ pub struct CodebaseAnalyzer {
     parsers: HashMap<Language, Parser>,
     security_analyzer: AdvancedSecurityAnalyzer,
     semantic_graph: Option<SemanticGraphQuery>,
+    file_cache: FileCache,
 }
 
 impl CodebaseAnalyzer {
     /// Create a new analyzer with default configuration
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self> {
         Self::with_config(AnalysisConfig::default())
     }
 
     /// Create a new analyzer with custom configuration
-    pub fn with_config(config: AnalysisConfig) -> Self {
-        Self {
+    pub fn with_config(config: AnalysisConfig) -> Result<Self> {
+        Ok(Self {
             config,
             parsers: HashMap::new(),
-            security_analyzer: AdvancedSecurityAnalyzer::new().expect("Failed to create security analyzer"),
+            security_analyzer: AdvancedSecurityAnalyzer::new()?,
             semantic_graph: None,
-        }
+            file_cache: FileCache::new(),
+        })
     }
 
     /// Get or create a parser for the given language
@@ -214,7 +217,7 @@ impl CodebaseAnalyzer {
             self.parsers.insert(language, parser);
         }
         self.parsers.get(&language)
-            .ok_or_else(|| Error::internal(format!("Parser for {} should exist after insertion", language.name())))
+            .ok_or_else(|| Error::internal_error("analyzer", format!("Parser for {} should exist after insertion", language.name())))
     }
 
     /// Analyze a single file and return structured results
@@ -222,11 +225,11 @@ impl CodebaseAnalyzer {
         let file_path = file_path.as_ref();
 
         if !file_path.exists() {
-            return Err(Error::invalid_input(format!("File does not exist: {}", file_path.display())));
+            return Err(Error::invalid_input_error("file path", &file_path.display().to_string(), "existing file"));
         }
 
         if !file_path.is_file() {
-            return Err(Error::invalid_input(format!("Path is not a file: {}", file_path.display())));
+            return Err(Error::invalid_input_error("path type", &file_path.display().to_string(), "file (not directory)"));
         }
 
         let mut result = AnalysisResult::new();
@@ -243,11 +246,11 @@ impl CodebaseAnalyzer {
         let root_path = path.as_ref().to_path_buf();
 
         if !root_path.exists() {
-            return Err(Error::invalid_input(format!("Path does not exist: {}", root_path.display())));
+            return Err(Error::invalid_input_error("directory path", &root_path.display().to_string(), "existing directory"));
         }
 
         if !root_path.is_dir() {
-            return Err(Error::invalid_input(format!("Path is not a directory: {}", root_path.display())));
+            return Err(Error::invalid_input_error("path type", &root_path.display().to_string(), "directory (not file)"));
         }
 
         // First, collect all files to analyze
@@ -292,7 +295,7 @@ impl CodebaseAnalyzer {
             rayon::ThreadPoolBuilder::new()
                 .num_threads(thread_count)
                 .build_global()
-                .map_err(|e| Error::internal(format!("Failed to set thread count: {}", e)))?;
+                .map_err(|e| Error::internal_error("thread_pool", format!("Failed to set thread count: {}", e)))?;
         }
 
         // Shared result structure protected by mutex
@@ -323,7 +326,8 @@ impl CodebaseAnalyzer {
             .collect();
 
         // Aggregate results
-        let mut final_result = result.lock().unwrap();
+        let mut final_result = result.lock()
+            .map_err(|e| crate::error::Error::internal_error("analyzer", format!("Failed to acquire lock for result aggregation: {}", e)))?;
         for file_info in file_infos {
             final_result.total_files += 1;
             final_result.total_lines += file_info.lines;
@@ -338,7 +342,7 @@ impl CodebaseAnalyzer {
             final_result.files.push(file_info);
         }
 
-        let mut result = final_result.clone();
+        let result = final_result.clone();
         drop(final_result); // Release the lock
 
         // Build semantic graph if enabled (sequential for now due to complexity)
@@ -367,10 +371,10 @@ impl CodebaseAnalyzer {
         }
 
         let entries = fs::read_dir(current_path)
-            .map_err(|e| Error::internal(format!("Failed to read directory {}: {}", current_path.display(), e)))?;
+            .map_err(|e| Error::internal_error_with_context("file_system", format!("Failed to read directory: {}", e), current_path.display().to_string()))?;
 
         for entry in entries {
-            let entry = entry.map_err(|e| Error::internal(format!("Failed to read directory entry: {}", e)))?;
+            let entry = entry.map_err(|e| Error::internal_error("file_system", format!("Failed to read directory entry: {}", e)))?;
             let path = entry.path();
 
             // Skip hidden files/directories if not included
@@ -417,10 +421,10 @@ impl CodebaseAnalyzer {
         }
 
         let entries = fs::read_dir(current_path)
-            .map_err(|e| Error::internal(format!("Failed to read directory {}: {}", current_path.display(), e)))?;
+            .map_err(|e| Error::internal_error_with_context("file_system", format!("Failed to read directory: {}", e), current_path.display().to_string()))?;
 
         for entry in entries {
-            let entry = entry.map_err(|e| Error::internal(format!("Failed to read directory entry: {}", e)))?;
+            let entry = entry.map_err(|e| Error::internal_error("file_system", format!("Failed to read directory entry: {}", e)))?;
             let path = entry.path();
 
             // Skip hidden files/directories if not included
@@ -567,7 +571,7 @@ impl CodebaseAnalyzer {
 
                     // Create a new security analyzer for this thread
                     let security_analyzer = AdvancedSecurityAnalyzer::new()
-                        .map_err(|e| Error::internal(format!("Failed to create security analyzer: {}", e)))?;
+                        .map_err(|e| Error::internal_error("security_analyzer", format!("Failed to create security analyzer: {}", e)))?;
 
                     match security_analyzer.detect_owasp_vulnerabilities(&temp_file_info) {
                         Ok(vulnerabilities) => {
@@ -628,8 +632,8 @@ impl CodebaseAnalyzer {
             }
         }
 
-        // Read file content
-        let content = fs::read_to_string(file_path)?;
+        // Read file content using cache
+        let content = self.file_cache.read_to_string(file_path)?;
         let line_count = content.lines().count();
 
         // Get relative path
@@ -1313,7 +1317,7 @@ impl CodebaseAnalyzer {
     }
 
     /// Extract Python docstring from function or class definition
-    fn extract_python_docstring(&self, content: &str, node: &crate::Node) -> Option<String> {
+    fn extract_python_docstring(&self, _content: &str, node: &crate::Node) -> Option<String> {
         // Look for the first string literal in the body
         if let Some(body) = node.child_by_field_name("body") {
             for child in body.children() {
@@ -1433,11 +1437,40 @@ impl CodebaseAnalyzer {
     pub fn is_semantic_graph_enabled(&self) -> bool {
         self.semantic_graph.is_some()
     }
+
+    /// Get file cache statistics
+    pub fn cache_stats(&self) -> crate::file_cache::CacheStats {
+        self.file_cache.stats()
+    }
+
+    /// Get cache hit ratio
+    pub fn cache_hit_ratio(&self) -> f64 {
+        self.file_cache.hit_ratio()
+    }
+
+    /// Clear the file cache
+    pub fn clear_cache(&self) {
+        self.file_cache.clear();
+    }
+
+    /// Check if a file is cached
+    pub fn is_cached<P: AsRef<Path>>(&self, path: P) -> bool {
+        self.file_cache.contains(path)
+    }
 }
 
 impl Default for CodebaseAnalyzer {
     fn default() -> Self {
-        Self::new()
+        Self::new().unwrap_or_else(|_| {
+            // Fallback implementation if security analyzer fails
+            Self {
+                config: AnalysisConfig::default(),
+                parsers: HashMap::new(),
+                security_analyzer: AdvancedSecurityAnalyzer::default(),
+                semantic_graph: None,
+                file_cache: FileCache::new(),
+            }
+        })
     }
 }
 
@@ -1449,7 +1482,7 @@ mod tests {
 
     #[test]
     fn test_analyzer_creation() {
-        let analyzer = CodebaseAnalyzer::new();
+        let analyzer = CodebaseAnalyzer::new().unwrap();
         assert_eq!(analyzer.config.max_file_size, Some(1024 * 1024));
     }
 
@@ -1488,7 +1521,7 @@ mod tests {
         "#).unwrap();
 
         // Analyze the directory
-        let mut analyzer = CodebaseAnalyzer::new();
+        let mut analyzer = CodebaseAnalyzer::new().unwrap();
         let result = analyzer.analyze_directory(temp_path).unwrap();
 
         assert_eq!(result.total_files, 2);

@@ -8,6 +8,10 @@
 //! - Performance bottleneck identification
 
 use crate::{AnalysisResult, FileInfo, Result};
+use crate::analysis_utils::{
+    LanguageParser, ComplexityCalculator, PatternDetector
+};
+use crate::constants::performance::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -141,7 +145,7 @@ pub enum HotspotCategory {
 }
 
 /// Performance severity levels
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PerformanceSeverity {
     Critical,
@@ -674,7 +678,7 @@ impl PerformanceAnalyzer {
         // Categorize hotspots by severity
         let mut hotspots_by_severity = HashMap::new();
         for hotspot in &hotspots {
-            *hotspots_by_severity.entry(hotspot.severity.clone()).or_insert(0) += 1;
+            *hotspots_by_severity.entry(hotspot.severity).or_insert(0) += 1;
         }
         
         // Perform specialized analyses
@@ -779,7 +783,7 @@ impl PerformanceAnalyzer {
                         title: "Long function detected".to_string(),
                         description: format!("Function '{}' is {} lines long, which may impact performance", symbol.name, function_length),
                         category: HotspotCategory::AlgorithmicComplexity,
-                        severity: if function_length > 100 { PerformanceSeverity::High } else { PerformanceSeverity::Medium },
+                        severity: if function_length > FUNCTION_LENGTH_HIGH_THRESHOLD { PerformanceSeverity::High } else { PerformanceSeverity::Medium },
                         impact: PerformanceImpact {
                             cpu_impact: 60,
                             memory_impact: 30,
@@ -902,14 +906,20 @@ impl PerformanceAnalyzer {
             _ => return Ok(Vec::new()),
         };
 
-        let mut parser = match Parser::new(lang) {
+        let parser = match Parser::new(lang) {
             Ok(p) => p,
-            Err(_) => return Ok(Vec::new()),
+            Err(e) => {
+                eprintln!("Warning: Failed to create parser for {}: {}", file.language, e);
+                return Ok(Vec::new()); // Continue analysis without AST-based hotspots
+            }
         };
 
         let tree = match parser.parse(content, None) {
             Ok(t) => t,
-            Err(_) => return Ok(Vec::new()),
+            Err(e) => {
+                eprintln!("Warning: Failed to parse {} for hotspot detection: {}", file.path.display(), e);
+                return Ok(Vec::new()); // Continue analysis without AST-based hotspots
+            }
         };
 
         let mut hotspots = Vec::new();
@@ -927,7 +937,7 @@ impl PerformanceAnalyzer {
     }
 
     /// Detect nested loop hotspots using AST analysis
-    fn detect_nested_loop_hotspots(&self, tree: &crate::SyntaxTree, content: &str, file: &FileInfo) -> Result<Vec<PerformanceHotspot>> {
+    fn detect_nested_loop_hotspots(&self, tree: &crate::SyntaxTree, _content: &str, file: &FileInfo) -> Result<Vec<PerformanceHotspot>> {
         let mut hotspots = Vec::new();
 
         let loop_patterns = match file.language.to_lowercase().as_str() {
@@ -1152,11 +1162,11 @@ impl PerformanceAnalyzer {
                                  else if complexity > 10.0 { PerformanceSeverity::High }
                                  else { PerformanceSeverity::Medium },
                         impact: PerformanceImpact {
-                            cpu_impact: (complexity * 5.0).min(100.0) as u8,
+                            cpu_impact: (complexity * COMPLEXITY_CPU_MULTIPLIER).min(MAX_CPU_IMPACT) as u8,
                             memory_impact: 20,
                             io_impact: 0,
                             network_impact: 0,
-                            overall_impact: (complexity * 4.0).min(100.0) as u8,
+                            overall_impact: (complexity * COMPLEXITY_OVERALL_MULTIPLIER).min(MAX_OVERALL_IMPACT) as u8,
                         },
                         location: HotspotLocation {
                             file: file.path.display().to_string(),
@@ -1184,7 +1194,7 @@ impl PerformanceAnalyzer {
     }
 
     /// Calculate complexity for a specific function node
-    fn calculate_function_complexity(&self, func_node: &crate::Node, content: &str, language: &str) -> f64 {
+    fn calculate_function_complexity(&self, func_node: &crate::Node, _content: &str, language: &str) -> f64 {
         let mut complexity = 1.0; // Base complexity
 
         // Define control flow patterns for different languages
@@ -1223,7 +1233,7 @@ impl PerformanceAnalyzer {
     }
 
     /// Extract function name from function node
-    fn extract_function_name(&self, func_node: &crate::Node, content: &str, language: &str) -> String {
+    fn extract_function_name(&self, func_node: &crate::Node, _content: &str, language: &str) -> String {
         match language.to_lowercase().as_str() {
             "rust" => {
                 if let Some(name_node) = func_node.child_by_field_name("name") {
@@ -1301,7 +1311,7 @@ impl PerformanceAnalyzer {
         let mut hotspots = Vec::new();
 
         // Check for potential architectural issues
-        if analysis_result.total_files > 100 {
+        if analysis_result.total_files > LARGE_CODEBASE_THRESHOLD {
             hotspots.push(PerformanceHotspot {
                 id: "LARGE_CODEBASE".to_string(),
                 title: "Large codebase detected".to_string(),
@@ -1436,106 +1446,45 @@ impl PerformanceAnalyzer {
             } else {
                 // Fallback to simplified calculation if AST parsing failed
                 let symbol_complexity = file.symbols.len() as f64 * 1.5;
-                let size_complexity = (file.lines as f64 / 100.0).max(1.0);
+                let size_complexity = (file.lines as f64 / LINES_PER_COMPLEXITY_UNIT).max(1.0);
                 symbol_complexity + size_complexity
             }
         } else {
             // Fallback to simplified calculation
             let symbol_complexity = file.symbols.len() as f64 * 1.5;
-            let size_complexity = (file.lines as f64 / 100.0).max(1.0);
+            let size_complexity = (file.lines as f64 / LINES_PER_COMPLEXITY_UNIT).max(1.0);
             symbol_complexity + size_complexity
         }
     }
 
     /// Calculate cyclomatic complexity using AST analysis
     fn calculate_ast_complexity(&self, content: &str, language: &str) -> f64 {
-        use crate::{Language, Parser};
-
-        let lang = match language.to_lowercase().as_str() {
-            "rust" => Language::Rust,
-            "python" => Language::Python,
-            "javascript" => Language::JavaScript,
-            "typescript" => Language::TypeScript,
-            "c" => Language::C,
-            "cpp" | "c++" => Language::Cpp,
-            "go" => Language::Go,
-            _ => return 1.0, // Default complexity for unknown languages
+        let lang = match self.parse_language(language) {
+            Some(l) => l,
+            None => return 1.0,
         };
 
-        let mut parser = match Parser::new(lang) {
-            Ok(p) => p,
-            Err(_) => return 1.0,
-        };
-
-        let tree = match parser.parse(content, None) {
-            Ok(t) => t,
-            Err(_) => return 1.0,
+        let tree = match self.create_syntax_tree(content, lang) {
+            Some(t) => t,
+            None => return 1.0,
         };
 
         self.calculate_cyclomatic_complexity(&tree, content, language)
     }
 
+    /// Parse language string to Language enum
+    fn parse_language(&self, language: &str) -> Option<crate::Language> {
+        LanguageParser::parse_language(language)
+    }
+
+    /// Create syntax tree from content and language
+    fn create_syntax_tree(&self, content: &str, lang: crate::Language) -> Option<crate::SyntaxTree> {
+        LanguageParser::create_syntax_tree(content, lang)
+    }
+
     /// Calculate cyclomatic complexity from AST
     fn calculate_cyclomatic_complexity(&self, tree: &crate::SyntaxTree, _content: &str, language: &str) -> f64 {
-        let mut complexity = 1.0; // Base complexity
-
-        // Define control flow patterns for different languages
-        let control_patterns = match language.to_lowercase().as_str() {
-            "rust" => vec![
-                "if_expression", "if_let_expression", "while_expression", "while_let_expression",
-                "for_expression", "loop_expression", "match_expression", "match_arm",
-                "try_expression", "catch_clause"
-            ],
-            "python" => vec![
-                "if_statement", "elif_clause", "while_statement", "for_statement",
-                "try_statement", "except_clause", "with_statement", "match_statement", "case_clause"
-            ],
-            "javascript" | "typescript" => vec![
-                "if_statement", "while_statement", "for_statement", "for_in_statement", "for_of_statement",
-                "switch_statement", "case_clause", "try_statement", "catch_clause", "conditional_expression"
-            ],
-            "c" | "cpp" | "c++" => vec![
-                "if_statement", "while_statement", "for_statement", "do_statement",
-                "switch_statement", "case_statement", "conditional_expression"
-            ],
-            "go" => vec![
-                "if_statement", "for_statement", "switch_statement", "type_switch_statement",
-                "case_clause", "select_statement", "communication_clause"
-            ],
-            _ => vec!["if_statement", "while_statement", "for_statement", "switch_statement"],
-        };
-
-        // Count control flow nodes
-        for pattern in control_patterns {
-            let nodes = tree.find_nodes_by_kind(pattern);
-            complexity += nodes.len() as f64;
-        }
-
-        // Special handling for match arms in Rust
-        if language.to_lowercase() == "rust" {
-            let match_expressions = tree.find_nodes_by_kind("match_expression");
-            for match_expr in match_expressions {
-                // Count match arms by looking for match_arm children
-                let arms = match_expr.children().into_iter().filter(|child| child.kind() == "match_arm").count();
-                if arms > 1 {
-                    complexity += (arms - 1) as f64; // Each additional arm adds complexity
-                }
-            }
-        }
-
-        // Special handling for switch cases
-        if matches!(language.to_lowercase().as_str(), "javascript" | "typescript" | "c" | "cpp" | "c++" | "go") {
-            let switch_statements = tree.find_nodes_by_kind("switch_statement");
-            for switch_stmt in switch_statements {
-                // Count case clauses by looking for case_clause children
-                let cases = switch_stmt.children().into_iter().filter(|child| child.kind() == "case_clause").count();
-                if cases > 1 {
-                    complexity += (cases - 1) as f64;
-                }
-            }
-        }
-
-        complexity
+        ComplexityCalculator::calculate_cyclomatic_complexity(tree, language)
     }
 
     fn count_nested_loops(&self, file: &FileInfo) -> usize {
@@ -1552,58 +1501,10 @@ impl PerformanceAnalyzer {
 
     /// Detect nested loops using AST analysis
     fn detect_nested_loops(&self, content: &str, language: &str) -> usize {
-        use crate::{Language, Parser};
-
-        let lang = match language.to_lowercase().as_str() {
-            "rust" => Language::Rust,
-            "python" => Language::Python,
-            "javascript" => Language::JavaScript,
-            "typescript" => Language::TypeScript,
-            "c" => Language::C,
-            "cpp" | "c++" => Language::Cpp,
-            "go" => Language::Go,
-            _ => return 0,
-        };
-
-        let mut parser = match Parser::new(lang) {
-            Ok(p) => p,
-            Err(_) => return 0,
-        };
-
-        let tree = match parser.parse(content, None) {
-            Ok(t) => t,
-            Err(_) => return 0,
-        };
-
-        self.count_nested_loop_patterns(&tree, language)
+        PatternDetector::count_nested_loops(content, language)
     }
 
-    /// Count nested loop patterns in AST
-    fn count_nested_loop_patterns(&self, tree: &crate::SyntaxTree, language: &str) -> usize {
-        let loop_patterns = match language.to_lowercase().as_str() {
-            "rust" => vec!["for_expression", "while_expression", "while_let_expression", "loop_expression"],
-            "python" => vec!["for_statement", "while_statement"],
-            "javascript" | "typescript" => vec!["for_statement", "for_in_statement", "for_of_statement", "while_statement", "do_statement"],
-            "c" | "cpp" | "c++" => vec!["for_statement", "while_statement", "do_statement"],
-            "go" => vec!["for_statement"],
-            _ => vec!["for_statement", "while_statement"],
-        };
 
-        let mut nested_count = 0;
-
-        for pattern in &loop_patterns {
-            let loops = tree.find_nodes_by_kind(pattern);
-            for loop_node in loops {
-                // Check if this loop contains other loops (nested)
-                let nested_loops = self.find_nested_loops_in_node(&loop_node, &loop_patterns);
-                if nested_loops > 0 {
-                    nested_count += 1;
-                }
-            }
-        }
-
-        nested_count
-    }
 
 
 
@@ -1644,7 +1545,7 @@ impl PerformanceAnalyzer {
             _ => return 0,
         };
 
-        let mut parser = match Parser::new(lang) {
+        let parser = match Parser::new(lang) {
             Ok(p) => p,
             Err(_) => return 0,
         };
@@ -1658,7 +1559,7 @@ impl PerformanceAnalyzer {
     }
 
     /// Count memory allocation patterns in AST
-    fn count_allocation_patterns(&self, tree: &crate::SyntaxTree, content: &str, language: &str) -> usize {
+    fn count_allocation_patterns(&self, tree: &crate::SyntaxTree, _content: &str, language: &str) -> usize {
         let mut allocation_count = 0;
 
         match language.to_lowercase().as_str() {
@@ -1784,7 +1685,7 @@ impl PerformanceAnalyzer {
         memory_allocations: usize,
         io_operations: usize,
     ) -> u8 {
-        let mut score = 100.0;
+        let mut score = BASE_PERFORMANCE_SCORE;
 
         // Deduct points for various performance issues
         score -= (complexity / 10.0).min(30.0);
@@ -2058,7 +1959,7 @@ impl PerformanceAnalyzer {
                                        trimmed.contains("format!(");
 
                     if has_allocation {
-                        let severity = if in_loop { "High" } else { "Medium" };
+                        let _severity = if in_loop { "High" } else { "Medium" };
 
                         hotspots.push(MemoryHotspot {
                             location: HotspotLocation {
@@ -2304,7 +2205,7 @@ impl PerformanceAnalyzer {
             score -= deduction;
         }
 
-        score.max(0.0).min(100.0) as u8
+        score.max(0.0).min(crate::constants::scoring::MAX_SCORE) as u8
     }
 }
 

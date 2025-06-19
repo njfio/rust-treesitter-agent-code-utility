@@ -3,7 +3,7 @@
 //! This module provides Go-specific utilities for parsing and analyzing
 //! Go source code using tree-sitter.
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::query::Query;
 use crate::tree::{Node, SyntaxTree};
 use tree_sitter::Point;
@@ -58,7 +58,7 @@ impl GoSyntax {
     }
 
     /// Extract function name from a function declaration
-    pub fn function_name(node: &Node, source: &str) -> Option<String> {
+    pub fn function_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_function_declaration(node) {
             return None;
         }
@@ -69,7 +69,7 @@ impl GoSyntax {
     }
 
     /// Extract method name from a method declaration
-    pub fn method_name(node: &Node, source: &str) -> Option<String> {
+    pub fn method_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_method_declaration(node) {
             return None;
         }
@@ -80,7 +80,7 @@ impl GoSyntax {
     }
 
     /// Extract receiver type from a method declaration
-    pub fn method_receiver_type(node: &Node, source: &str) -> Option<String> {
+    pub fn method_receiver_type(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_method_declaration(node) {
             return None;
         }
@@ -111,7 +111,7 @@ impl GoSyntax {
     }
 
     /// Extract type name from a type declaration
-    pub fn type_name(node: &Node, source: &str) -> Option<String> {
+    pub fn type_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_type_declaration(node) {
             return None;
         }
@@ -129,7 +129,7 @@ impl GoSyntax {
     }
 
     /// Extract package name from a package clause
-    pub fn package_name(node: &Node, source: &str) -> Option<String> {
+    pub fn package_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_package_clause(node) {
             return None;
         }
@@ -140,7 +140,7 @@ impl GoSyntax {
     }
 
     /// Get function parameters
-    pub fn function_parameters(node: &Node, source: &str) -> Vec<String> {
+    pub fn function_parameters(node: &Node, _source: &str) -> Vec<String> {
         if !Self::is_function_declaration(node) && !Self::is_method_declaration(node) {
             return Vec::new();
         }
@@ -166,7 +166,7 @@ impl GoSyntax {
     }
 
     /// Get function return types
-    pub fn function_return_types(node: &Node, source: &str) -> Vec<String> {
+    pub fn function_return_types(node: &Node, _source: &str) -> Vec<String> {
         if !Self::is_function_declaration(node) && !Self::is_method_declaration(node) {
             return Vec::new();
         }
@@ -202,7 +202,7 @@ impl GoSyntax {
     }
 
     /// Get struct fields
-    pub fn struct_fields(node: &Node, source: &str) -> Vec<(String, String)> {
+    pub fn struct_fields(node: &Node, _source: &str) -> Vec<(String, String)> {
         if !Self::is_struct_type(node) {
             return Vec::new();
         }
@@ -243,7 +243,7 @@ impl GoSyntax {
     }
 
     /// Get interface methods
-    pub fn interface_methods(node: &Node, source: &str) -> Vec<String> {
+    pub fn interface_methods(node: &Node, _source: &str) -> Vec<String> {
         if !Self::is_interface_type(node) {
             return Vec::new();
         }
@@ -287,7 +287,7 @@ impl GoSyntax {
     }
 
     /// Get all import paths
-    pub fn get_import_paths(tree: &SyntaxTree, source: &str) -> Vec<String> {
+    pub fn get_import_paths(tree: &SyntaxTree, _source: &str) -> Vec<String> {
         let mut imports = Vec::new();
         let import_nodes = tree.find_nodes_by_kind("import_declaration");
 
@@ -629,7 +629,7 @@ impl GoSyntax {
     }
 
     /// Find interface declarations in a syntax tree
-    pub fn find_interfaces(tree: &SyntaxTree, source: &str) -> Vec<(String, Vec<String>, tree_sitter::Point, tree_sitter::Point)> {
+    pub fn find_interfaces(tree: &SyntaxTree, _source: &str) -> Vec<(String, Vec<String>, tree_sitter::Point, tree_sitter::Point)> {
         let mut interfaces = Vec::new();
         let interface_nodes = tree.find_nodes_by_kind("interface_type");
 
@@ -695,7 +695,7 @@ impl GoSyntax {
     }
 
     /// Find channel declarations and operations in a syntax tree
-    pub fn find_channels(tree: &SyntaxTree, source: &str) -> Vec<(String, String, tree_sitter::Point, tree_sitter::Point)> {
+    pub fn find_channels(tree: &SyntaxTree, _source: &str) -> Vec<(String, String, tree_sitter::Point, tree_sitter::Point)> {
         let mut channels = Vec::new();
 
         // Find channel type declarations
@@ -738,7 +738,7 @@ impl GoSyntax {
     }
 
     /// Find goroutine launches (go statements) in a syntax tree
-    pub fn find_goroutines(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
+    pub fn find_goroutines(tree: &SyntaxTree, _source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut goroutines = Vec::new();
         let go_nodes = tree.find_nodes_by_kind("go_statement");
 
@@ -757,7 +757,7 @@ impl GoSyntax {
     }
 
     /// Find embedded types in struct declarations
-    pub fn find_embedded_types(tree: &SyntaxTree, source: &str) -> Vec<(String, Vec<String>, tree_sitter::Point, tree_sitter::Point)> {
+    pub fn find_embedded_types(tree: &SyntaxTree, _source: &str) -> Vec<(String, Vec<String>, tree_sitter::Point, tree_sitter::Point)> {
         let mut embedded_structs = Vec::new();
         let struct_nodes = tree.find_nodes_by_kind("struct_type");
 
@@ -824,7 +824,7 @@ impl GoSyntax {
     }
 
     /// Find type assertions in a syntax tree
-    pub fn find_type_assertions(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
+    pub fn find_type_assertions(tree: &SyntaxTree, _source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut type_assertions = Vec::new();
         let assertion_nodes = tree.find_nodes_by_kind("type_assertion_expression");
 
@@ -916,7 +916,7 @@ func (r *Rectangle) Scale(factor float64) {
 
         let methods = GoSyntax::find_methods(&tree, source);
         // Relaxed assertion - parser may not detect all methods
-        assert!(methods.len() >= 0); // At least some methods might be found
+        // Note: methods.len() is always >= 0 for Vec, so this assertion is always true
         println!("Found {} methods", methods.len()); // Debug output
     }
 
@@ -1117,7 +1117,7 @@ type Person struct {
 
         let struct_nodes = tree.find_nodes_by_kind("struct_type");
         // Relaxed assertion - parser may not detect struct fields correctly
-        assert!(struct_nodes.len() >= 0); // Some struct nodes might be found
+        // Note: struct_nodes.len() is always >= 0 for Vec, so this assertion is always true
         println!("Found {} struct nodes", struct_nodes.len()); // Debug output
     }
 

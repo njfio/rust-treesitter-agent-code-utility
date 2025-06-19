@@ -418,10 +418,33 @@ impl DependencyAnalyzer {
             config: DependencyConfig::default(),
         }
     }
-    
+
     /// Create a new dependency analyzer with custom configuration
     pub fn with_config(config: DependencyConfig) -> Self {
         Self { config }
+    }
+
+    /// Helper function to create dependency without excessive cloning
+    fn create_dependency(
+        name: &str,
+        version: String,
+        manager: PackageManager,
+        dependency_type: DependencyType,
+    ) -> Dependency {
+        Dependency {
+            name: name.to_string(),
+            version,
+            latest_version: None,
+            manager,
+            dependency_type,
+            license: None,
+            repository: None,
+            description: None,
+            maintainers: Vec::new(),
+            download_count: None,
+            last_updated: None,
+            security_advisories: 0,
+        }
     }
     
     /// Analyze dependencies in a codebase
@@ -633,20 +656,12 @@ impl DependencyAnalyzer {
             if let Some(dev_deps) = toml_value.get("dev-dependencies").and_then(|d| d.as_table()) {
                 for (name, version_spec) in dev_deps {
                     let (version, _) = self.parse_cargo_dependency_spec(version_spec);
-                    dependencies.push(Dependency {
-                        name: name.clone(),
+                    dependencies.push(Self::create_dependency(
+                        name,
                         version,
-                        latest_version: None,
-                        manager: PackageManager::Cargo,
-                        dependency_type: DependencyType::Development,
-                        license: None,
-                        repository: None,
-                        description: None,
-                        maintainers: Vec::new(),
-                        download_count: None,
-                        last_updated: None,
-                        security_advisories: 0,
-                    });
+                        PackageManager::Cargo,
+                        DependencyType::Development,
+                    ));
                 }
             }
         }
@@ -655,20 +670,12 @@ impl DependencyAnalyzer {
         if let Some(build_deps) = toml_value.get("build-dependencies").and_then(|d| d.as_table()) {
             for (name, version_spec) in build_deps {
                 let (version, _) = self.parse_cargo_dependency_spec(version_spec);
-                dependencies.push(Dependency {
-                    name: name.clone(),
+                dependencies.push(Self::create_dependency(
+                    name,
                     version,
-                    latest_version: None,
-                    manager: PackageManager::Cargo,
-                    dependency_type: DependencyType::Build,
-                    license: None,
-                    repository: None,
-                    description: None,
-                    maintainers: Vec::new(),
-                    download_count: None,
-                    last_updated: None,
-                    security_advisories: 0,
-                });
+                    PackageManager::Cargo,
+                    DependencyType::Build,
+                ));
             }
         }
 
@@ -1059,13 +1066,13 @@ impl DependencyAnalyzer {
         // Find popular dependencies
         let mut dependency_counts = HashMap::new();
         for dep in dependencies {
-            *dependency_counts.entry(dep.name.clone()).or_insert(0) += 1;
+            *dependency_counts.entry(&dep.name).or_insert(0) += 1;
         }
 
         let mut popular_dependencies: Vec<_> = dependency_counts
             .into_iter()
             .map(|(name, count)| PopularDependency {
-                name,
+                name: name.to_string(),
                 dependent_count: count,
                 centrality_score: count as f64 / total_nodes as f64,
             })
@@ -1080,7 +1087,8 @@ impl DependencyAnalyzer {
                 name: "Web Framework".to_string(),
                 dependencies: dependencies.iter()
                     .filter(|d| d.name.contains("web") || d.name.contains("http"))
-                    .map(|d| d.name.clone())
+                    .map(|d| d.name.as_str())
+                    .map(str::to_string)
                     .collect(),
                 purpose: "Web development and HTTP handling".to_string(),
             },
@@ -1088,7 +1096,8 @@ impl DependencyAnalyzer {
                 name: "Testing".to_string(),
                 dependencies: dependencies.iter()
                     .filter(|d| d.dependency_type == DependencyType::Development)
-                    .map(|d| d.name.clone())
+                    .map(|d| d.name.as_str())
+                    .map(str::to_string)
                     .collect(),
                 purpose: "Testing and development tools".to_string(),
             },

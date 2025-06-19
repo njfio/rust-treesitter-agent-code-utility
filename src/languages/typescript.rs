@@ -3,10 +3,9 @@
 //! This module provides TypeScript-specific utilities for parsing and analyzing
 //! TypeScript source code using tree-sitter.
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::query::Query;
 use crate::tree::{Node, SyntaxTree};
-use tree_sitter::Point;
 
 /// TypeScript-specific syntax utilities
 pub struct TypeScriptSyntax;
@@ -85,7 +84,7 @@ impl TypeScriptSyntax {
     }
 
     /// Extract function name from a function node
-    pub fn function_name(node: &Node, source: &str) -> Option<String> {
+    pub fn function_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_function(node) {
             return None;
         }
@@ -110,7 +109,7 @@ impl TypeScriptSyntax {
     }
 
     /// Extract class name from a class node
-    pub fn class_name(node: &Node, source: &str) -> Option<String> {
+    pub fn class_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_class_declaration(node) {
             return None;
         }
@@ -121,7 +120,7 @@ impl TypeScriptSyntax {
     }
 
     /// Extract interface name from an interface node
-    pub fn interface_name(node: &Node, source: &str) -> Option<String> {
+    pub fn interface_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_interface_declaration(node) {
             return None;
         }
@@ -132,7 +131,7 @@ impl TypeScriptSyntax {
     }
 
     /// Extract type alias name from a type alias node
-    pub fn type_alias_name(node: &Node, source: &str) -> Option<String> {
+    pub fn type_alias_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_type_alias_declaration(node) {
             return None;
         }
@@ -143,7 +142,7 @@ impl TypeScriptSyntax {
     }
 
     /// Extract enum name from an enum node
-    pub fn enum_name(node: &Node, source: &str) -> Option<String> {
+    pub fn enum_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_enum_declaration(node) {
             return None;
         }
@@ -154,7 +153,7 @@ impl TypeScriptSyntax {
     }
 
     /// Extract namespace name from a namespace node
-    pub fn namespace_name(node: &Node, source: &str) -> Option<String> {
+    pub fn namespace_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_namespace_declaration(node) {
             return None;
         }
@@ -175,7 +174,7 @@ impl TypeScriptSyntax {
     }
 
     /// Extract method name from a method definition node
-    pub fn method_name(node: &Node, source: &str) -> Option<String> {
+    pub fn method_name(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_method_definition(node) && !Self::is_method_signature(node) {
             return None;
         }
@@ -200,7 +199,7 @@ impl TypeScriptSyntax {
     }
 
     /// Get function return type annotation
-    pub fn function_return_type(node: &Node, source: &str) -> Option<String> {
+    pub fn function_return_type(node: &Node, _source: &str) -> Option<String> {
         if !Self::is_function(node) {
             return None;
         }
@@ -211,7 +210,7 @@ impl TypeScriptSyntax {
     }
 
     /// Get function parameters with types
-    pub fn function_parameters_with_types(node: &Node, source: &str) -> Vec<(String, Option<String>)> {
+    pub fn function_parameters_with_types(node: &Node, _source: &str) -> Vec<(String, Option<String>)> {
         if !Self::is_function(node) {
             return Vec::new();
         }
@@ -240,7 +239,7 @@ impl TypeScriptSyntax {
     }
 
     /// Get generic type parameters
-    pub fn generic_type_parameters(node: &Node, source: &str) -> Vec<String> {
+    pub fn generic_type_parameters(node: &Node, _source: &str) -> Vec<String> {
         let mut type_params = Vec::new();
         
         if let Some(type_params_node) = node.child_by_field_name("type_parameters") {
@@ -315,7 +314,7 @@ impl TypeScriptSyntax {
     }
 
     /// Get decorators applied to a node
-    pub fn get_decorators(node: &Node, source: &str) -> Vec<String> {
+    pub fn get_decorators(node: &Node, _source: &str) -> Vec<String> {
         let mut decorators = Vec::new();
 
         for child in node.children() {
@@ -501,7 +500,7 @@ impl TypeScriptSyntax {
     }
 
     /// Find mapped types in a syntax tree
-    pub fn find_mapped_types(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
+    pub fn find_mapped_types(tree: &SyntaxTree, _source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut mapped_types = Vec::new();
 
         // Find mapped type declarations
@@ -600,7 +599,7 @@ impl TypeScriptSyntax {
     }
 
     /// Find conditional types in a syntax tree
-    pub fn find_conditional_types(tree: &SyntaxTree, source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
+    pub fn find_conditional_types(tree: &SyntaxTree, _source: &str) -> Vec<(String, tree_sitter::Point, tree_sitter::Point)> {
         let mut conditional_types = Vec::new();
 
         // Find conditional type expressions
@@ -822,7 +821,7 @@ mod tests {
             }
         "#;
 
-        let mut parser = Parser::new(crate::Language::TypeScript).unwrap();
+        let parser = Parser::new(crate::Language::TypeScript).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let classes = TypeScriptSyntax::find_classes(&tree, source);
@@ -844,7 +843,7 @@ mod tests {
             }
         "#;
 
-        let mut parser = Parser::new(crate::Language::TypeScript).unwrap();
+        let parser = Parser::new(crate::Language::TypeScript).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let interfaces = TypeScriptSyntax::find_interfaces(&tree, source);
@@ -862,7 +861,7 @@ mod tests {
             type UserCallback = (user: User) => void;
         "#;
 
-        let mut parser = Parser::new(crate::Language::TypeScript).unwrap();
+        let parser = Parser::new(crate::Language::TypeScript).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let type_aliases = TypeScriptSyntax::find_type_aliases(&tree, source);
@@ -945,7 +944,7 @@ mod tests {
             }
         "#;
 
-        let mut parser = Parser::new(crate::Language::TypeScript).unwrap();
+        let parser = Parser::new(crate::Language::TypeScript).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let function_nodes = tree.find_nodes_by_kind("function_declaration");

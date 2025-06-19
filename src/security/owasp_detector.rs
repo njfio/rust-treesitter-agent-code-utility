@@ -217,7 +217,7 @@ impl OwaspDetector {
                     name: "SQL Injection".to_string(),
                     description: "Potential SQL injection with string concatenation".to_string(),
                     severity: VulnSeverity::Critical,
-                    confidence: 0.7,
+                    confidence: crate::constants::security::DEFAULT_MIN_CONFIDENCE,
                     file_path: file_path.to_string(),
                     line_number: line_num + 1,
                     code_snippet: self.extract_code_snippet(source, line_num + 1, 3),
@@ -247,7 +247,7 @@ impl OwaspDetector {
                     name: "Hardcoded Credentials".to_string(),
                     description: "Potential hardcoded password found in source code".to_string(),
                     severity: VulnSeverity::High,
-                    confidence: 0.7,
+                    confidence: crate::constants::security::DEFAULT_MIN_CONFIDENCE,
                     file_path: file_path.to_string(),
                     line_number: line_num + 1,
                     code_snippet: self.extract_code_snippet(source, line_num + 1, 2),
@@ -288,13 +288,7 @@ impl OwaspDetector {
         Ok(findings)
     }
 
-    /// Check if function body contains authorization checks
-    fn has_authorization_check(&self, body_text: &str) -> bool {
-        let auth_keywords = ["authorize", "permission", "role", "access", "auth", "check"];
-        let body_lower = body_text.to_lowercase();
-        
-        auth_keywords.iter().any(|keyword| body_lower.contains(keyword))
-    }
+
 
     /// Extract code snippet around a line
     fn extract_code_snippet(&self, source: &str, line_number: usize, context_lines: usize) -> String {

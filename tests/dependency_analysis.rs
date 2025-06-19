@@ -29,7 +29,7 @@ tempfile = "3.0"
     fs::write(temp_dir.path().join("src").join("main.rs"), "fn main() {}")?;
     
     // Analyze the codebase
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
     let analysis_result = analyzer.analyze_directory(temp_dir.path())?;
     
     // Run dependency analysis
@@ -63,7 +63,7 @@ fn test_package_manager_detection() -> Result<(), Box<dyn std::error::Error>> {
     fs::write(temp_dir.path().join("requirements.txt"), "requests==2.25.1\nnumpy>=1.20.0")?;
     fs::write(temp_dir.path().join("go.mod"), "module test\n\ngo 1.19\n\nrequire github.com/gin-gonic/gin v1.8.1")?;
     
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
     let analysis_result = analyzer.analyze_directory(temp_dir.path())?;
     
     let dependency_analyzer = DependencyAnalyzer::new();
@@ -105,7 +105,7 @@ fn test_npm_dependency_parsing() -> Result<(), Box<dyn std::error::Error>> {
     
     fs::write(temp_dir.path().join("package.json"), package_json)?;
     
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
     let analysis_result = analyzer.analyze_directory(temp_dir.path())?;
     
     let dependency_analyzer = DependencyAnalyzer::new();
@@ -146,7 +146,7 @@ pytest==7.1.2  # Test framework
     
     fs::write(temp_dir.path().join("requirements.txt"), requirements_txt)?;
     
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
     let analysis_result = analyzer.analyze_directory(temp_dir.path())?;
     
     let dependency_analyzer = DependencyAnalyzer::new();
@@ -189,7 +189,7 @@ tokio = "1.0"
     fs::create_dir_all(temp_dir.path().join("src"))?;
     fs::write(temp_dir.path().join("src").join("main.rs"), "fn main() {}")?;
     
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
     let analysis_result = analyzer.analyze_directory(temp_dir.path())?;
     
     // Test with custom configuration
@@ -238,7 +238,7 @@ require (
     
     fs::write(temp_dir.path().join("go.mod"), go_mod)?;
     
-    let mut analyzer = CodebaseAnalyzer::new();
+    let mut analyzer = CodebaseAnalyzer::new()?;
     let analysis_result = analyzer.analyze_directory(temp_dir.path())?;
     
     let dependency_analyzer = DependencyAnalyzer::new();
