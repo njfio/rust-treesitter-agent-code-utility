@@ -5,8 +5,9 @@
 
 use crate::{FileInfo, Symbol, AnalysisResult};
 use crate::analysis_utils::{
-    AnalysisThresholds, SymbolFilter, FileAnalyzer
+    AnalysisThresholds, SymbolFilter
 };
+use crate::analysis_common::{FileAnalyzer};
 use std::collections::HashMap;
 
 #[cfg(feature = "serde")]

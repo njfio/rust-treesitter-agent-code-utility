@@ -9,8 +9,9 @@
 
 use crate::{AnalysisResult, FileInfo, Result};
 use crate::analysis_utils::{
-    LanguageParser, ComplexityCalculator, PatternDetector
+    LanguageParser, ComplexityCalculator
 };
+use crate::analysis_common::{PatternAnalyzer};
 use crate::constants::performance::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -1499,9 +1500,9 @@ impl PerformanceAnalyzer {
         }
     }
 
-    /// Detect nested loops using AST analysis
+    /// Detect nested loops using AST analysis (now using shared utility)
     fn detect_nested_loops(&self, content: &str, language: &str) -> usize {
-        PatternDetector::count_nested_loops(content, language)
+        PatternAnalyzer::count_nested_loops(content, language)
     }
 
 

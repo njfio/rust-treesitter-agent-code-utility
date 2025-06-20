@@ -9,8 +9,9 @@
 
 use crate::{AnalysisResult, Result};
 use crate::analysis_utils::{
-    AnalysisThresholds, SymbolFilter, PatternDetector
+    AnalysisThresholds, SymbolFilter
 };
+use crate::analysis_common::{FileAnalyzer, PatternAnalyzer};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -841,14 +842,12 @@ impl SmartRefactoringEngine {
     fn detect_duplicate_code(&self, file: &crate::FileInfo, _all_files: &[crate::FileInfo]) -> Result<Vec<CodeSmellFix>> {
         let mut fixes = Vec::new();
 
-        // Simple duplicate detection based on function names and patterns
-        let function_symbols: Vec<_> = file.symbols.iter()
-            .filter(|s| s.kind == "function" || s.kind == "method")
-            .collect();
+        // Use shared utility to get function symbols
+        let function_symbols = FileAnalyzer::get_function_symbols(file);
 
         for (i, symbol1) in function_symbols.iter().enumerate() {
             for symbol2 in function_symbols.iter().skip(i + 1) {
-                let similarity = self.calculate_function_similarity(symbol1, symbol2);
+                let similarity = PatternAnalyzer::calculate_function_similarity(symbol1, symbol2);
 
                 if similarity > 0.5 {  // Lowered threshold for better detection
                     fixes.push(CodeSmellFix {
@@ -1090,9 +1089,9 @@ impl SmartRefactoringEngine {
         )
     }
 
-    /// Calculate function similarity based on name and structure
+    /// Calculate function similarity based on name and structure (now using shared utility)
     fn calculate_function_similarity(&self, func1: &crate::Symbol, func2: &crate::Symbol) -> f64 {
-        PatternDetector::calculate_function_similarity(func1, func2)
+        PatternAnalyzer::calculate_function_similarity(func1, func2)
     }
 
 
@@ -1448,7 +1447,7 @@ impl SmartRefactoringEngine {
         let mut optimizations = Vec::new();
 
         // Use shared utility to detect string concatenation in loops
-        if PatternDetector::detect_string_concatenation_in_loops(content) {
+        if PatternAnalyzer::detect_string_concatenation_in_loops(content) {
             optimizations.push(PerformanceOptimization {
                     id: format!("STRING_CONCAT_LOOP_{}", file.path.display()),
                     name: "String Concatenation in Loop".to_string(),
@@ -1532,7 +1531,7 @@ impl SmartRefactoringEngine {
         let mut optimizations = Vec::new();
 
         // Use shared utility to count nested loops
-        let max_depth = PatternDetector::count_nested_loops(content, &file.language);
+        let max_depth = PatternAnalyzer::count_nested_loops(content, &file.language);
         let thresholds = AnalysisThresholds::default();
 
         if max_depth >= thresholds.nested_loop_threshold {

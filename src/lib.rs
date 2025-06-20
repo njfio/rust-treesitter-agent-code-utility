@@ -32,6 +32,7 @@ pub mod advanced_ai_analysis;
 pub mod advanced_security;
 pub mod ai_analysis;
 pub mod analysis_utils;
+pub mod analysis_common;
 pub mod control_flow;
 pub mod complexity_analysis;
 pub mod taint_analysis;
