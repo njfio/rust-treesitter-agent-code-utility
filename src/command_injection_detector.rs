@@ -419,10 +419,10 @@ impl CommandInjectionDetector {
     }
 
     /// Detect command injection vulnerabilities in a syntax tree
-    pub fn detect(&self, tree: &SyntaxTree) -> Result<Vec<CommandInjectionVulnerability>> {
+    pub fn detect(&mut self, tree: &SyntaxTree) -> Result<Vec<CommandInjectionVulnerability>> {
         let mut vulnerabilities = Vec::new();
 
-        // Perform taint analysis to find data flows
+        // Perform enhanced taint analysis to find data flows
         let taint_flows = self.taint_analyzer.analyze(tree)?;
 
         // Filter flows that lead to command injection vulnerabilities
