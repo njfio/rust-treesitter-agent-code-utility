@@ -258,8 +258,8 @@ impl ComplexityAnalyzer {
                 CognitiveComplexityImpact::None
             },
 
-            // Nested functions and closures - increase nesting only
-            "closure_expression" | "function_item" => CognitiveComplexityImpact::NestingOnly,
+            // Nested functions and closures - increase nesting only (but not top-level functions)
+            "closure_expression" => CognitiveComplexityImpact::NestingOnly,
 
             _ => CognitiveComplexityImpact::None,
         }
