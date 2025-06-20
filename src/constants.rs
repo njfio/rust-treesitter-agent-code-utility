@@ -3,6 +3,51 @@
 //! This module contains all magic numbers and configuration constants
 //! used across the codebase, providing clear documentation for their purpose.
 
+use serde::{Serialize, Deserialize};
+
+/// Common enums used across modules for consistency
+pub mod common {
+    use super::*;
+
+    /// Standard priority levels used across all modules
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+    pub enum Priority {
+        Low,
+        Medium,
+        High,
+        Critical,
+    }
+
+    /// Standard severity levels used across all modules
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+    pub enum Severity {
+        Info,
+        Low,
+        Medium,
+        High,
+        Critical,
+    }
+
+    /// Standard effort levels for implementation estimation
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+    pub enum EffortLevel {
+        Trivial,    // < 30 minutes
+        Easy,       // < 2 hours
+        Medium,     // < 1 day
+        Hard,       // < 1 week
+        VeryHard,   // > 1 week
+    }
+
+    /// Standard risk levels for assessment
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+    pub enum RiskLevel {
+        Low,
+        Medium,
+        High,
+        Critical,
+    }
+}
+
 /// Security analysis constants
 pub mod security {
     /// Default minimum confidence threshold for security findings (0.0-1.0)

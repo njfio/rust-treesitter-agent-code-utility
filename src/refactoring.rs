@@ -9,6 +9,7 @@ use crate::analysis_utils::{
 };
 use crate::analysis_common::{FileAnalyzer};
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 #[cfg(feature = "serde")]
 use serde::{Serialize, Deserialize};
@@ -98,13 +99,15 @@ pub struct RefactoringSuggestion {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RefactoringLocation {
     /// File path
-    pub file: String,
+    pub file: PathBuf,
+    /// Function or method name
+    pub function: Option<String>,
+    /// Class or struct name
+    pub class: Option<String>,
     /// Start line
     pub start_line: usize,
     /// End line
     pub end_line: usize,
-    /// Symbol name if applicable
-    pub symbol: Option<String>,
     /// Scope (function, class, module, etc.)
     pub scope: String,
 }
@@ -375,10 +378,11 @@ impl RefactoringAnalyzer {
     /// Create file location for refactoring suggestions
     fn create_file_location(&self, file: &FileInfo) -> RefactoringLocation {
         RefactoringLocation {
-            file: file.path.display().to_string(),
+            file: file.path.clone(),
+            function: None,
+            class: None,
             start_line: 1,
             end_line: file.lines,
-            symbol: None,
             scope: "file".to_string(),
         }
     }
@@ -549,10 +553,11 @@ impl RefactoringAnalyzer {
                     bug_risk_reduction: 10,
                 },
                 location: RefactoringLocation {
-                    file: file.path.display().to_string(),
+                    file: file.path.clone(),
+                    function: None,
+                    class: None,
                     start_line: 1,
                     end_line: 1,
-                    symbol: None,
                     scope: "file".to_string(),
                 },
                 current_code: file_name.to_string(),
@@ -593,10 +598,11 @@ impl RefactoringAnalyzer {
                     bug_risk_reduction: 10,
                 },
                 location: RefactoringLocation {
-                    file: file.path.display().to_string(),
+                    file: file.path.clone(),
+                    function: Some(symbol.name.clone()),
+                    class: None,
                     start_line: symbol.start_line,
                     end_line: symbol.start_line,
-                    symbol: Some(symbol.name.clone()),
                     scope: symbol.kind.clone(),
                 },
                 current_code: symbol.name.clone(),
@@ -638,10 +644,11 @@ impl RefactoringAnalyzer {
                     bug_risk_reduction: 50,
                 },
                 location: RefactoringLocation {
-                    file: file.path.display().to_string(),
+                    file: file.path.clone(),
+                    function: Some(symbol.name.clone()),
+                    class: None,
                     start_line: symbol.start_line,
                     end_line: symbol.start_line,
-                    symbol: Some(symbol.name.clone()),
                     scope: "function".to_string(),
                 },
                 current_code: format!("fn {}(...)", symbol.name),
@@ -683,10 +690,11 @@ impl RefactoringAnalyzer {
                     bug_risk_reduction: 60,
                 },
                 location: RefactoringLocation {
-                    file: "multiple files".to_string(),
+                    file: PathBuf::from("multiple files"),
+                    function: None,
+                    class: None,
                     start_line: 1,
                     end_line: 1,
-                    symbol: None,
                     scope: "project".to_string(),
                 },
                 current_code: "Duplicated patterns".to_string(),
@@ -728,10 +736,11 @@ impl RefactoringAnalyzer {
                     bug_risk_reduction: 40,
                 },
                 location: RefactoringLocation {
-                    file: "project structure".to_string(),
+                    file: PathBuf::from("project structure"),
+                    function: None,
+                    class: None,
                     start_line: 1,
                     end_line: 1,
-                    symbol: None,
                     scope: "architecture".to_string(),
                 },
                 current_code: format!("{} files", result.total_files),
