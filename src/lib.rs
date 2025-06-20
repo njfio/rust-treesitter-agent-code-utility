@@ -51,6 +51,7 @@ pub mod error;
 pub mod file_cache;
 pub mod infrastructure;
 pub mod intent_mapping;
+pub mod embeddings;
 pub mod languages;
 pub mod parser;
 pub mod performance_analysis;

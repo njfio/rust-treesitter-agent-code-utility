@@ -49,6 +49,13 @@ backoff = "0.4"
 dirs = "5.0"
 num_cpus = "1.0"
 
+# Machine Learning Dependencies for Intent Mapping
+candle-core = "0.9.1"
+candle-nn = "0.9.1"
+candle-transformers = "0.9.1"
+hf-hub = { version = "0.3", features = ["tokio"] }
+tokenizers = "0.19"
+
 [build-dependencies]
 cc = "1.0"
 
