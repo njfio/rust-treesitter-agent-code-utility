@@ -28,7 +28,8 @@ Built for developers and AI systems that need code analysis tools and insights i
 
 - **Codebase Analysis**: Directory analysis with file metrics, symbol extraction, and statistics
 - **Security Scanning**: Pattern-based vulnerability detection with OWASP categorization and semantic context tracking
-- **Performance Analysis**: Cyclomatic complexity calculation and optimization recommendations
+- **Complexity Analysis**: Comprehensive code complexity metrics including McCabe, cognitive, NPATH, and Halstead metrics
+- **Performance Analysis**: Optimization recommendations and performance hotspot detection
 - **Dependency Analysis**: Package manager file parsing (package.json, requirements.txt, Cargo.toml, go.mod)
 - **Code Quality Analysis**: Code smell detection and refactoring suggestions
 - **Intent Mapping**: Requirements to implementation mapping for development workflow
@@ -102,7 +103,35 @@ tree-sitter-cli security ./src --min-severity high --format json
 - **Cryptographic Issues**: Weak algorithms and insecure practices
 - **Compliance Assessment**: OWASP and CWE compliance scoring
 
+### `complexity` - Code Complexity Analysis
+
+Comprehensive code complexity analysis with multiple metrics.
+
+```bash
+tree-sitter-cli complexity <PATH> [OPTIONS]
+
+Options:
+  -f, --format <FORMAT>    Output format: table, json, markdown [default: table]
+  --metric <METRIC>        Specific metric: mccabe, cognitive, npath, halstead, all [default: all]
+  --threshold <VALUE>      Complexity threshold for warnings
+  --detailed               Show detailed per-function analysis
+```
+
+**Example:**
+```bash
+tree-sitter-cli complexity ./src --metric all --format json
+```
+
+**Metrics Calculated:**
+- **McCabe Complexity**: Cyclomatic complexity based on control flow paths
+- **Cognitive Complexity**: Human-perceived complexity with nesting penalties
+- **NPATH Complexity**: Number of execution paths through functions
+- **Halstead Metrics**: Volume, difficulty, and effort based on operators/operands
+- **Lines of Code**: Physical and logical line counts
+- **Nesting Depth**: Maximum nesting level in functions
+
 ### `symbols` - Symbol Extraction
+
 Extract and display code symbols (functions, classes, structs, etc.).
 
 ```bash
@@ -399,6 +428,48 @@ let mappings = mapping_system.generate_mappings(&analysis)?;
 println!("Generated {} mappings", mappings.len());
 ```
 
+### Complexity Analysis
+
+```rust
+use rust_tree_sitter::{Parser, Language, ComplexityAnalyzer};
+
+// Create parser and analyzer
+let mut parser = Parser::new(Language::Rust)?;
+let analyzer = ComplexityAnalyzer::new("rust");
+
+// Parse code
+let source = r#"
+    fn complex_function(x: i32, y: i32) -> i32 {
+        if x > 0 {
+            for i in 0..x {
+                if i % 2 == 0 {
+                    return i * y;
+                }
+            }
+        }
+        match y {
+            0..=10 => y * 2,
+            11..=100 => y + 50,
+            _ => y - 25,
+        }
+    }
+"#;
+
+let tree = parser.parse(source, None)?;
+
+// Analyze complexity
+let metrics = analyzer.analyze_complexity(&tree)?;
+
+println!("McCabe Complexity: {}", metrics.cyclomatic_complexity);
+println!("Cognitive Complexity: {}", metrics.cognitive_complexity);
+println!("NPATH Complexity: {}", metrics.npath_complexity);
+println!("Halstead Volume: {:.2}", metrics.halstead_volume);
+println!("Halstead Difficulty: {:.2}", metrics.halstead_difficulty);
+println!("Halstead Effort: {:.2}", metrics.halstead_effort);
+println!("Max Nesting Depth: {}", metrics.max_nesting_depth);
+println!("Lines of Code: {}", metrics.lines_of_code);
+```
+
 ### Performance Analysis
 
 ```rust
@@ -504,8 +575,9 @@ Pattern-based detection for:
 - **Core Parsing**: All parsing functionality working across 7 languages
 - **Symbol Extraction**: Working for all supported languages with symbol detection
 - **Security Analysis**: Pattern-based security scanning with OWASP categorization
+- **Complexity Analysis**: 21 tests covering McCabe, cognitive, NPATH, and Halstead metrics
 - **Semantic Context Tracking**: 17 tests covering symbol tables, data flow, and security context
-- **Performance Analysis**: Cyclomatic complexity calculation and optimization recommendations
+- **Performance Analysis**: Optimization recommendations and hotspot detection
 - **Intent Mapping**: Requirements-to-implementation mapping with validation
 - **Advanced Features**: Semantic analysis, automated reasoning, and code explanation
 - **CLI Commands**: All commands working with comprehensive option support
