@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use tree_sitter::{InputEdit, Point};
 
 /// Configuration options for parsing
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct ParseOptions {
     /// Maximum number of bytes to parse (None for unlimited)
     pub max_bytes: Option<usize>,
@@ -148,7 +148,7 @@ impl Parser {
 
     /// Clone this parser (creates a new parser with the same configuration)
     pub fn clone_parser(&self) -> Result<Self> {
-        Self::with_options(self.language, self.options.clone())
+        Self::with_options(self.language, self.options)
     }
 }
 
@@ -156,7 +156,7 @@ impl Clone for Parser {
     fn clone(&self) -> Self {
         // Note: This creates a new parser instance rather than sharing the inner parser
         // This is safer for concurrent use
-        Self::with_options(self.language, self.options.clone())
+        Self::with_options(self.language, self.options)
             .expect("Failed to clone parser: parser creation should always succeed with valid language and options")
     }
 }
@@ -216,7 +216,7 @@ mod tests {
             include_extras: false,
         };
         
-        let parser = Parser::with_options(Language::Rust, options.clone());
+        let parser = Parser::with_options(Language::Rust, options);
         assert!(parser.is_ok());
         
         let parser = parser.unwrap();

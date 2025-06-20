@@ -24,15 +24,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         max_file_size: Some(500 * 1024), // 500KB max file size
         include_extensions: None, // Include all supported languages
         exclude_extensions: vec![
-            "exe".to_string(), "bin".to_string(), "so".to_string(),
-            "png".to_string(), "jpg".to_string(), "pdf".to_string(),
-            "zip".to_string(), "tar".to_string(), "gz".to_string(),
-        ],
+            "exe", "bin", "so",
+            "png", "jpg", "pdf",
+            "zip", "tar", "gz",
+        ].into_iter().map(String::from).collect(),
         exclude_dirs: vec![
-            ".git".to_string(), "node_modules".to_string(), "target".to_string(),
-            ".vscode".to_string(), ".idea".to_string(), "build".to_string(),
-            "dist".to_string(), "__pycache__".to_string(),
-        ],
+            ".git", "node_modules", "target",
+            ".vscode", ".idea", "build",
+            "dist", "__pycache__",
+        ].into_iter().map(String::from).collect(),
         follow_symlinks: false,
         max_depth: Some(10),
         include_hidden: false,

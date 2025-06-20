@@ -64,33 +64,43 @@ pub mod test_coverage;
 pub mod tree;
 
 // Re-export commonly used types
-pub use advanced_ai_analysis::{AdvancedAIAnalyzer, AdvancedAIResult, AdvancedAIConfig, SemanticAnalysis, ArchitecturePattern};
-pub use advanced_security::{AdvancedSecurityAnalyzer, AdvancedSecurityResult, AdvancedSecurityConfig, SecurityVulnerability as AdvancedSecurityVulnerability};
-pub use ai_analysis::{AIAnalyzer, AIAnalysisResult, AIConfig, CodebaseExplanation, FileExplanation, SymbolExplanation};
+
+// Core analysis types
 pub use analyzer::{CodebaseAnalyzer, AnalysisConfig, AnalysisDepth, AnalysisResult, FileInfo, Symbol};
-pub use dependency_analysis::{DependencyAnalyzer, DependencyAnalysisResult, DependencyConfig, Dependency, PackageManager};
 pub use error::{Error, Result};
-pub use file_cache::{FileCache, CacheStats};
 pub use languages::Language;
 pub use parser::{Parser, ParseOptions, create_edit};
-pub use performance_analysis::{PerformanceAnalyzer, PerformanceAnalysisResult, PerformanceConfig, PerformanceHotspot};
 pub use query::{Query, QueryCapture, QueryMatch, QueryBuilder};
+pub use tree::{Node, SyntaxTree, TreeCursor, TreeEdit};
+
+// Basic analysis modules
+pub use ai_analysis::{AIAnalyzer, AIAnalysisResult, AIConfig, CodebaseExplanation, FileExplanation, SymbolExplanation};
+pub use complexity_analysis::{ComplexityAnalyzer, ComplexityMetrics, HalsteadMetrics};
+pub use dependency_analysis::{DependencyAnalyzer, DependencyAnalysisResult, DependencyConfig, Dependency, PackageManager};
+pub use performance_analysis::{PerformanceAnalyzer, PerformanceAnalysisResult, PerformanceConfig, PerformanceHotspot};
 pub use refactoring::{RefactoringAnalyzer, RefactoringResult, RefactoringSuggestion, RefactoringConfig};
+pub use test_coverage::{TestCoverageAnalyzer, TestCoverageResult, TestCoverageConfig, MissingTest};
+
+// Security analysis
 pub use security::{VulnerabilityDatabase, SecretsDetector, OwaspDetector};
 pub use enhanced_security::{EnhancedSecurityScanner, EnhancedSecurityResult, EnhancedSecurityConfig};
 pub use advanced_security::{AdvancedSecurityAnalyzer as SecurityScanner, AdvancedSecurityResult as SecurityScanResult, SecurityVulnerability, AdvancedSecurityConfig as SecurityConfig, SecuritySeverity};
+
+// Advanced features
+pub use advanced_ai_analysis::{AdvancedAIAnalyzer, AdvancedAIResult, AdvancedAIConfig, SemanticAnalysis, ArchitecturePattern};
 pub use smart_refactoring::{SmartRefactoringEngine, SmartRefactoringResult, SmartRefactoringConfig, CodeSmellFix};
-pub use test_coverage::{TestCoverageAnalyzer, TestCoverageResult, TestCoverageConfig, MissingTest};
 pub use code_map::{CallGraph, ModuleGraph, build_call_graph, build_module_graph};
-pub use tree::{Node, SyntaxTree, TreeCursor, TreeEdit};
+
+// Specialized analysis tools
 pub use control_flow::{ControlFlowGraph, CfgBuilder, CfgNodeType};
-pub use complexity_analysis::{ComplexityAnalyzer, ComplexityMetrics, HalsteadMetrics};
 pub use taint_analysis::{TaintAnalyzer, TaintFlow, TaintSource, TaintSink, VulnerabilityType};
 pub use sql_injection_detector::{SqlInjectionDetector, SqlInjectionVulnerability, SqlInjectionType};
 pub use command_injection_detector::{CommandInjectionDetector, CommandInjectionVulnerability, CommandInjectionType};
 pub use symbol_table::{SymbolTableAnalyzer, SymbolTable, SymbolDefinition, SymbolReference, SymbolAnalysisResult, Scope, ScopeType, SymbolType, ReferenceType};
 pub use semantic_context::{SemanticContextAnalyzer, SemanticContext, DataFlowAnalysis, SecuritySemanticContext, ValidationPoint, SanitizationPoint, TrustLevel};
 pub use semantic_graph::{SemanticGraphQuery, GraphNode, GraphEdge, NodeType, RelationshipType, QueryResult, QueryConfig, GraphStatistics};
+
+// Advanced AI features
 pub use code_evolution::{CodeEvolutionTracker, EvolutionAnalysisResult, EvolutionConfig, ChangePattern, PatternType, EvolutionMetrics, FileInsight, EvolutionRecommendation, ChangeType, RiskLevel};
 pub use intent_mapping::{
     IntentMappingSystem, MappingAnalysisResult, MappingConfig, Requirement, Implementation,
@@ -103,6 +113,9 @@ pub use reasoning_engine::{
     AutomatedReasoningEngine, ReasoningResult, ReasoningConfig, Fact, Rule, KnowledgeBase,
     InferenceEngine, ConstraintSolver, TheoremProver, ReasoningInsight, InsightType
 };
+
+// Utilities
+pub use file_cache::{FileCache, CacheStats};
 
 // Re-export tree-sitter types that users might need
 pub use tree_sitter::{InputEdit, Point, Range};

@@ -187,17 +187,17 @@ impl SemanticGraphQuery {
 
     /// Helper function to create graph node without excessive cloning
     fn create_graph_node(
-        id: &str,
-        node_type: &NodeType,
-        name: &str,
-        file_path: &std::path::Path,
+        id: String,
+        node_type: NodeType,
+        name: String,
+        file_path: std::path::PathBuf,
         line_number: usize,
     ) -> GraphNode {
         GraphNode {
-            id: id.to_string(),
-            node_type: node_type.clone(),
-            name: name.to_string(),
-            file_path: file_path.to_path_buf(),
+            id,
+            node_type,
+            name,
+            file_path,
             line_number,
             metadata: HashMap::new(),
             properties: NodeProperties {
@@ -455,10 +455,10 @@ impl SemanticGraphQuery {
             let node_type = self.symbol_to_node_type(&symbol.kind);
 
             let node = Self::create_graph_node(
-                &node_id,
-                &node_type,
-                &symbol.name,
-                &file.path,
+                node_id.clone(),
+                node_type,
+                symbol.name.clone(),
+                file.path.clone(),
                 symbol.start_line,
             );
 

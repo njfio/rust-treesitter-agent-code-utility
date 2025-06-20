@@ -3,6 +3,7 @@
 //! Shared utilities for CLI operations including progress bars, configuration, and validation.
 
 use indicatif::{ProgressBar, ProgressStyle};
+use colored::*;
 use crate::{AnalysisConfig, AnalysisDepth};
 use super::error::{CliError, CliResult};
 use std::path::PathBuf;
@@ -149,24 +150,20 @@ pub fn format_duration(duration: std::time::Duration) -> String {
 
 /// Print success message with checkmark
 pub fn print_success(message: &str) {
-    use colored::*;
     println!("{} {}", "✓".bright_green(), message.bright_white());
 }
 
 /// Print warning message
 pub fn print_warning(message: &str) {
-    use colored::*;
     println!("{} {}", "⚠".bright_yellow(), message.bright_yellow());
 }
 
 /// Print error message
 pub fn print_error(message: &str) {
-    use colored::*;
     eprintln!("{} {}", "✗".bright_red(), message.bright_red());
 }
 
 /// Print info message
 pub fn print_info(message: &str) {
-    use colored::*;
     println!("{} {}", "ℹ".bright_blue(), message.bright_white());
 }

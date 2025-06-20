@@ -952,20 +952,22 @@ impl SmartRefactoringEngine {
 
     /// Get benefits for parameter list refactoring
     fn get_parameter_list_benefits(&self) -> Vec<String> {
-        vec![
-            "Improved readability".to_string(),
-            "Easier to extend".to_string(),
-            "Better encapsulation".to_string(),
-            "Reduced coupling".to_string(),
-        ]
+        const BENEFITS: &[&str] = &[
+            "Improved readability",
+            "Easier to extend",
+            "Better encapsulation",
+            "Reduced coupling",
+        ];
+        BENEFITS.iter().map(|s| s.to_string()).collect()
     }
 
     /// Get risks for parameter list refactoring
     fn get_parameter_list_risks(&self) -> Vec<String> {
-        vec![
-            "May require API changes".to_string(),
-            "Need to update all call sites".to_string(),
-        ]
+        const RISKS: &[&str] = &[
+            "May require API changes",
+            "Need to update all call sites",
+        ];
+        RISKS.iter().map(|s| s.to_string()).collect()
     }
 
     /// Detect complex conditional logic
