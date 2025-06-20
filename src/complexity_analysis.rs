@@ -442,13 +442,13 @@ impl ComplexityAnalyzer {
     /// Traverse AST to count operators and operands for Halstead metrics
     fn traverse_for_halstead(&self, node: Node, operators: &mut HashMap<String, usize>, operands: &mut HashMap<String, usize>) {
         let node_kind = node.kind();
-        
+
         if self.is_operator(node_kind) {
             *operators.entry(node_kind.to_string()).or_insert(0) += 1;
         } else if self.is_operand(node_kind) {
             *operands.entry(node_kind.to_string()).or_insert(0) += 1;
         }
-        
+
         // Traverse children
         let mut cursor = node.walk();
         if cursor.goto_first_child() {
@@ -464,28 +464,82 @@ impl ComplexityAnalyzer {
     /// Check if a node type represents an operator
     fn is_operator(&self, node_kind: &str) -> bool {
         match self.language.as_str() {
-            "rust" => matches!(node_kind, 
-                "binary_expression" | "unary_expression" | "assignment_expression" 
+            "rust" => matches!(node_kind,
+                // Function and structure operators
+                "function_item" | "fn" | "parameters" | "block" | "(" | ")" | "{" | "}"
+                // Arithmetic and logical operators
+                | "binary_expression" | "unary_expression" | "assignment_expression"
                 | "compound_assignment_expr" | "call_expression" | "index_expression"
                 | "field_expression" | "reference_expression" | "dereference_expression"
+                // Control flow operators
+                | "if_expression" | "match_expression" | "while_expression" | "for_expression"
+                | "loop_expression" | "break_expression" | "continue_expression" | "return_expression"
+                // Type operators
+                | "cast_expression" | "type_cast_expression" | "as_expression"
+                // Range operators
+                | "range_expression" | "range_inclusive_expression"
+                // Closure operators
+                | "closure_expression"
+                // Macro operators
+                | "macro_invocation"
+                // Keywords and punctuation
+                | "let" | "mut" | "=" | "+" | "-" | "*" | "/" | "%" | "&&" | "||" | "!" | "&" | "|"
+                | "==" | "!=" | "<" | ">" | "<=" | ">=" | ";" | "," | "." | "::" | "->" | "=>"
             ),
             "javascript" | "typescript" => matches!(node_kind,
+                // Arithmetic and logical operators
                 "binary_expression" | "unary_expression" | "assignment_expression"
                 | "update_expression" | "call_expression" | "member_expression"
                 | "subscript_expression" | "new_expression"
+                // Control flow operators
+                | "if_statement" | "switch_statement" | "while_statement" | "for_statement"
+                | "do_statement" | "break_statement" | "continue_statement" | "return_statement"
+                // Function operators
+                | "function_declaration" | "arrow_function" | "function_expression"
+                // Type operators (TypeScript)
+                | "type_assertion" | "as_expression"
             ),
             "python" => matches!(node_kind,
+                // Arithmetic and logical operators
                 "binary_operator" | "unary_operator" | "assignment" | "augmented_assignment"
                 | "call" | "attribute" | "subscript"
+                // Control flow operators
+                | "if_statement" | "while_statement" | "for_statement" | "with_statement"
+                | "try_statement" | "break_statement" | "continue_statement" | "return_statement"
+                // Function operators
+                | "function_definition" | "lambda"
+                // Comprehension operators
+                | "list_comprehension" | "dictionary_comprehension" | "set_comprehension"
             ),
             "c" | "cpp" | "c++" => matches!(node_kind,
+                // Arithmetic and logical operators
                 "binary_expression" | "unary_expression" | "assignment_expression"
                 | "call_expression" | "subscript_expression" | "field_expression"
                 | "pointer_expression"
+                // Control flow operators
+                | "if_statement" | "switch_statement" | "while_statement" | "for_statement"
+                | "do_statement" | "break_statement" | "continue_statement" | "return_statement"
+                | "goto_statement"
+                // Function operators
+                | "function_definition" | "function_declarator"
+                // C++ specific operators
+                | "new_expression" | "delete_expression" | "lambda_expression"
+                | "cast_expression" | "sizeof_expression"
             ),
             "go" => matches!(node_kind,
+                // Arithmetic and logical operators
                 "binary_expression" | "unary_expression" | "assignment_expression"
                 | "call_expression" | "index_expression" | "selector_expression"
+                // Control flow operators
+                | "if_statement" | "switch_statement" | "for_statement" | "select_statement"
+                | "break_statement" | "continue_statement" | "return_statement" | "go_statement"
+                | "defer_statement"
+                // Function operators
+                | "function_declaration" | "function_literal"
+                // Channel operators
+                | "send_statement" | "receive_expression"
+                // Type operators
+                | "type_assertion" | "type_switch_statement"
             ),
             _ => false,
         }
@@ -495,21 +549,57 @@ impl ComplexityAnalyzer {
     fn is_operand(&self, node_kind: &str) -> bool {
         match self.language.as_str() {
             "rust" => matches!(node_kind,
+                // Literals
                 "identifier" | "integer_literal" | "float_literal" | "string_literal"
-                | "boolean_literal" | "char_literal"
+                | "boolean_literal" | "char_literal" | "raw_string_literal"
+                // Special values
+                | "unit_expression" | "self" | "super"
+                // Type identifiers
+                | "type_identifier" | "primitive_type"
+                // Path components
+                | "field_identifier" | "shorthand_field_identifier"
+                // Numeric and boolean literals
+                | "true" | "false" | "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+                // Type annotations
+                | "u32" | "i32" | "u64" | "i64" | "f32" | "f64" | "bool" | "str" | "String"
+                | "usize" | "isize" | "u8" | "i8" | "u16" | "i16"
             ),
             "javascript" | "typescript" => matches!(node_kind,
-                "identifier" | "number" | "string" | "true" | "false" | "null" | "undefined"
+                // Literals
+                "identifier" | "number" | "string" | "template_string" | "regex"
+                | "true" | "false" | "null" | "undefined"
+                // Special identifiers
+                | "this" | "super" | "property_identifier"
+                // TypeScript specific
+                | "type_identifier" | "predefined_type"
             ),
             "python" => matches!(node_kind,
-                "identifier" | "integer" | "float" | "string" | "true" | "false" | "none"
+                // Literals
+                "identifier" | "integer" | "float" | "string" | "concatenated_string"
+                | "true" | "false" | "none"
+                // Special values
+                | "ellipsis" | "self"
+                // Attribute identifiers
+                | "attribute" | "dotted_name"
             ),
             "c" | "cpp" | "c++" => matches!(node_kind,
+                // Literals
                 "identifier" | "number_literal" | "string_literal" | "char_literal"
+                | "concatenated_string"
+                // Special identifiers
+                | "field_identifier" | "statement_identifier"
+                // C++ specific
+                | "this" | "namespace_identifier" | "template_type"
+                | "auto" | "decltype"
             ),
             "go" => matches!(node_kind,
+                // Literals
                 "identifier" | "int_literal" | "float_literal" | "string_literal"
-                | "rune_literal" | "true" | "false" | "nil"
+                | "rune_literal" | "raw_string_literal" | "interpreted_string_literal"
+                | "true" | "false" | "nil" | "iota"
+                // Special identifiers
+                | "field_identifier" | "package_identifier" | "type_identifier"
+                | "label_name"
             ),
             _ => false,
         }
@@ -724,7 +814,7 @@ mod tests {
     }
 
     #[test]
-    fn test_halstead_metrics() -> Result<()> {
+    fn test_halstead_metrics_basic() -> Result<()> {
         let parser = Parser::new(crate::Language::Rust)?;
         let code = r#"
             fn calculate(a: i32, b: i32) -> i32 {
@@ -735,11 +825,141 @@ mod tests {
 
         let tree = parser.parse(code, None)?;
         let analyzer = ComplexityAnalyzer::new("rust");
-        let metrics = analyzer.analyze_complexity(&tree)?;
+        let halstead_metrics = analyzer.calculate_halstead_metrics(&tree)?;
 
-        assert!(metrics.halstead_volume > 0.0);
-        assert!(metrics.halstead_difficulty >= 0.0);
-        assert!(metrics.halstead_effort >= 0.0);
+        // Verify basic counts are reasonable
+        assert!(halstead_metrics.unique_operators > 0, "Should have unique operators");
+        assert!(halstead_metrics.unique_operands > 0, "Should have unique operands");
+        assert!(halstead_metrics.total_operators > 0, "Should have total operators");
+        assert!(halstead_metrics.total_operands > 0, "Should have total operands");
+
+        // Verify calculated metrics
+        let volume = halstead_metrics.volume();
+        let difficulty = halstead_metrics.difficulty();
+        let effort = halstead_metrics.effort();
+
+        assert!(volume > 0.0, "Volume should be positive");
+        assert!(difficulty >= 0.0, "Difficulty should be non-negative");
+        assert!(effort >= 0.0, "Effort should be non-negative");
+
+        // Verify effort = difficulty * volume
+        let expected_effort = difficulty * volume;
+        assert!((effort - expected_effort).abs() < 0.001,
+                "Effort should equal difficulty * volume");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_halstead_metrics_detailed() -> Result<()> {
+        let parser = Parser::new(crate::Language::Rust)?;
+        let code = r#"
+            fn factorial(n: u32) -> u32 {
+                if n <= 1 {
+                    return 1;
+                } else {
+                    return n * factorial(n - 1);
+                }
+            }
+        "#;
+
+        let tree = parser.parse(code, None)?;
+        let analyzer = ComplexityAnalyzer::new("rust");
+        let halstead_metrics = analyzer.calculate_halstead_metrics(&tree)?;
+
+        // This function should have:
+        // Operators: function_item, fn, parameters, if_expression, return_expression, etc.
+        // Operands: factorial, n, u32, 1
+
+        assert!(halstead_metrics.unique_operators >= 4,
+                "Should have at least 4 unique operators, got {}",
+                halstead_metrics.unique_operators);
+        assert!(halstead_metrics.unique_operands >= 3,
+                "Should have at least 3 unique operands, got {}",
+                halstead_metrics.unique_operands);
+
+        // Verify volume calculation: N * log2(n)
+        let n = halstead_metrics.unique_operators + halstead_metrics.unique_operands;
+        let big_n = halstead_metrics.total_operators + halstead_metrics.total_operands;
+        let expected_volume = (big_n as f64) * (n as f64).log2();
+
+        assert!((halstead_metrics.volume() - expected_volume).abs() < 0.001,
+                "Volume calculation should be accurate");
+
+        // Verify difficulty calculation: (n1/2) * (N2/n2)
+        let expected_difficulty = (halstead_metrics.unique_operators as f64 / 2.0) *
+                                 (halstead_metrics.total_operands as f64 / halstead_metrics.unique_operands as f64);
+
+        assert!((halstead_metrics.difficulty() - expected_difficulty).abs() < 0.001,
+                "Difficulty calculation should be accurate");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_halstead_metrics_empty_function() -> Result<()> {
+        let parser = Parser::new(crate::Language::Rust)?;
+        let code = r#"
+            fn empty() {
+            }
+        "#;
+
+        let tree = parser.parse(code, None)?;
+        let analyzer = ComplexityAnalyzer::new("rust");
+        let halstead_metrics = analyzer.calculate_halstead_metrics(&tree)?;
+
+        // Even empty function should have some operators (fn declaration)
+        assert!(halstead_metrics.unique_operators > 0, "Should have at least function declaration operator");
+
+        // Volume should be 0 if no operands, or small if minimal operands
+        let volume = halstead_metrics.volume();
+        assert!(volume >= 0.0, "Volume should be non-negative");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_halstead_metrics_complex_function() -> Result<()> {
+        let parser = Parser::new(crate::Language::Rust)?;
+        let code = r#"
+            fn complex_function(x: i32, y: i32, z: i32) -> i32 {
+                let mut result = 0;
+                for i in 0..x {
+                    if i % 2 == 0 {
+                        result += i * y;
+                    } else {
+                        result -= i / z;
+                    }
+                }
+                match result {
+                    0..=10 => result * 2,
+                    11..=100 => result + 50,
+                    _ => result - 25,
+                }
+            }
+        "#;
+
+        let tree = parser.parse(code, None)?;
+        let analyzer = ComplexityAnalyzer::new("rust");
+        let halstead_metrics = analyzer.calculate_halstead_metrics(&tree)?;
+
+        // Complex function should have many operators and operands
+        assert!(halstead_metrics.unique_operators >= 8,
+                "Complex function should have many unique operators, got {}",
+                halstead_metrics.unique_operators);
+        assert!(halstead_metrics.unique_operands >= 3,
+                "Complex function should have many unique operands, got {}",
+                halstead_metrics.unique_operands);
+
+        // Volume should be substantial
+        assert!(halstead_metrics.volume() > 50.0,
+                "Complex function should have substantial volume, got {}",
+                halstead_metrics.volume());
+
+        // Difficulty should be reasonable
+        assert!(halstead_metrics.difficulty() > 1.0,
+                "Complex function should have difficulty > 1, got {}",
+                halstead_metrics.difficulty());
 
         Ok(())
     }
