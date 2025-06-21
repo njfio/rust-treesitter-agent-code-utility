@@ -7,7 +7,7 @@
 //! - Concurrency and parallelization opportunities
 //! - Performance bottleneck identification
 
-use crate::{AnalysisResult, FileInfo, Result};
+use crate::{AnalysisResult, FileInfo, Result, MemoryTracker, MemoryTrackingResult};
 use crate::analysis_utils::{
     LanguageParser, ComplexityCalculator
 };
@@ -151,6 +151,8 @@ pub struct PerformanceAnalysisResult {
     pub complexity_analysis: ComplexityAnalysis,
     /// Memory usage analysis
     pub memory_analysis: MemoryAnalysis,
+    /// Advanced memory allocation tracking
+    pub memory_tracking: Option<MemoryTrackingResult>,
     /// Concurrency analysis
     pub concurrency_analysis: ConcurrencyAnalysis,
     /// Performance recommendations
@@ -778,7 +780,18 @@ impl PerformanceAnalyzer {
         } else {
             MemoryAnalysis::default()
         };
-        
+
+        // Advanced memory allocation tracking
+        let memory_tracking = if self.config.memory_analysis {
+            let mut memory_tracker = MemoryTracker::new();
+            match memory_tracker.analyze_memory_allocations(analysis_result) {
+                Ok(tracking_result) => Some(tracking_result),
+                Err(_) => None, // Graceful fallback if memory tracking fails
+            }
+        } else {
+            None
+        };
+
         let concurrency_analysis = if self.config.concurrency_analysis {
             self.analyze_concurrency(analysis_result)?
         } else {
@@ -800,6 +813,7 @@ impl PerformanceAnalyzer {
             file_metrics,
             complexity_analysis,
             memory_analysis,
+            memory_tracking,
             concurrency_analysis,
             recommendations,
         })

@@ -119,6 +119,18 @@ pub struct EmbeddingEngine {
     bert_config: Option<Config>,
 }
 
+impl std::fmt::Debug for EmbeddingEngine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EmbeddingEngine")
+            .field("config", &self.config)
+            .field("model_loaded", &self.model.is_some())
+            .field("tokenizer_loaded", &self.tokenizer.is_some())
+            .field("device", &format!("{:?}", self.device))
+            .field("bert_config_loaded", &self.bert_config.is_some())
+            .finish()
+    }
+}
+
 impl EmbeddingEngine {
     /// Create a new embedding engine
     pub fn new(config: EmbeddingConfig) -> Self {

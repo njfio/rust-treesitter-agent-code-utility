@@ -52,6 +52,7 @@ pub mod file_cache;
 pub mod infrastructure;
 pub mod intent_mapping;
 pub mod embeddings;
+pub mod memory_tracker;
 pub mod languages;
 pub mod parser;
 pub mod performance_analysis;
@@ -113,6 +114,12 @@ pub use intent_mapping::{
 pub use reasoning_engine::{
     AutomatedReasoningEngine, ReasoningResult, ReasoningConfig, Fact, Rule, KnowledgeBase,
     InferenceEngine, ConstraintSolver, TheoremProver, ReasoningInsight, InsightType
+};
+pub use memory_tracker::{
+    MemoryTracker, MemoryTrackingResult, MemoryTrackingConfig, AllocationHotspot,
+    MemoryLeakCandidate, AllocationPattern, FragmentationAnalysis, MemorySnapshot,
+    AllocationCallStack, AllocationType, LeakType, UsagePattern, AllocationLocation,
+    LifetimeStatistics, AllocationImpact, MemoryStatistics
 };
 
 // Utilities

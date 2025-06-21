@@ -5,6 +5,7 @@
 
 use crate::{Result, FileInfo, AnalysisResult};
 use crate::constants::intent_mapping::*;
+use crate::embeddings::{EmbeddingEngine, EmbeddingConfig, Embedding};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
@@ -12,7 +13,7 @@ use std::path::PathBuf;
 use serde::{Serialize, Deserialize};
 
 /// Intent-to-implementation mapping system
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct IntentMappingSystem {
     /// Parsed requirements and intents
     requirements: Vec<Requirement>,
@@ -24,6 +25,12 @@ pub struct IntentMappingSystem {
     traceability: TraceabilityMatrix,
     /// Configuration
     config: MappingConfig,
+    /// Semantic embedding engine for advanced similarity
+    embedding_engine: Option<EmbeddingEngine>,
+    /// Cache for requirement embeddings
+    requirement_embeddings: HashMap<String, Embedding>,
+    /// Cache for implementation embeddings
+    implementation_embeddings: HashMap<String, Embedding>,
 }
 
 /// A requirement or intent specification
@@ -377,6 +384,20 @@ pub enum EffortLevel {
     XLarge,  // > 2 weeks
 }
 
+/// Statistics about semantic embeddings
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct EmbeddingStats {
+    /// Number of requirement embeddings generated
+    pub total_requirement_embeddings: usize,
+    /// Number of implementation embeddings generated
+    pub total_implementation_embeddings: usize,
+    /// Dimension of the embedding vectors
+    pub embedding_dimension: usize,
+    /// Whether embedding engine is available
+    pub has_embedding_engine: bool,
+}
+
 impl IntentMappingSystem {
     /// Create a new intent mapping system
     pub fn new() -> Self {
@@ -386,6 +407,9 @@ impl IntentMappingSystem {
             mappings: Vec::new(),
             traceability: TraceabilityMatrix::new(),
             config: MappingConfig::default(),
+            embedding_engine: None,
+            requirement_embeddings: HashMap::new(),
+            implementation_embeddings: HashMap::new(),
         }
     }
 
@@ -397,7 +421,30 @@ impl IntentMappingSystem {
             mappings: Vec::new(),
             traceability: TraceabilityMatrix::new(),
             config,
+            embedding_engine: None,
+            requirement_embeddings: HashMap::new(),
+            implementation_embeddings: HashMap::new(),
         }
+    }
+
+    /// Initialize semantic embeddings engine
+    pub async fn initialize_embeddings(&mut self) -> Result<()> {
+        let embedding_config = EmbeddingConfig {
+            similarity_threshold: self.config.confidence_threshold,
+            ..EmbeddingConfig::default()
+        };
+
+        let mut engine = EmbeddingEngine::new(embedding_config);
+        engine.initialize().await
+            .map_err(|e| crate::Error::internal_error("embedding_engine", format!("Failed to initialize embedding engine: {}", e)))?;
+
+        self.embedding_engine = Some(engine);
+        Ok(())
+    }
+
+    /// Check if semantic embeddings are available
+    pub fn has_embeddings(&self) -> bool {
+        self.embedding_engine.is_some()
     }
 
     /// Helper function to create intent mapping without excessive cloning
@@ -448,9 +495,9 @@ impl IntentMappingSystem {
     }
 
     /// Perform intent-to-implementation mapping analysis
-    pub fn analyze_mappings(&mut self) -> Result<MappingAnalysisResult> {
-        // Generate automatic mappings
-        self.generate_automatic_mappings()?;
+    pub async fn analyze_mappings(&mut self) -> Result<MappingAnalysisResult> {
+        // Generate automatic mappings (now async for embeddings)
+        self.generate_automatic_mappings().await?;
 
         // Build traceability matrix
         self.build_traceability_matrix();
@@ -594,15 +641,15 @@ impl IntentMappingSystem {
     }
 
     /// Generate automatic mappings using various strategies
-    fn generate_automatic_mappings(&mut self) -> Result<()> {
+    async fn generate_automatic_mappings(&mut self) -> Result<()> {
         self.mappings.clear();
 
         // Strategy 1: Keyword-based matching
         self.generate_keyword_mappings()?;
 
-        // Strategy 2: Semantic similarity matching
+        // Strategy 2: Semantic similarity matching (now async for embeddings)
         if self.config.enable_semantic_analysis {
-            self.generate_semantic_mappings()?;
+            self.generate_semantic_mappings().await?;
         }
 
         // Strategy 3: Pattern-based matching
@@ -645,15 +692,36 @@ impl IntentMappingSystem {
         Ok(())
     }
 
-    /// Generate mappings based on semantic similarity
-    fn generate_semantic_mappings(&mut self) -> Result<()> {
-        // Simplified semantic matching based on text similarity
+    /// Generate mappings based on semantic similarity using embeddings
+    async fn generate_semantic_mappings(&mut self) -> Result<()> {
+        // Generate embeddings if we have an embedding engine
+        if self.embedding_engine.is_some() {
+            self.generate_requirement_embeddings().await?;
+            self.generate_implementation_embeddings().await?;
+        }
+
+        // Use embedding-based similarity if available, otherwise fall back to text similarity
         for requirement in &self.requirements {
             for implementation in &self.implementations {
-                let semantic_score = self.calculate_semantic_similarity(
-                    &requirement.description,
-                    &self.get_implementation_description(implementation)
-                );
+                let semantic_score = if self.embedding_engine.is_some() {
+                    // Use cached embeddings for efficient similarity calculation
+                    match self.calculate_embedding_similarity(&requirement.id, &implementation.id) {
+                        Ok(score) => score,
+                        Err(_) => {
+                            // Fallback to text-based similarity
+                            self.calculate_semantic_similarity(
+                                &requirement.description,
+                                &self.get_implementation_description(implementation)
+                            )
+                        }
+                    }
+                } else {
+                    // Use text-based similarity
+                    self.calculate_semantic_similarity(
+                        &requirement.description,
+                        &self.get_implementation_description(implementation)
+                    )
+                };
 
                 if semantic_score >= self.config.confidence_threshold {
                     // Check if mapping already exists
@@ -663,13 +731,19 @@ impl IntentMappingSystem {
                     );
 
                     if !exists {
+                        let rationale = if self.embedding_engine.is_some() {
+                            format!("Semantic embedding similarity (score: {:.3})", semantic_score)
+                        } else {
+                            "Text-based semantic similarity matching".to_string()
+                        };
+
                         let mapping = Self::create_intent_mapping(
                             "sem",
                             &requirement.id,
                             &implementation.id,
                             MappingType::Inferred,
                             semantic_score,
-                            "Semantic similarity matching",
+                            &rationale,
                             ValidationStatus::NeedsReview,
                         );
 
@@ -952,13 +1026,182 @@ impl IntentMappingSystem {
         }
     }
 
-    /// Calculate semantic similarity (simplified)
+    /// Calculate semantic similarity using embeddings or fallback to keyword matching
     fn calculate_semantic_similarity(&self, text1: &str, text2: &str) -> f64 {
-        // Simplified semantic similarity using word overlap
+        // Use embedding-based similarity if available
+        if let Some(engine) = &self.embedding_engine {
+            match engine.calculate_similarity(text1, text2) {
+                Ok(similarity) => return similarity,
+                Err(_) => {
+                    // Fall back to keyword matching if embedding fails
+                }
+            }
+        }
+
+        // Fallback: simplified semantic similarity using word overlap
         let words1 = self.extract_keywords(text1);
         let words2 = self.extract_keywords(text2);
-
         self.calculate_keyword_similarity(&words1, &words2)
+    }
+
+    /// Generate embeddings for all requirements (batch processing for efficiency)
+    async fn generate_requirement_embeddings(&mut self) -> Result<()> {
+        if let Some(engine) = &self.embedding_engine {
+            let texts: Vec<String> = self.requirements.iter()
+                .map(|req| req.description.clone())
+                .collect();
+
+            let embeddings = engine.embed_batch(&texts)
+                .map_err(|e| crate::Error::internal_error("embedding_engine", format!("Failed to generate requirement embeddings: {}", e)))?;
+
+            for (req, embedding) in self.requirements.iter().zip(embeddings.into_iter()) {
+                let enhanced_embedding = embedding.with_metadata(
+                    "type".to_string(),
+                    "requirement".to_string()
+                ).with_metadata(
+                    "id".to_string(),
+                    req.id.clone()
+                ).with_metadata(
+                    "priority".to_string(),
+                    format!("{:?}", req.priority)
+                );
+
+                self.requirement_embeddings.insert(req.id.clone(), enhanced_embedding);
+            }
+        }
+        Ok(())
+    }
+
+    /// Generate embeddings for all implementations (batch processing for efficiency)
+    async fn generate_implementation_embeddings(&mut self) -> Result<()> {
+        if let Some(engine) = &self.embedding_engine {
+            let texts: Vec<String> = self.implementations.iter()
+                .map(|impl_item| self.get_implementation_description(impl_item))
+                .collect();
+
+            let embeddings = engine.embed_batch(&texts)
+                .map_err(|e| crate::Error::internal_error("embedding_engine", format!("Failed to generate implementation embeddings: {}", e)))?;
+
+            for (impl_item, embedding) in self.implementations.iter().zip(embeddings.into_iter()) {
+                let enhanced_embedding = embedding.with_metadata(
+                    "type".to_string(),
+                    "implementation".to_string()
+                ).with_metadata(
+                    "id".to_string(),
+                    impl_item.id.clone()
+                ).with_metadata(
+                    "implementation_type".to_string(),
+                    format!("{:?}", impl_item.implementation_type)
+                ).with_metadata(
+                    "file_path".to_string(),
+                    impl_item.file_path.display().to_string()
+                );
+
+                self.implementation_embeddings.insert(impl_item.id.clone(), enhanced_embedding);
+            }
+        }
+        Ok(())
+    }
+
+    /// Calculate semantic similarity using cached embeddings
+    fn calculate_embedding_similarity(&self, req_id: &str, impl_id: &str) -> Result<f64> {
+        let req_embedding = self.requirement_embeddings.get(req_id)
+            .ok_or_else(|| crate::Error::invalid_input_error("requirement_id", "existing requirement ID", req_id))?;
+        let impl_embedding = self.implementation_embeddings.get(impl_id)
+            .ok_or_else(|| crate::Error::invalid_input_error("implementation_id", "existing implementation ID", impl_id))?;
+
+        req_embedding.cosine_similarity(impl_embedding)
+            .map_err(|e| crate::Error::internal_error("embedding_similarity", format!("Failed to calculate cosine similarity: {}", e)))
+    }
+
+    /// Find most similar implementations for a requirement using embeddings
+    pub fn find_similar_implementations(&self, requirement_id: &str, top_k: usize) -> Result<Vec<(String, f64)>> {
+        let req_embedding = self.requirement_embeddings.get(requirement_id)
+            .ok_or_else(|| crate::Error::invalid_input_error("requirement_id", "existing requirement ID", requirement_id))?;
+
+        let mut similarities = Vec::new();
+
+        for (impl_id, impl_embedding) in &self.implementation_embeddings {
+            match req_embedding.cosine_similarity(impl_embedding) {
+                Ok(similarity) => similarities.push((impl_id.clone(), similarity)),
+                Err(_) => continue,
+            }
+        }
+
+        // Sort by similarity (descending) and take top_k
+        similarities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        similarities.truncate(top_k);
+
+        Ok(similarities)
+    }
+
+    /// Find most similar requirements for an implementation using embeddings
+    pub fn find_similar_requirements(&self, implementation_id: &str, top_k: usize) -> Result<Vec<(String, f64)>> {
+        let impl_embedding = self.implementation_embeddings.get(implementation_id)
+            .ok_or_else(|| crate::Error::invalid_input_error("implementation_id", "existing implementation ID", implementation_id))?;
+
+        let mut similarities = Vec::new();
+
+        for (req_id, req_embedding) in &self.requirement_embeddings {
+            match impl_embedding.cosine_similarity(req_embedding) {
+                Ok(similarity) => similarities.push((req_id.clone(), similarity)),
+                Err(_) => continue,
+            }
+        }
+
+        // Sort by similarity (descending) and take top_k
+        similarities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        similarities.truncate(top_k);
+
+        Ok(similarities)
+    }
+
+    /// Analyze semantic clusters in requirements
+    pub fn analyze_requirement_clusters(&self, similarity_threshold: f64) -> Result<Vec<Vec<String>>> {
+        let mut clusters = Vec::new();
+        let mut processed = HashSet::new();
+
+        for (req_id, req_embedding) in &self.requirement_embeddings {
+            if processed.contains(req_id) {
+                continue;
+            }
+
+            let mut cluster = vec![req_id.clone()];
+            processed.insert(req_id.clone());
+
+            // Find similar requirements
+            for (other_req_id, other_embedding) in &self.requirement_embeddings {
+                if processed.contains(other_req_id) || req_id == other_req_id {
+                    continue;
+                }
+
+                if let Ok(similarity) = req_embedding.cosine_similarity(other_embedding) {
+                    if similarity >= similarity_threshold {
+                        cluster.push(other_req_id.clone());
+                        processed.insert(other_req_id.clone());
+                    }
+                }
+            }
+
+            if cluster.len() > 1 {
+                clusters.push(cluster);
+            }
+        }
+
+        Ok(clusters)
+    }
+
+    /// Get embedding statistics
+    pub fn get_embedding_stats(&self) -> EmbeddingStats {
+        EmbeddingStats {
+            total_requirement_embeddings: self.requirement_embeddings.len(),
+            total_implementation_embeddings: self.implementation_embeddings.len(),
+            embedding_dimension: self.requirement_embeddings.values()
+                .next()
+                .map(|e| e.dimension())
+                .unwrap_or(0),
+            has_embedding_engine: self.embedding_engine.is_some(),
+        }
     }
 
     /// Get implementation description
@@ -1735,5 +1978,101 @@ mod tests {
         assert_eq!(format!("{}", Priority::Critical), "critical");
         assert_eq!(format!("{}", MappingType::Direct), "direct");
         assert_eq!(format!("{}", MappingType::OneToMany), "one-to-many");
+    }
+
+    #[test]
+    fn test_embedding_stats_creation() {
+        let system = IntentMappingSystem::new();
+        let stats = system.get_embedding_stats();
+
+        assert_eq!(stats.total_requirement_embeddings, 0);
+        assert_eq!(stats.total_implementation_embeddings, 0);
+        assert_eq!(stats.embedding_dimension, 0);
+        assert!(!stats.has_embedding_engine);
+    }
+
+    #[test]
+    fn test_semantic_similarity_without_embeddings() {
+        let system = IntentMappingSystem::new();
+
+        // Should fall back to keyword-based similarity
+        let similarity = system.calculate_semantic_similarity(
+            "user authentication system with secure login",
+            "authentication module for user login security"
+        );
+
+        assert!(similarity > 0.0, "Should find some similarity between related texts");
+        assert!(similarity <= 1.0, "Similarity should not exceed 1.0");
+    }
+
+    #[test]
+    fn test_has_embeddings_initially_false() {
+        let system = IntentMappingSystem::new();
+        assert!(!system.has_embeddings(), "New system should not have embeddings initialized");
+    }
+
+    #[test]
+    fn test_embedding_stats_structure() {
+        let stats = EmbeddingStats {
+            total_requirement_embeddings: 5,
+            total_implementation_embeddings: 3,
+            embedding_dimension: 384,
+            has_embedding_engine: true,
+        };
+
+        assert_eq!(stats.total_requirement_embeddings, 5);
+        assert_eq!(stats.total_implementation_embeddings, 3);
+        assert_eq!(stats.embedding_dimension, 384);
+        assert!(stats.has_embedding_engine);
+    }
+
+    #[test]
+    fn test_semantic_similarity_edge_cases() {
+        let system = IntentMappingSystem::new();
+
+        // Empty strings
+        let empty_similarity = system.calculate_semantic_similarity("", "");
+        assert_eq!(empty_similarity, 0.0, "Empty strings should have 0 similarity");
+
+        // Identical strings
+        let identical_similarity = system.calculate_semantic_similarity(
+            "user authentication system",
+            "user authentication system"
+        );
+        assert!(identical_similarity > 0.8, "Identical strings should have high similarity");
+
+        // Completely different strings
+        let different_similarity = system.calculate_semantic_similarity(
+            "user authentication system",
+            "database query optimization"
+        );
+        assert!(different_similarity < 0.3, "Unrelated strings should have low similarity");
+    }
+
+    #[test]
+    fn test_find_similar_implementations_empty() {
+        let system = IntentMappingSystem::new();
+
+        // Should return error for non-existent requirement
+        let result = system.find_similar_implementations("REQ-NONEXISTENT", 5);
+        assert!(result.is_err(), "Should return error for non-existent requirement");
+    }
+
+    #[test]
+    fn test_find_similar_requirements_empty() {
+        let system = IntentMappingSystem::new();
+
+        // Should return error for non-existent implementation
+        let result = system.find_similar_requirements("IMPL-NONEXISTENT", 5);
+        assert!(result.is_err(), "Should return error for non-existent implementation");
+    }
+
+    #[test]
+    fn test_analyze_requirement_clusters_empty() {
+        let system = IntentMappingSystem::new();
+
+        // Should return empty clusters when no embeddings exist
+        let clusters = system.analyze_requirement_clusters(0.7).unwrap();
+        assert!(clusters.is_empty(), "Should return empty clusters when no embeddings exist");
     }
 }
