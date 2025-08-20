@@ -5,26 +5,36 @@
 
 use rust_tree_sitter::{SecurityScanner, AnalysisResult, FileInfo, Result};
 use std::path::PathBuf;
+use tempfile::TempDir;
+use std::fs;
 
-fn create_test_file_info(path: &str, content: &str, language: &str) -> FileInfo {
-    FileInfo {
-        path: PathBuf::from(path),
-        language: language.to_string(),
-        lines: content.lines().count(),
-        symbols: vec![],
-        parsed_successfully: true,
-        parse_errors: vec![],
-        security_vulnerabilities: vec![],
-        size: content.len(),
+fn create_analysis_result_with_fs(specs: Vec<(&str, &str, &str)>) -> (TempDir, AnalysisResult) {
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let root = temp_dir.path();
+
+    let mut files: Vec<FileInfo> = Vec::new();
+    for (rel, content, language) in specs {
+        let p = root.join(rel);
+        if let Some(parent) = p.parent() { fs::create_dir_all(parent).unwrap(); }
+        fs::write(&p, content).unwrap();
+
+        files.push(FileInfo {
+            path: PathBuf::from(rel),
+            language: language.to_string(),
+            lines: content.lines().count(),
+            symbols: vec![],
+            parsed_successfully: true,
+            parse_errors: vec![],
+            security_vulnerabilities: vec![],
+            size: content.len(),
+        });
     }
-}
 
-fn create_test_analysis_result(files: Vec<FileInfo>) -> AnalysisResult {
     let total_files = files.len();
     let total_lines = files.iter().map(|f| f.lines).sum();
-    
-    AnalysisResult {
-        root_path: PathBuf::from("/test"),
+
+    let ar = AnalysisResult {
+        root_path: root.to_path_buf(),
         total_files,
         parsed_files: total_files,
         error_files: 0,
@@ -32,12 +42,14 @@ fn create_test_analysis_result(files: Vec<FileInfo>) -> AnalysisResult {
         languages: std::collections::HashMap::new(),
         files,
         config: rust_tree_sitter::AnalysisConfig::default(),
-    }
+    };
+
+    (temp_dir, ar)
 }
 
 #[test]
 fn test_security_scanner_creation() -> Result<()> {
-    let scanner = SecurityScanner::new()?;
+    let _scanner = SecurityScanner::new()?;
     // Scanner should be created successfully
     Ok(())
 }
@@ -59,8 +71,9 @@ fn test_sql_injection_detection() -> Result<()> {
         }
     "#;
     
-    let file = create_test_file_info("vulnerable.rs", vulnerable_code, "Rust");
-    let analysis_result = create_test_analysis_result(vec![file]);
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("vulnerable.rs", vulnerable_code, "Rust")
+    ]);
     
     let security_result = scanner.analyze(&analysis_result)?;
     
@@ -94,8 +107,9 @@ fn test_command_injection_detection() -> Result<()> {
         }
     "#;
     
-    let file = create_test_file_info("command_vuln.rs", vulnerable_code, "Rust");
-    let analysis_result = create_test_analysis_result(vec![file]);
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("command_vuln.rs", vulnerable_code, "Rust")
+    ]);
     
     let security_result = scanner.analyze(&analysis_result)?;
     
@@ -125,8 +139,9 @@ fn test_hardcoded_secrets_detection() -> Result<()> {
         }
     "#;
     
-    let file = create_test_file_info("secrets.rs", vulnerable_code, "Rust");
-    let analysis_result = create_test_analysis_result(vec![file]);
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("secrets.rs", vulnerable_code, "Rust")
+    ]);
     
     let security_result = scanner.analyze(&analysis_result)?;
     
@@ -160,8 +175,9 @@ fn test_path_traversal_detection() -> Result<()> {
         }
     "#;
     
-    let file = create_test_file_info("path_traversal.rs", vulnerable_code, "Rust");
-    let analysis_result = create_test_analysis_result(vec![file]);
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("path_traversal.rs", vulnerable_code, "Rust")
+    ]);
     
     let security_result = scanner.analyze(&analysis_result)?;
     
@@ -194,8 +210,9 @@ fn test_xss_detection() -> Result<()> {
         }
     "#;
     
-    let file = create_test_file_info("xss_vuln.js", vulnerable_code, "JavaScript");
-    let analysis_result = create_test_analysis_result(vec![file]);
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("xss_vuln.js", vulnerable_code, "JavaScript")
+    ]);
     
     let security_result = scanner.analyze(&analysis_result)?;
     
@@ -232,8 +249,9 @@ fn test_insecure_random_detection() -> Result<()> {
         }
     "#;
     
-    let file = create_test_file_info("weak_random.rs", vulnerable_code, "Rust");
-    let analysis_result = create_test_analysis_result(vec![file]);
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("weak_random.rs", vulnerable_code, "Rust")
+    ]);
     
     let security_result = scanner.analyze(&analysis_result)?;
     
@@ -275,8 +293,9 @@ fn test_safe_code_no_vulnerabilities() -> Result<()> {
         }
     "#;
     
-    let file = create_test_file_info("safe.rs", safe_code, "Rust");
-    let analysis_result = create_test_analysis_result(vec![file]);
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("safe.rs", safe_code, "Rust")
+    ]);
     
     let security_result = scanner.analyze(&analysis_result)?;
     
@@ -301,9 +320,10 @@ fn test_multiple_files_analysis() -> Result<()> {
         const SECRET_KEY: &str = "hardcoded-secret-key-123";
     "#;
     
-    let file1 = create_test_file_info("file1.rs", file1_code, "Rust");
-    let file2 = create_test_file_info("file2.rs", file2_code, "Rust");
-    let analysis_result = create_test_analysis_result(vec![file1, file2]);
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("file1.rs", file1_code, "Rust"),
+        ("file2.rs", file2_code, "Rust"),
+    ]);
     
     let security_result = scanner.analyze(&analysis_result)?;
     
@@ -329,8 +349,9 @@ fn test_security_score_calculation() -> Result<()> {
         const API_KEY: &str = "sk-1234567890abcdef";
     "#;
     
-    let file = create_test_file_info("multiple_vulns.rs", vulnerable_code, "Rust");
-    let analysis_result = create_test_analysis_result(vec![file]);
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("multiple_vulns.rs", vulnerable_code, "Rust")
+    ]);
     
     let security_result = scanner.analyze(&analysis_result)?;
     
@@ -361,8 +382,9 @@ fn test_vulnerability_severity_classification() -> Result<()> {
         }
     "#;
     
-    let file = create_test_file_info("critical.rs", code_with_critical_vuln, "Rust");
-    let analysis_result = create_test_analysis_result(vec![file]);
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("critical.rs", code_with_critical_vuln, "Rust")
+    ]);
     
     let security_result = scanner.analyze(&analysis_result)?;
     

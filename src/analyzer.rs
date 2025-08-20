@@ -16,6 +16,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use rayon::prelude::*;
+use ignore::WalkBuilder;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -74,6 +75,8 @@ pub struct AnalysisConfig {
     pub thread_count: Option<usize>,
     /// Minimum number of files to enable parallel processing
     pub parallel_threshold: usize,
+    /// Enable security analysis (OWASP, taint) during file analysis
+    pub enable_security: bool,
 }
 
 impl Default for AnalysisConfig {
@@ -98,6 +101,7 @@ impl Default for AnalysisConfig {
             enable_parallel: true,
             thread_count: None, // Auto-detect
             parallel_threshold: 10, // Enable parallel processing for 10+ files
+            enable_security: false,
         }
     }
 }
@@ -182,6 +186,11 @@ impl AnalysisResult {
             config: AnalysisConfig::default(),
         }
     }
+
+    /// Ensure stable ordering for agent consumption
+    pub fn sort_stable(&mut self) {
+        self.files.sort_by(|a, b| a.path.cmp(&b.path));
+    }
 }
 
 /// Main analyzer for processing codebases
@@ -253,13 +262,16 @@ impl CodebaseAnalyzer {
             return Err(Error::invalid_input_error("path type", &root_path.display().to_string(), "directory (not file)"));
         }
 
-        // First, collect all files to analyze
-        let mut file_paths = Vec::new();
-        self.collect_files_recursive(&root_path, &root_path, &mut file_paths, 0)?;
+        // First, collect all files to analyze (respect .gitignore and common ignores)
+        let mut file_paths = Vec::with_capacity(1000); // Pre-allocate for better performance
+        self.collect_files_ignore(&root_path, &mut file_paths)?;
 
         // Decide whether to use parallel processing
         if self.config.enable_parallel && file_paths.len() >= self.config.parallel_threshold {
-            self.analyze_directory_parallel(root_path, file_paths)
+            let mut res = self.analyze_directory_parallel(root_path, file_paths)?;
+            // Ensure deterministic ordering
+            res.sort_stable();
+            Ok(res)
         } else {
             // Use sequential processing for small numbers of files
             let mut result = AnalysisResult {
@@ -268,8 +280,8 @@ impl CodebaseAnalyzer {
                 parsed_files: 0,
                 error_files: 0,
                 total_lines: 0,
-                languages: HashMap::new(),
-                files: Vec::new(),
+                languages: HashMap::with_capacity(10), // Pre-allocate for common languages
+                files: Vec::with_capacity(file_paths.len()),
                 config: self.config.clone(),
             };
 
@@ -284,8 +296,50 @@ impl CodebaseAnalyzer {
                 }
             }
 
+            // Ensure deterministic ordering
+            result.sort_stable();
             Ok(result)
         }
+    }
+
+    /// Collect files using ignore::WalkBuilder (respects .gitignore, VCS, and common ignores)
+    fn collect_files_ignore(&self, root_path: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
+        let mut builder = WalkBuilder::new(root_path);
+        builder
+            .hidden(!self.config.include_hidden)
+            .follow_links(self.config.follow_symlinks)
+            .git_ignore(true)
+            .git_global(true)
+            .git_exclude(true)
+            .ignore(true)
+            .max_depth(self.config.max_depth)
+            .threads(1); // discovery single-threaded; analysis may be parallel
+
+        // Build walker and collect files
+        let walker = builder.build();
+        for result in walker {
+            let dirent = match result {
+                Ok(d) => d,
+                Err(_) => continue,
+            };
+
+            let path = dirent.path().to_path_buf();
+            if path.is_dir() {
+                // honor explicit exclude_dirs patterns by directory name
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if self.config.exclude_dirs.iter().any(|d| d == name) {
+                        continue;
+                    }
+                }
+                continue;
+            }
+
+            if path.is_file() {
+                out.push(path);
+            }
+        }
+
+        Ok(())
     }
 
     /// Analyze directory using parallel processing
@@ -555,8 +609,8 @@ impl CodebaseAnalyzer {
                     file_info.symbols = self.extract_symbols(&tree, &content, language)?;
                 }
 
-                // Perform security analysis for Deep and Full depth
-                if matches!(self.config.depth, AnalysisDepth::Deep | AnalysisDepth::Full) {
+                // Perform security analysis for Deep and Full depth if enabled
+                if self.config.enable_security && matches!(self.config.depth, AnalysisDepth::Deep | AnalysisDepth::Full) {
                     // Create a temporary FileInfo for security analysis with full path
                     let temp_file_info = FileInfo {
                         path: file_path.to_path_buf(), // Use full path for security analysis
@@ -701,8 +755,8 @@ impl CodebaseAnalyzer {
                     file_info.symbols = self.extract_symbols(&tree, &content, language)?;
                 }
 
-                // Perform security analysis for Deep and Full depth
-                if matches!(self.config.depth, AnalysisDepth::Deep | AnalysisDepth::Full) {
+                // Perform security analysis for Deep and Full depth if enabled
+                if self.config.enable_security && matches!(self.config.depth, AnalysisDepth::Deep | AnalysisDepth::Full) {
                     // Create a temporary FileInfo for security analysis with full path
                     let temp_file_info = FileInfo {
                         path: file_path.to_path_buf(), // Use full path for security analysis
@@ -869,6 +923,29 @@ impl CodebaseAnalyzer {
                     });
                 }
             }
+        }
+
+        // Extract let declarations as variable symbols (best-effort)
+        let lets = tree.find_nodes_by_kind("let_declaration");
+        for let_node in lets {
+            // Try to find an identifier within the pattern
+            let ids = let_node.find_descendants(|n| n.kind() == "identifier");
+            let name = ids
+                .get(0)
+                .and_then(|n| n.text().ok())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("var@{}:{}", let_node.start_position().row + 1, let_node.start_position().column));
+
+            symbols.push(Symbol {
+                name,
+                kind: "variable".to_string(),
+                start_line: let_node.start_position().row + 1,
+                end_line: let_node.end_position().row + 1,
+                start_column: let_node.start_position().column,
+                end_column: let_node.end_position().column,
+                visibility: "private".to_string(),
+                documentation: None,
+            });
         }
 
         Ok(())

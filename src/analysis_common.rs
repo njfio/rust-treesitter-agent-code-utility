@@ -17,7 +17,10 @@ impl FileAnalyzer {
     {
         match std::fs::read_to_string(&file.path) {
             Ok(content) => analyzer(&content, &file.language),
-            Err(_) => Ok(T::default()),
+            Err(e) => {
+                eprintln!("Warning: Failed to read file {}: {}", file.path.display(), e);
+                Ok(T::default())
+            }
         }
     }
 

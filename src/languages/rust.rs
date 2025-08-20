@@ -517,7 +517,7 @@ mod tests {
             }
         "#;
 
-        let mut parser = Parser::new(crate::Language::Rust).unwrap();
+        let parser = Parser::new(crate::Language::Rust).unwrap();
         let tree = parser.parse(source, None).unwrap();
         let root = tree.root_node();
 

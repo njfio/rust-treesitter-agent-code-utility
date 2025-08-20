@@ -8,6 +8,7 @@
 //! - Performance bottleneck identification
 
 use crate::{AnalysisResult, FileInfo, Result, MemoryTracker, MemoryTrackingResult};
+use crate::constants::common::RiskLevel;
 use crate::analysis_utils::{
     LanguageParser, ComplexityCalculator
 };
@@ -23,8 +24,10 @@ use serde::{Serialize, Deserialize};
 #[derive(Debug, Clone)]
 struct LoopNestingInfo {
     depth: usize,
+    #[allow(dead_code)]
     iteration_variables: Vec<String>,
     data_dependencies: Vec<DataDependency>,
+    #[allow(dead_code)]
     loop_types: Vec<LoopType>,
     access_patterns: Vec<AccessPattern>,
 }
@@ -32,8 +35,10 @@ struct LoopNestingInfo {
 /// Data dependency information for complexity analysis
 #[derive(Debug, Clone)]
 struct DataDependency {
+    #[allow(dead_code)]
     variable: String,
     dependency_type: DependencyType,
+    #[allow(dead_code)]
     scope: String,
 }
 
@@ -42,6 +47,7 @@ struct DataDependency {
 enum DependencyType {
     ReadOnly,
     WriteOnly,
+    #[allow(dead_code)]
     ReadWrite,
     IndexBased,
     SizeDependent,
@@ -59,8 +65,10 @@ enum LoopType {
 /// Memory access pattern
 #[derive(Debug, Clone)]
 struct AccessPattern {
+    #[allow(dead_code)]
     pattern_type: AccessPatternType,
     complexity: AccessComplexity,
+    #[allow(dead_code)]
     description: String,
 }
 
@@ -71,6 +79,7 @@ enum AccessPatternType {
     Random,
     Nested,
     Strided,
+    #[allow(dead_code)]
     Sparse,
 }
 
@@ -80,8 +89,11 @@ enum AccessComplexity {
     Constant,     // O(1)
     Linear,       // O(n)
     Quadratic,    // O(n²)
+    #[allow(dead_code)]
     Cubic,        // O(n³)
+    #[allow(dead_code)]
     Exponential,  // O(2^n)
+    #[allow(dead_code)]
     Unknown,
 }
 
@@ -549,14 +561,7 @@ pub struct MemoryLeakRisk {
     pub mitigation: Vec<String>,
 }
 
-/// Risk levels
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum RiskLevel {
-    High,
-    Medium,
-    Low,
-}
+// RiskLevel is now imported from crate::constants::common
 
 /// Inefficient data structure usage
 #[derive(Debug, Clone)]
@@ -1035,9 +1040,9 @@ impl PerformanceAnalyzer {
         Ok(hotspots)
     }
 
-    /// Detect nested loop hotspots using semantic AST analysis
+    /// Detect nested loop hotspots using semantic AST analysis (optimized)
     fn detect_nested_loop_hotspots(&self, tree: &crate::SyntaxTree, content: &str, file: &FileInfo) -> Result<Vec<PerformanceHotspot>> {
-        let mut hotspots = Vec::new();
+        let mut hotspots = Vec::with_capacity(8); // Pre-allocate for common case
 
         let loop_patterns = match file.language.to_lowercase().as_str() {
             "rust" => vec!["for_expression", "while_expression", "while_let_expression", "loop_expression"],
@@ -1128,7 +1133,7 @@ impl PerformanceAnalyzer {
     /// Analyze nested iteration patterns for O(n²) and O(n³) complexity
     fn analyze_nested_iteration_patterns(&self, node: &tree_sitter::Node, content: &str, file: &FileInfo) -> Result<Vec<PerformanceHotspot>> {
         let mut hotspots = Vec::new();
-        let mut cursor = node.walk();
+        let _cursor = node.walk();
 
         // Find all loop constructs and analyze their nesting
         let loop_nodes = self.find_loop_nodes(node, file);
@@ -1201,7 +1206,7 @@ impl PerformanceAnalyzer {
     /// Find all loop nodes in the AST
     fn find_loop_nodes<'a>(&self, node: &tree_sitter::Node<'a>, file: &FileInfo) -> Vec<tree_sitter::Node<'a>> {
         let mut loop_nodes = Vec::new();
-        let mut cursor = node.walk();
+        let _cursor = node.walk();
 
         let loop_patterns = match file.language.to_lowercase().as_str() {
             "rust" => vec!["for_expression", "while_expression", "while_let_expression", "loop_expression"],
@@ -1232,9 +1237,9 @@ impl PerformanceAnalyzer {
     /// Analyze the nesting structure of a loop
     fn analyze_loop_nesting(&self, loop_node: &tree_sitter::Node, content: &str, file: &FileInfo) -> Result<LoopNestingInfo> {
         let mut depth = 0;
-        let mut current_node = *loop_node;
-        let mut iteration_variables = Vec::new();
-        let mut data_dependencies = Vec::new();
+        let current_node = *loop_node;
+        let iteration_variables;
+        let data_dependencies;
 
         // Count nested loops within this loop
         depth += self.count_nested_loops(&current_node, file);
@@ -1328,7 +1333,7 @@ impl PerformanceAnalyzer {
     }
 
     /// Analyze data dependencies between iteration variables
-    fn analyze_data_dependencies(&self, node: &tree_sitter::Node, iteration_vars: &[String], content: &str, file: &FileInfo) -> Result<Vec<DataDependency>> {
+    fn analyze_data_dependencies(&self, node: &tree_sitter::Node, iteration_vars: &[String], content: &str, _file: &FileInfo) -> Result<Vec<DataDependency>> {
         let mut dependencies = Vec::new();
 
         if let Some(text) = node.utf8_text(content.as_bytes()).ok() {
@@ -1372,7 +1377,7 @@ impl PerformanceAnalyzer {
     }
 
     /// Classify the types of loops found
-    fn classify_loop_types(&self, node: &tree_sitter::Node, file: &FileInfo) -> Vec<LoopType> {
+    fn classify_loop_types(&self, node: &tree_sitter::Node, _file: &FileInfo) -> Vec<LoopType> {
         let mut types = Vec::new();
 
         match node.kind() {
@@ -1399,7 +1404,7 @@ impl PerformanceAnalyzer {
     }
 
     /// Analyze memory access patterns within loops
-    fn analyze_access_patterns(&self, node: &tree_sitter::Node, content: &str, file: &FileInfo) -> Result<Vec<AccessPattern>> {
+    fn analyze_access_patterns(&self, node: &tree_sitter::Node, content: &str, _file: &FileInfo) -> Result<Vec<AccessPattern>> {
         let mut patterns = Vec::new();
 
         if let Some(text) = node.utf8_text(content.as_bytes()).ok() {
@@ -1446,8 +1451,8 @@ impl PerformanceAnalyzer {
     /// Perform semantic analysis of loop structure
     fn perform_semantic_loop_analysis(&self, nesting_info: &LoopNestingInfo, content: &str, file: &FileInfo) -> Result<SemanticLoopAnalysis> {
         let mut confidence: f64 = 0.5; // Base confidence
-        let mut description = String::new();
-        let mut pattern_type = "Unknown".to_string();
+        let description;
+        let pattern_type;
         let mut optimization_suggestions = Vec::new();
 
         // Analyze nesting depth
@@ -1779,7 +1784,7 @@ impl PerformanceAnalyzer {
     }
 
     /// Extract function name from a function node
-    fn extract_function_name(&self, node: &tree_sitter::Node, content: &str, file: &FileInfo) -> Option<String> {
+    fn extract_function_name(&self, node: &tree_sitter::Node, content: &str, _file: &FileInfo) -> Option<String> {
         // Look for identifier nodes within the function declaration
         for i in 0..node.child_count() {
             if let Some(child) = node.child(i) {
@@ -1805,7 +1810,7 @@ impl PerformanceAnalyzer {
     }
 
     /// Analyze recursion complexity
-    fn analyze_recursion_complexity(&self, node: &tree_sitter::Node, func_name: &str, content: &str, file: &FileInfo) -> Result<RecursionAnalysis> {
+    fn analyze_recursion_complexity(&self, node: &tree_sitter::Node, func_name: &str, content: &str, _file: &FileInfo) -> Result<RecursionAnalysis> {
         let mut complexity_risk: f64 = 0.5; // Base risk
         let mut pattern_type = "Direct Recursion".to_string();
         let mut optimization_suggestion = "Consider iterative approach or memoization".to_string();
@@ -1879,22 +1884,31 @@ impl PerformanceAnalyzer {
         false
     }
 
-    /// Check for inefficient sorting algorithms
-    fn contains_inefficient_sorting(&self, text: &str, file: &FileInfo) -> bool {
+    /// Check for inefficient sorting algorithms (optimized)
+    fn contains_inefficient_sorting(&self, text: &str, _file: &FileInfo) -> bool {
+        // Use bytes for faster searching
+        let text_bytes = text.as_bytes();
+
         // Look for nested loops with swapping - typical of bubble sort, selection sort
-        let has_nested_loops = text.matches("for ").count() >= 2 ||
-                              text.matches("while ").count() >= 2;
+        let for_count = text_bytes.windows(4).filter(|w| w == b"for ").count();
+        let while_count = text_bytes.windows(6).filter(|w| w == b"while ").count();
+        let has_nested_loops = for_count >= 2 || while_count >= 2;
 
-        let has_swapping = text.contains("swap") ||
-                          text.contains("temp =") ||
-                          (text.contains("[i]") && text.contains("[j]") && text.contains(" = "));
+        if !has_nested_loops {
+            return false;
+        }
 
-        has_nested_loops && has_swapping
+        // Check for swapping patterns
+        let has_swap = text_bytes.windows(4).any(|w| w == b"swap");
+        let has_temp = text_bytes.windows(6).any(|w| w == b"temp =");
+        let has_array_swap = text.contains("[i]") && text.contains("[j]") && text.contains(" = ");
+
+        has_swap || has_temp || has_array_swap
     }
 
-    /// Detect memory allocation hotspots using AST analysis
+    /// Detect memory allocation hotspots using AST analysis (optimized)
     fn detect_memory_hotspots(&self, tree: &crate::SyntaxTree, _content: &str, file: &FileInfo) -> Result<Vec<PerformanceHotspot>> {
-        let mut hotspots = Vec::new();
+        let mut hotspots = Vec::with_capacity(16); // Pre-allocate for common case
 
         match file.language.to_lowercase().as_str() {
             "rust" => {

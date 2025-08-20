@@ -20,10 +20,11 @@ pub fn execute(
     include_exts: Option<&String>,
     output: Option<&PathBuf>,
     detailed: bool,
+    threads: Option<usize>,
 ) -> CliResult<()> {
     // Validate inputs
     validate_path(path)?;
-    validate_format(format, &["table", "json", "summary"])?;
+    validate_format(format, &["table", "json", "summary", "sarif"])?;
     
     if let Some(output_path) = output {
         validate_output_path(output_path)?;
@@ -41,6 +42,7 @@ pub fn execute(
         include_hidden,
         exclude_dirs.cloned(),
         include_exts.cloned(),
+        threads,
     )?;
     
     let mut analyzer = CodebaseAnalyzer::with_config(config)
@@ -63,6 +65,16 @@ pub fn execute(
             if let Some(output_path) = output {
                 std::fs::write(output_path, &json)?;
                 print_success(&format!("Results saved to {}", output_path.display()));
+            } else {
+                println!("{}", json);
+            }
+        }
+        OutputFormat::Sarif => {
+            let sarif = crate::cli::sarif::to_sarif(&result);
+            let json = serde_json::to_string_pretty(&sarif)?;
+            if let Some(output_path) = output {
+                std::fs::write(output_path, &json)?;
+                print_success(&format!("SARIF saved to {}", output_path.display()));
             } else {
                 println!("{}", json);
             }
@@ -107,6 +119,7 @@ mod tests {
             None,
             None,
             false,
+            None,
         );
         assert!(result.is_ok());
     }
@@ -126,6 +139,7 @@ mod tests {
             None,
             None,
             false,
+            None,
         );
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), CliError::InvalidPath(_)));
@@ -147,6 +161,7 @@ mod tests {
             None,
             None,
             false,
+            None,
         );
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), CliError::UnsupportedFormat(_)));

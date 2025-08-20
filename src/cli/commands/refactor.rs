@@ -31,7 +31,7 @@ pub fn execute(
     let pb = create_progress_bar("Analyzing code for refactoring opportunities...");
     
     // Configure analyzer
-    let config = create_analysis_config(1024, 20, "full", false, None, None)?;
+    let config = create_analysis_config(1024, 20, "full", false, None, None, None)?;
     let mut analyzer = CodebaseAnalyzer::with_config(config)
         .map_err(|e| CliError::Refactoring(e.to_string()))?;
     

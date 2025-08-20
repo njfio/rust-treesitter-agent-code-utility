@@ -1,7 +1,7 @@
 //! Symbols command implementation
 
 use std::path::PathBuf;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use crate::cli::error::{CliResult, validate_path, CliError};
 use crate::cli::utils::create_progress_bar;
 use crate::cli::output::{OutputFormat, SymbolRow};
@@ -22,13 +22,23 @@ pub fn execute(path: &PathBuf, format: &str) -> CliResult<()> {
 
     pb.finish_with_message("Symbol extraction complete!");
 
-    // Collect all symbols from all files
+    // Collect all symbols from all files (deterministic order)
     let mut all_symbols: Vec<(Symbol, String)> = Vec::new();
     for file in &analysis_result.files {
         for symbol in &file.symbols {
-            all_symbols.push((symbol.clone(), file.path.display().to_string()));
+            all_symbols.push((symbol.clone(), file.path.to_string_lossy().to_string()));
         }
     }
+    // Sort by file path, then by line, then by name
+    all_symbols.sort_by(|(a_sym, a_file), (b_sym, b_file)| {
+        match a_file.cmp(b_file) {
+            std::cmp::Ordering::Equal => match a_sym.start_line.cmp(&b_sym.start_line) {
+                std::cmp::Ordering::Equal => a_sym.name.cmp(&b_sym.name),
+                other => other,
+            },
+            other => other,
+        }
+    });
 
     // Parse output format
     let output_format = OutputFormat::from_str(format)
@@ -36,12 +46,11 @@ pub fn execute(path: &PathBuf, format: &str) -> CliResult<()> {
 
     match output_format {
         OutputFormat::Json => {
-            // Group symbols by file for JSON output
-            let mut symbols_by_file: HashMap<String, Vec<&Symbol>> = HashMap::new();
+            // Group symbols by file for JSON output with deterministic key order
+            let mut symbols_by_file: BTreeMap<String, Vec<&Symbol>> = BTreeMap::new();
             for (symbol, file_path) in &all_symbols {
-                symbols_by_file.entry(file_path.clone()).or_insert_with(Vec::new).push(symbol);
+                symbols_by_file.entry(file_path.clone()).or_default().push(symbol);
             }
-
             let json = serde_json::to_string_pretty(&symbols_by_file)?;
             println!("{}", json);
         }

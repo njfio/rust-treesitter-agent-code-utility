@@ -1,13 +1,12 @@
 use rust_tree_sitter::{
-    AutomatedReasoningEngine, ReasoningConfig, Fact, Rule, KnowledgeBase,
-    InferenceEngine, ConstraintSolver, TheoremProver, ReasoningInsight, InsightType,
+    AutomatedReasoningEngine, ReasoningConfig, Fact, Rule, InsightType,
     AnalysisResult, FileInfo, Symbol
 };
 use std::path::PathBuf;
 use rust_tree_sitter::reasoning_engine::{
     Term, LiteralValue, FactSource, RuleType, Condition, Conclusion,
     ConstraintVariable, VariableType, Domain, Constraint, ConstraintType,
-    ConstraintExpression, ConstraintValue, Axiom, AxiomCategory, LogicalFormula
+    ConstraintExpression, Axiom, AxiomCategory, LogicalFormula
 };
 
 fn create_sample_analysis_result() -> AnalysisResult {
@@ -211,7 +210,7 @@ fn test_fact_extraction_from_analysis() {
     let mut engine = AutomatedReasoningEngine::new();
     let analysis = create_sample_analysis_result();
     
-    let result = engine.analyze_code(&analysis).unwrap();
+    let _result = engine.analyze_code(&analysis).unwrap();
     
     // Should have extracted facts from the analysis
     assert!(engine.knowledge_base().facts().len() > 0);
@@ -250,14 +249,11 @@ fn test_reasoning_result_structure() {
     
     // Should have proper result structure
     assert!(result.timestamp > 0);
-    assert!(result.metrics.total_time_ms >= 0);
+    // Metrics should be properly initialized
     assert_eq!(result.metrics.facts_processed, engine.knowledge_base().facts().len());
     
     // Should have derived facts (may be empty for simple case)
-    assert!(result.derived_facts.len() >= 0);
-    
-    // Should have insights (may be empty for simple case)
-    assert!(result.insights.len() >= 0);
+    // Derived facts and insights are properly initialized
 }
 
 #[test]
@@ -302,12 +298,12 @@ fn test_inductive_reasoning() {
     let result = engine.analyze_code(&analysis).unwrap();
     
     // Should have performed inductive reasoning
-    let high_complexity_facts: Vec<_> = result.derived_facts.iter()
+    let _high_complexity_facts: Vec<_> = result.derived_facts.iter()
         .filter(|f| f.predicate == "high_complexity_file")
         .collect();
     
     // May or may not have derived high complexity fact depending on implementation
-    assert!(high_complexity_facts.len() >= 0);
+    // High complexity facts may or may not be derived
 }
 
 #[test]
@@ -330,7 +326,7 @@ fn test_insight_generation() {
     let result = engine.analyze_code(&analysis).unwrap();
     
     // Should generate insights from derived facts
-    let code_smell_insights: Vec<_> = result.insights.iter()
+    let _code_smell_insights: Vec<_> = result.insights.iter()
         .filter(|i| i.insight_type == InsightType::CodeSmell)
         .collect();
 
@@ -414,11 +410,9 @@ fn test_reasoning_metrics() {
     let result = engine.analyze_code(&analysis).unwrap();
     
     // Should have meaningful metrics
-    assert!(result.metrics.total_time_ms >= 0);
     assert!(result.metrics.facts_processed > 0);
     assert_eq!(result.metrics.facts_processed, engine.knowledge_base().facts().len());
-    assert!(result.metrics.constraints_solved >= 0);
-    assert!(result.metrics.theorems_attempted >= 0);
+    // Metrics should be properly initialized
 }
 
 #[test]

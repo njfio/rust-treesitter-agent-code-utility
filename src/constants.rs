@@ -46,6 +46,52 @@ pub mod common {
         High,
         Critical,
     }
+
+    impl std::fmt::Display for Priority {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Priority::Low => write!(f, "Low"),
+                Priority::Medium => write!(f, "Medium"),
+                Priority::High => write!(f, "High"),
+                Priority::Critical => write!(f, "Critical"),
+            }
+        }
+    }
+
+    impl std::fmt::Display for Severity {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Severity::Info => write!(f, "Info"),
+                Severity::Low => write!(f, "Low"),
+                Severity::Medium => write!(f, "Medium"),
+                Severity::High => write!(f, "High"),
+                Severity::Critical => write!(f, "Critical"),
+            }
+        }
+    }
+
+    impl std::fmt::Display for EffortLevel {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                EffortLevel::Trivial => write!(f, "Trivial"),
+                EffortLevel::Easy => write!(f, "Easy"),
+                EffortLevel::Medium => write!(f, "Medium"),
+                EffortLevel::Hard => write!(f, "Hard"),
+                EffortLevel::VeryHard => write!(f, "Very Hard"),
+            }
+        }
+    }
+
+    impl std::fmt::Display for RiskLevel {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                RiskLevel::Low => write!(f, "Low"),
+                RiskLevel::Medium => write!(f, "Medium"),
+                RiskLevel::High => write!(f, "High"),
+                RiskLevel::Critical => write!(f, "Critical"),
+            }
+        }
+    }
 }
 
 /// Security analysis constants

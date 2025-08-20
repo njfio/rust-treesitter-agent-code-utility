@@ -13,7 +13,7 @@ use crate::cli::output::OutputFormat;
 pub fn execute(
     path: &PathBuf,
     format: &str,
-    _include_dev: bool,
+    include_dev: bool,
     vulnerabilities: bool,
     licenses: bool,
     outdated: bool,
@@ -32,7 +32,7 @@ pub fn execute(
     let pb = create_progress_bar("Analyzing dependencies...");
     
     // Configure analyzer
-    let config = create_analysis_config(1024, 20, "full", false, None, None)?;
+    let config = create_analysis_config(1024, 20, "full", false, None, None, None)?;
     let mut analyzer = CodebaseAnalyzer::with_config(config)
         .map_err(|e| CliError::Dependencies(e.to_string()))?;
     
@@ -43,7 +43,14 @@ pub fn execute(
     
     // Run dependency analysis
     pb.set_message("Analyzing dependencies...");
-    let dependency_analyzer = DependencyAnalyzer::new();
+    let mut dep_config = crate::DependencyConfig::default();
+    dep_config.include_dev_dependencies = include_dev;
+    dep_config.vulnerability_scanning = vulnerabilities;
+    dep_config.license_compliance = licenses;
+    dep_config.outdated_detection = outdated;
+    dep_config.graph_analysis = graph;
+
+    let dependency_analyzer = DependencyAnalyzer::with_config(dep_config);
     let dependency_result = dependency_analyzer.analyze(&analysis_result)
         .map_err(|e| CliError::Dependencies(e.to_string()))?;
     

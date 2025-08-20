@@ -17,6 +17,7 @@ pub fn execute(
     path: &PathBuf,
     pattern: &str,
     language: &str,
+    prefilter: Option<&String>,
     context: usize,
     format: &str,
 ) -> CliResult<()> {
@@ -58,6 +59,13 @@ pub fn execute(
         let file_path = analysis_result.root_path.join(&file.path);
         let content = std::fs::read_to_string(&file_path)
             .map_err(|e| crate::cli::error::CliError::IoError(e))?;
+
+        // Optional prefilter: skip files that don't contain the substring
+        if let Some(sub) = prefilter {
+            if !content.contains(sub) {
+                continue;
+            }
+        }
 
         // Parse the file
         let tree = parser.parse(&content, None)?;

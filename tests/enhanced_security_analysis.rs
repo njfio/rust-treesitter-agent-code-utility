@@ -1,6 +1,5 @@
-use rust_tree_sitter::advanced_security::{AdvancedSecurityAnalyzer, SecurityVulnerability, SecuritySeverity, OwaspCategory};
+use rust_tree_sitter::advanced_security::AdvancedSecurityAnalyzer;
 use rust_tree_sitter::{AnalysisResult, FileInfo};
-use std::path::PathBuf;
 use std::collections::HashMap;
 use tempfile::TempDir;
 use std::fs;

@@ -11,6 +11,7 @@ use crate::{AnalysisResult, Result};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::fs;
+use std::collections::HashSet;
 
 #[cfg(feature = "serde")]
 use serde::{Serialize, Deserialize};
@@ -405,7 +406,7 @@ impl Default for DependencyConfig {
             license_compliance: true,
             outdated_detection: true,
             graph_analysis: true,
-            include_dev_dependencies: false,
+            include_dev_dependencies: true,
             max_dependency_depth: 10,
         }
     }
@@ -464,6 +465,10 @@ impl DependencyAnalyzer {
             all_dependencies.extend(deps);
             dependencies_by_manager.insert(pm_info.manager.clone(), count);
         }
+
+        // Also scan source files for imports to infer dependencies
+        let inferred = self.extract_source_imports(root_path, &analysis_result.files)?;
+        all_dependencies.extend(inferred);
         
         // Analyze vulnerabilities
         let vulnerabilities = if self.config.vulnerability_scanning {
@@ -633,6 +638,16 @@ impl DependencyAnalyzer {
         // Extract regular dependencies
         if let Some(deps) = toml_value.get("dependencies").and_then(|d| d.as_table()) {
             for (name, version_spec) in deps {
+                // Minimal schema validation: if version provided in table, it must be string
+                if let toml::Value::Table(t) = version_spec {
+                    if let Some(ver_val) = t.get("version") {
+                        if !ver_val.is_str() {
+                            return Err(crate::error::Error::parse_error(
+                                "Invalid version type in Cargo.toml: expected string".to_string(),
+                            ));
+                        }
+                    }
+                }
                 let (version, dependency_type) = self.parse_cargo_dependency_spec(version_spec);
                 dependencies.push(Dependency {
                     name: name.clone(),
@@ -719,6 +734,7 @@ impl DependencyAnalyzer {
         // Extract regular dependencies
         if let Some(deps) = package_json.get("dependencies").and_then(|d| d.as_object()) {
             for (name, version) in deps {
+                if !version.is_string() { return Err(crate::error::Error::parse_error("Invalid version type in package.json: expected string".to_string())); }
                 let version_str = version.as_str().unwrap_or("*").to_string();
                 dependencies.push(Dependency {
                     name: name.clone(),
@@ -741,6 +757,7 @@ impl DependencyAnalyzer {
         if self.config.include_dev_dependencies {
             if let Some(dev_deps) = package_json.get("devDependencies").and_then(|d| d.as_object()) {
                 for (name, version) in dev_deps {
+                    if !version.is_string() { return Err(crate::error::Error::parse_error("Invalid version type in package.json: expected string".to_string())); }
                     let version_str = version.as_str().unwrap_or("*").to_string();
                     dependencies.push(Dependency {
                         name: name.clone(),
@@ -763,6 +780,7 @@ impl DependencyAnalyzer {
         // Extract peer dependencies
         if let Some(peer_deps) = package_json.get("peerDependencies").and_then(|d| d.as_object()) {
             for (name, version) in peer_deps {
+                if !version.is_string() { return Err(crate::error::Error::parse_error("Invalid version type in package.json: expected string".to_string())); }
                 let version_str = version.as_str().unwrap_or("*").to_string();
                 dependencies.push(Dependency {
                     name: name.clone(),
@@ -784,6 +802,7 @@ impl DependencyAnalyzer {
         // Extract optional dependencies
         if let Some(opt_deps) = package_json.get("optionalDependencies").and_then(|d| d.as_object()) {
             for (name, version) in opt_deps {
+                if !version.is_string() { return Err(crate::error::Error::parse_error("Invalid version type in package.json: expected string".to_string())); }
                 let version_str = version.as_str().unwrap_or("*").to_string();
                 dependencies.push(Dependency {
                     name: name.clone(),
@@ -805,6 +824,167 @@ impl DependencyAnalyzer {
         Ok(dependencies)
     }
 
+    /// Extract dependencies by scanning source imports across languages
+    fn extract_source_imports(&self, root: &Path, files: &[crate::FileInfo]) -> Result<Vec<Dependency>> {
+        let mut deps = Vec::new();
+        let mut seen: HashSet<(String, PackageManager)> = HashSet::new();
+
+        for fi in files {
+            let full = root.join(&fi.path);
+            let Ok(content) = fs::read_to_string(&full) else { continue };
+            match fi.language.as_str() {
+                "Rust" => {
+                    for name in Self::scan_rust_imports(&content) {
+                        let key = (name.clone(), PackageManager::Cargo);
+                        if seen.insert(key.clone()) {
+                            deps.push(Self::create_dependency(&name, "*".to_string(), PackageManager::Cargo, DependencyType::Direct));
+                        }
+                    }
+                }
+                "JavaScript" | "TypeScript" => {
+                    for name in Self::scan_js_imports(&content) {
+                        let key = (name.clone(), PackageManager::Npm);
+                        if seen.insert(key.clone()) {
+                            deps.push(Self::create_dependency(&name, "*".to_string(), PackageManager::Npm, DependencyType::Direct));
+                        }
+                    }
+                }
+                "Python" => {
+                    for name in Self::scan_python_imports(&content) {
+                        let key = (name.clone(), PackageManager::Pip);
+                        if seen.insert(key.clone()) {
+                            deps.push(Self::create_dependency(&name, "*".to_string(), PackageManager::Pip, DependencyType::Direct));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(deps)
+    }
+
+    fn scan_rust_imports(src: &str) -> Vec<String> {
+        let mut names = Vec::new();
+        for line in src.lines() {
+            let l = line.trim();
+            if l.starts_with("use ") {
+                // use foo::bar::{...}
+                let after = &l[4..];
+                let first = after.split(|c: char| c == ':' || c.is_whitespace() || c == '{').next().unwrap_or("");
+                if !matches!(first, "" | "crate" | "self" | "super" | "std" | "core" | "alloc") {
+                    names.push(first.to_string());
+                }
+            } else if l.starts_with("extern crate ") {
+                let after = &l[13..];
+                let name = after.split(|c: char| c == ';' || c.is_whitespace()).next().unwrap_or("");
+                if !name.is_empty() { names.push(name.to_string()); }
+            }
+        }
+        names
+    }
+
+    fn scan_js_imports(src: &str) -> Vec<String> {
+        let mut names = Vec::new();
+        for line in src.lines() {
+            let l = line.trim();
+            // import x from 'pkg' or "pkg"
+            if l.starts_with("import ") && l.contains(" from ") {
+                if let Some(spec) = l.split(" from ").nth(1) {
+                    let spec = spec.trim();
+                    let spec = spec.trim_matches(&['"', '\'', ';'][..]);
+                    if !spec.starts_with("./") && !spec.starts_with("../") {
+                        names.push(Self::normalize_js_pkg(spec));
+                    }
+                }
+            }
+            // import 'pkg'; side-effect import
+            if l.starts_with("import ") && !l.contains(" from ") {
+                // e.g., import 'dotenv/config'
+                if let Some(start) = l.find('\'') { // '
+                    let spec = &l[start+1..];
+                    if let Some(end) = spec.find('\'') { // '
+                        let s = &spec[..end];
+                        if !s.starts_with("./") && !s.starts_with("../") {
+                            names.push(Self::normalize_js_pkg(s));
+                        }
+                    }
+                } else if let Some(start) = l.find('"') {
+                    let spec = &l[start+1..];
+                    if let Some(end) = spec.find('"') {
+                        let s = &spec[..end];
+                        if !s.starts_with("./") && !s.starts_with("../") {
+                            names.push(Self::normalize_js_pkg(s));
+                        }
+                    }
+                }
+            }
+            // const x = require('pkg')
+            if let Some(idx) = l.find("require(") {
+                let rest = &l[idx + 8..];
+                if let Some(end) = rest.find(')') {
+                    let inside = &rest[..end];
+                    let inside = inside.trim_matches(&['"', '\'', ' '][..]);
+                    if !inside.starts_with("./") && !inside.starts_with("../") { names.push(Self::normalize_js_pkg(inside)); }
+                }
+            }
+            // dynamic import('pkg')
+            if let Some(idx) = l.find("import(") {
+                let rest = &l[idx + 7..];
+                if let Some(end) = rest.find(')') {
+                    let inside = &rest[..end];
+                    let inside = inside.trim_matches(&['"', '\'', ' '][..]);
+                    if !inside.starts_with("./") && !inside.starts_with("../") { names.push(Self::normalize_js_pkg(inside)); }
+                }
+            }
+            // export * from 'pkg'
+            if l.starts_with("export ") && l.contains(" from ") {
+                if let Some(spec) = l.split(" from ").nth(1) {
+                    let spec = spec.trim();
+                    let spec = spec.trim_matches(&['"', '\'', ';'][..]);
+                    if !spec.starts_with("./") && !spec.starts_with("../") {
+                        names.push(Self::normalize_js_pkg(spec));
+                    }
+                }
+            }
+        }
+        names
+    }
+
+    fn normalize_js_pkg(spec: &str) -> String {
+        // For scoped packages, keep first two segments; else take first
+        if let Some(stripped) = spec.strip_prefix('@') {
+            let mut iter = stripped.split('/');
+            let scope = iter.next().unwrap_or("");
+            let pkg = iter.next().unwrap_or("");
+            if !scope.is_empty() && !pkg.is_empty() {
+                format!("@{}/{}", scope, pkg)
+            } else {
+                spec.to_string()
+            }
+        } else {
+            spec.split('/').next().unwrap_or(spec).to_string()
+        }
+    }
+
+    fn scan_python_imports(src: &str) -> Vec<String> {
+        let mut names = Vec::new();
+        for line in src.lines() {
+            let l = line.trim();
+            if l.starts_with("import ") {
+                // import module [as alias]
+                let after = &l[7..];
+                let first = after.split(|c: char| c.is_whitespace() || c == ',').next().unwrap_or("");
+                if !first.is_empty() && !first.starts_with('.') { names.push(first.split('.').next().unwrap().to_string()); }
+            } else if l.starts_with("from ") {
+                // from module import ...
+                let after = &l[5..];
+                let module = after.split_whitespace().next().unwrap_or("");
+                if !module.is_empty() && !module.starts_with('.') { names.push(module.split('.').next().unwrap().to_string()); }
+            }
+        }
+        names
+    }
     /// Extract Python dependencies
     fn extract_python_dependencies(&self, pm_info: &PackageManagerInfo) -> Result<Vec<Dependency>> {
         let content = fs::read_to_string(&pm_info.config_file)?;

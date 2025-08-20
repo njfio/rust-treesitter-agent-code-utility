@@ -277,7 +277,7 @@ fn test_io_error_conversion() {
 /// Test error conversion from UTF-8 error
 #[test]
 fn test_utf8_error_conversion() {
-    let invalid_utf8 = &[0xFF, 0xFE]; // Invalid UTF-8 bytes
+    let invalid_utf8 = &[0xFF, 0xFE, 0xFD]; // Invalid UTF-8 bytes
     let utf8_error = std::str::from_utf8(invalid_utf8).unwrap_err();
     let error: Error = utf8_error.into();
     

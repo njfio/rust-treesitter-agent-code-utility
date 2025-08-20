@@ -6,26 +6,36 @@
 use rust_tree_sitter::{DependencyAnalyzer, AnalysisResult, FileInfo, Result};
 use std::path::PathBuf;
 use std::collections::HashMap;
+use tempfile::TempDir;
+use std::fs;
 
-fn create_test_file_info(path: &str, content: &str, language: &str) -> FileInfo {
-    FileInfo {
-        path: PathBuf::from(path),
-        language: language.to_string(),
-        lines: content.lines().count(),
-        symbols: vec![],
-        parsed_successfully: true,
-        parse_errors: vec![],
-        security_vulnerabilities: vec![],
-        size: content.len(),
+fn create_analysis_result_with_fs(specs: Vec<(&str, &str, &str)>) -> (TempDir, AnalysisResult) {
+    let temp_dir = TempDir::new().expect("failed to create temp project dir");
+    let root = temp_dir.path();
+
+    let mut files: Vec<FileInfo> = Vec::new();
+    for (rel, content, language) in specs {
+        let p = root.join(rel);
+        if let Some(parent) = p.parent() { fs::create_dir_all(parent).unwrap(); }
+        fs::write(&p, content).expect("failed to write test file");
+
+        files.push(FileInfo {
+            path: PathBuf::from(rel),
+            language: language.to_string(),
+            lines: content.lines().count(),
+            symbols: vec![],
+            parsed_successfully: true,
+            parse_errors: vec![],
+            security_vulnerabilities: vec![],
+            size: content.len(),
+        });
     }
-}
 
-fn create_test_analysis_result(files: Vec<FileInfo>) -> AnalysisResult {
     let total_files = files.len();
     let total_lines = files.iter().map(|f| f.lines).sum();
-    
-    AnalysisResult {
-        root_path: PathBuf::from("/test"),
+
+    let ar = AnalysisResult {
+        root_path: root.to_path_buf(),
         total_files,
         parsed_files: total_files,
         error_files: 0,
@@ -33,12 +43,14 @@ fn create_test_analysis_result(files: Vec<FileInfo>) -> AnalysisResult {
         languages: HashMap::new(),
         files,
         config: rust_tree_sitter::AnalysisConfig::default(),
-    }
+    };
+
+    (temp_dir, ar)
 }
 
 #[test]
 fn test_dependency_analyzer_creation() {
-    let analyzer = DependencyAnalyzer::new();
+    let _analyzer = DependencyAnalyzer::new();
     // Analyzer should be created successfully
 }
 
@@ -66,8 +78,9 @@ criterion = "0.5"
 cc = "1.0"
     "#;
     
-    let file = create_test_file_info("Cargo.toml", cargo_toml_content, "toml");
-    let analysis_result = create_test_analysis_result(vec![file]);
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("Cargo.toml", cargo_toml_content, "toml")
+    ]);
     
     let dependency_result = analyzer.analyze(&analysis_result)?;
     
@@ -114,8 +127,9 @@ fn test_package_json_dependency_detection() -> Result<()> {
 }
     "#;
     
-    let file = create_test_file_info("package.json", package_json_content, "json");
-    let analysis_result = create_test_analysis_result(vec![file]);
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("package.json", package_json_content, "json")
+    ]);
     
     let dependency_result = analyzer.analyze(&analysis_result)?;
     
@@ -134,6 +148,38 @@ fn test_package_json_dependency_detection() -> Result<()> {
     assert!(jest_found, "jest dev dependency should be detected");
     
     Ok(())
+}
+
+#[test]
+fn test_malformed_package_json_reports_error() {
+    let analyzer = DependencyAnalyzer::new();
+
+    let bad_json = "{ \n  \"dependencies\": { \n    \"express\": ^4.18.0 \n  } \n}"; // missing quotes around version
+
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("package.json", bad_json, "json")
+    ]);
+
+    let res = analyzer.analyze(&analysis_result);
+    assert!(res.is_err());
+    let msg = res.err().unwrap().to_string();
+    assert!(msg.contains("Failed to parse package.json"));
+}
+
+#[test]
+fn test_malformed_cargo_toml_reports_error() {
+    let analyzer = DependencyAnalyzer::new();
+
+    let bad_toml = "[dependencies]\nserde = { version = 1.0 }"; // version must be string
+
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("Cargo.toml", bad_toml, "toml")
+    ]);
+
+    let res = analyzer.analyze(&analysis_result);
+    assert!(res.is_err());
+    let msg = res.err().unwrap().to_string();
+    assert!(msg.contains("Cargo.toml") || msg.contains("Invalid version type in Cargo.toml"));
 }
 
 #[test]
@@ -157,8 +203,9 @@ matplotlib==3.5.0  # For plotting
 scikit-learn>=1.1.0  # Machine learning
     "#;
     
-    let file = create_test_file_info("requirements.txt", requirements_content, "text");
-    let analysis_result = create_test_analysis_result(vec![file]);
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("requirements.txt", requirements_content, "text")
+    ]);
     
     let dependency_result = analyzer.analyze(&analysis_result)?;
     
@@ -202,8 +249,9 @@ require (
 )
     "#;
     
-    let file = create_test_file_info("go.mod", go_mod_content, "go");
-    let analysis_result = create_test_analysis_result(vec![file]);
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("go.mod", go_mod_content, "go")
+    ]);
     
     let dependency_result = analyzer.analyze(&analysis_result)?;
     
@@ -252,8 +300,9 @@ fn main() {
 }
     "#;
     
-    let file = create_test_file_info("main.rs", rust_source, "Rust");
-    let analysis_result = create_test_analysis_result(vec![file]);
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("main.rs", rust_source, "Rust")
+    ]);
     
     let dependency_result = analyzer.analyze(&analysis_result)?;
     
@@ -301,8 +350,9 @@ export default function app() {
 }
     "#;
     
-    let file = create_test_file_info("app.js", js_source, "JavaScript");
-    let analysis_result = create_test_analysis_result(vec![file]);
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("app.js", js_source, "JavaScript")
+    ]);
     
     let dependency_result = analyzer.analyze(&analysis_result)?;
     
@@ -353,8 +403,9 @@ def main():
     return app
     "#;
     
-    let file = create_test_file_info("app.py", python_source, "Python");
-    let analysis_result = create_test_analysis_result(vec![file]);
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("app.py", python_source, "Python")
+    ]);
     
     let dependency_result = analyzer.analyze(&analysis_result)?;
     
@@ -404,14 +455,12 @@ import express from 'express';
 import lodash from 'lodash';
     "#;
     
-    let files = vec![
-        create_test_file_info("Cargo.toml", cargo_toml, "toml"),
-        create_test_file_info("package.json", package_json, "json"),
-        create_test_file_info("src/main.rs", rust_code, "Rust"),
-        create_test_file_info("src/app.js", js_code, "JavaScript"),
-    ];
-    
-    let analysis_result = create_test_analysis_result(files);
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("Cargo.toml", cargo_toml, "toml"),
+        ("package.json", package_json, "json"),
+        ("src/main.rs", rust_code, "Rust"),
+        ("src/app.js", js_code, "JavaScript"),
+    ]);
     let dependency_result = analyzer.analyze(&analysis_result)?;
     
     // Should detect dependencies from both Rust and JavaScript
@@ -440,8 +489,9 @@ anyhow = ">=1.0.0"
 clap = "~4.0.0"
     "#;
     
-    let file = create_test_file_info("Cargo.toml", cargo_toml_content, "toml");
-    let analysis_result = create_test_analysis_result(vec![file]);
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("Cargo.toml", cargo_toml_content, "toml")
+    ]);
     
     let dependency_result = analyzer.analyze(&analysis_result)?;
     
@@ -460,8 +510,9 @@ clap = "~4.0.0"
 fn test_empty_project_analysis() -> Result<()> {
     let analyzer = DependencyAnalyzer::new();
     
-    let empty_file = create_test_file_info("empty.rs", "", "Rust");
-    let analysis_result = create_test_analysis_result(vec![empty_file]);
+    let (_tmp, analysis_result) = create_analysis_result_with_fs(vec![
+        ("empty.rs", "", "Rust")
+    ]);
     
     let dependency_result = analyzer.analyze(&analysis_result)?;
     

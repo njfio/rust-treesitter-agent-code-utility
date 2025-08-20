@@ -8,6 +8,7 @@
 //! - Architectural improvements with refactoring roadmaps
 
 use crate::{AnalysisResult, Result};
+use crate::constants::common::RiskLevel;
 use crate::analysis_utils::{
     AnalysisThresholds, SymbolFilter
 };
@@ -574,15 +575,7 @@ pub struct RiskAssessment {
     pub mitigation_strategies: Vec<String>,
 }
 
-/// Risk levels
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum RiskLevel {
-    Low,
-    Medium,
-    High,
-    Critical,
-}
+// RiskLevel is now imported from crate::constants::common
 
 /// A refactoring risk
 #[derive(Debug, Clone)]
@@ -1092,6 +1085,7 @@ impl SmartRefactoringEngine {
     }
 
     /// Calculate function similarity based on name and structure (now using shared utility)
+    #[allow(dead_code)]
     fn calculate_function_similarity(&self, func1: &crate::Symbol, func2: &crate::Symbol) -> f64 {
         PatternAnalyzer::calculate_function_similarity(func1, func2)
     }
@@ -2177,13 +2171,4 @@ impl std::fmt::Display for Priority {
     }
 }
 
-impl std::fmt::Display for RiskLevel {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RiskLevel::Low => write!(f, "Low"),
-            RiskLevel::Medium => write!(f, "Medium"),
-            RiskLevel::High => write!(f, "High"),
-            RiskLevel::Critical => write!(f, "Critical"),
-        }
-    }
-}
+// Display implementation is provided by the common RiskLevel type

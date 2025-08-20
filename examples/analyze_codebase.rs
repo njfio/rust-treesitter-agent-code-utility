@@ -40,6 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         enable_parallel: true,
         parallel_threshold: 10,
         thread_count: None,
+        enable_security: false,
     };
 
     let mut analyzer = CodebaseAnalyzer::with_config(config)?;

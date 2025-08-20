@@ -583,7 +583,7 @@ namespace MyNamespace {
 }
         "#;
 
-        let mut parser = Parser::new(crate::Language::Cpp).unwrap();
+        let parser = Parser::new(crate::Language::Cpp).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let functions = CppSyntax::find_functions(&tree, source);
@@ -627,7 +627,7 @@ struct SimpleStruct {
 };
         "#;
 
-        let mut parser = Parser::new(crate::Language::Cpp).unwrap();
+        let parser = Parser::new(crate::Language::Cpp).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let classes = CppSyntax::find_classes(&tree, source);
@@ -637,9 +637,9 @@ struct SimpleStruct {
         assert!(class_names.contains(&"BaseClass"));
         assert!(class_names.contains(&"DerivedClass"));
 
-        let structs = CppSyntax::find_structs(&tree, source);
+        let _structs = CppSyntax::find_structs(&tree, source);
         // Note: C++ parser may treat struct as class, so we check for at least the expected count
-        assert!(structs.len() >= 0); // Relaxed assertion for compatibility
+        // Structs should be detected (relaxed assertion for compatibility)
     }
 
     #[test]
@@ -658,13 +658,13 @@ namespace MyProject {
 }
         "#;
 
-        let mut parser = Parser::new(crate::Language::Cpp).expect("Failed to create C++ parser: Language::Cpp should be valid");
+        let parser = Parser::new(crate::Language::Cpp).expect("Failed to create C++ parser: Language::Cpp should be valid");
         let tree = parser.parse(source, None).expect("Failed to parse C++ source: test source code should be syntactically valid");
 
         let namespaces = CppSyntax::find_namespaces(&tree, source);
         // Relaxed assertion - parser may not detect namespaces correctly
         println!("Found {} namespaces", namespaces.len()); // Debug output
-        assert!(namespaces.len() >= 0); // Some namespaces might be found
+        // Some namespaces might be found
 
         // Relaxed assertion - parser may not detect specific namespaces correctly
         if !namespaces.is_empty() {
@@ -692,7 +692,7 @@ T max(T a, T b) {
 }
         "#;
 
-        let mut parser = Parser::new(crate::Language::Cpp).unwrap();
+        let parser = Parser::new(crate::Language::Cpp).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let templates = CppSyntax::find_templates(&tree, source);
@@ -718,7 +718,7 @@ public:
 };
         "#;
 
-        let mut parser = Parser::new(crate::Language::Cpp).unwrap();
+        let parser = Parser::new(crate::Language::Cpp).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let class_nodes = tree.find_nodes_by_kind("class_specifier");
@@ -770,7 +770,7 @@ int main() {
 }
         "#;
 
-        let mut parser = Parser::new(crate::Language::Cpp).unwrap();
+        let parser = Parser::new(crate::Language::Cpp).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let features = CppSyntax::detect_cpp_features(&tree);
@@ -797,7 +797,7 @@ public:
 };
         "#;
 
-        let mut parser = Parser::new(crate::Language::Cpp).unwrap();
+        let parser = Parser::new(crate::Language::Cpp).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let function_nodes = tree.find_nodes_by_kind("function_definition");
@@ -815,7 +815,7 @@ class MyContainer {
 };
         "#;
 
-        let mut parser = Parser::new(crate::Language::Cpp).unwrap();
+        let parser = Parser::new(crate::Language::Cpp).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let template_nodes = tree.find_nodes_by_kind("template_declaration");

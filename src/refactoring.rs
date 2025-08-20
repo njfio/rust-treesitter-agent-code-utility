@@ -152,35 +152,11 @@ pub enum RefactoringCategory {
     TestCoverage,
 }
 
-/// Priority levels for refactoring
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum RefactoringPriority {
-    /// Critical - should be done immediately
-    Critical,
-    /// High - should be done soon
-    High,
-    /// Medium - should be done when convenient
-    Medium,
-    /// Low - nice to have
-    Low,
-}
+// Use common Priority from constants module
+pub use crate::constants::common::Priority as RefactoringPriority;
 
-/// Implementation effort estimation
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum ImplementationEffort {
-    /// Very easy, < 30 minutes
-    Trivial,
-    /// Easy, < 2 hours
-    Easy,
-    /// Moderate, < 1 day
-    Medium,
-    /// Hard, < 1 week
-    Hard,
-    /// Very hard, > 1 week
-    VeryHard,
-}
+// Use common EffortLevel from constants module
+pub use crate::constants::common::EffortLevel as ImplementationEffort;
 
 /// Expected impact of refactoring
 #[derive(Debug, Clone)]
@@ -783,27 +759,8 @@ impl std::fmt::Display for RefactoringCategory {
     }
 }
 
-impl std::fmt::Display for RefactoringPriority {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RefactoringPriority::Critical => write!(f, "Critical"),
-            RefactoringPriority::High => write!(f, "High"),
-            RefactoringPriority::Medium => write!(f, "Medium"),
-            RefactoringPriority::Low => write!(f, "Low"),
-        }
-    }
-}
+// Display implementation is provided by the common Priority type
 
-impl std::fmt::Display for ImplementationEffort {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ImplementationEffort::Trivial => write!(f, "Trivial"),
-            ImplementationEffort::Easy => write!(f, "Easy"),
-            ImplementationEffort::Medium => write!(f, "Medium"),
-            ImplementationEffort::Hard => write!(f, "Hard"),
-            ImplementationEffort::VeryHard => write!(f, "Very Hard"),
-        }
-    }
-}
+// Display implementation is provided by the common EffortLevel type
 
 

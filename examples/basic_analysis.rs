@@ -1,4 +1,4 @@
-use rust_tree_sitter::{CodebaseAnalyzer, AnalysisConfig};
+use rust_tree_sitter::CodebaseAnalyzer;
 use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

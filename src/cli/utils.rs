@@ -28,6 +28,7 @@ pub fn create_analysis_config(
     include_hidden: bool,
     exclude_dirs: Option<String>,
     include_exts: Option<String>,
+    threads: Option<usize>,
 ) -> CliResult<AnalysisConfig> {
     let mut config = AnalysisConfig::default();
     
@@ -59,6 +60,9 @@ pub fn create_analysis_config(
                 .collect()
         );
     }
+
+    // Apply thread count if provided
+    config.thread_count = threads;
     
     Ok(config)
 }

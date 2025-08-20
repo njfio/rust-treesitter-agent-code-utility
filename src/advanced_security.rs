@@ -636,8 +636,9 @@ impl AdvancedSecurityAnalyzer {
             Ok(ast_vulnerabilities) => {
                 vulnerabilities.extend(ast_vulnerabilities);
             }
-            Err(_) => {
-                // AST analysis failed, will rely on string-based analysis
+            Err(e) => {
+                eprintln!("Warning: AST-based security analysis failed for {}: {}", file.path.display(), e);
+                // Will rely on string-based analysis
             }
         }
 
@@ -656,8 +657,9 @@ impl AdvancedSecurityAnalyzer {
                     }
                 }
             }
-            Err(_) => {
-                // String-based analysis failed, continue with AST results only
+            Err(e) => {
+                eprintln!("Warning: String-based security analysis failed for {}: {}", file.path.display(), e);
+                // Continue with AST results only
             }
         }
 
@@ -715,7 +717,111 @@ impl AdvancedSecurityAnalyzer {
         // A05: Security Misconfiguration
         vulnerabilities.extend(self.detect_security_misconfiguration(&content, &lines, file)?);
 
+        // Additional lightweight detectors for common patterns across languages
+        vulnerabilities.extend(self.detect_command_injection_strings(&content, file)?);
+        vulnerabilities.extend(self.detect_path_traversal_strings(&content, file)?);
+        vulnerabilities.extend(self.detect_insecure_random_strings(&content, file)?);
+        vulnerabilities.extend(self.detect_xss_strings(&content, file)?);
+
         Ok(vulnerabilities)
+    }
+
+    /// Heuristic command injection detection via string search (e.g., Rust std::process::Command)
+    fn detect_command_injection_strings(&self, content: &str, file: &FileInfo) -> Result<Vec<SecurityVulnerability>> {
+        let mut vulns = Vec::new();
+        if content.contains("Command::new(\"sh\")") || content.contains("Command::new(\"bash\")") {
+            if content.contains(".arg(\"-c\")") {
+                // Look for an .arg( that likely references a variable or expression
+                if content.contains(".arg(") && (content.contains("user_") || content.contains("input") || content.contains("arg") || content.contains("cmd")) {
+                    vulns.push(SecurityVulnerability {
+                        id: "STR_CMD_001".to_string(),
+                        title: "Potential command injection (shell -c)".to_string(),
+                        description: "Spawning a shell with '-c' and user-controlled arguments may allow command injection".to_string(),
+                        severity: SecuritySeverity::Critical,
+                        owasp_category: OwaspCategory::Injection,
+                        cwe_id: Some("CWE-78".to_string()),
+                        location: VulnerabilityLocation { file: file.path.clone(), function: None, start_line: 1, end_line: 1, column: 0 },
+                        code_snippet: "Command::new(\"sh\").arg(\"-c\").arg(...)".to_string(),
+                        impact: SecurityImpact { confidentiality: ImpactLevel::Critical, integrity: ImpactLevel::Critical, availability: ImpactLevel::Critical, overall_score: 9.5 },
+                        remediation: RemediationGuidance { summary: "Avoid shell with -c; use safe APIs".to_string(), steps: vec!["Avoid passing user input to shell".to_string(), "Use direct exec with separated args".to_string()], code_examples: vec![], references: vec![], effort: RemediationEffort::High },
+                        confidence: ConfidenceLevel::Medium,
+                    });
+                }
+            }
+        }
+        Ok(vulns)
+    }
+
+    /// Heuristic path traversal detection (e.g., read_to_string with variable input)
+    fn detect_path_traversal_strings(&self, content: &str, file: &FileInfo) -> Result<Vec<SecurityVulnerability>> {
+        let mut vulns = Vec::new();
+        // Simple pattern: read_to_string(ident) without quotes
+        for (idx, line) in content.lines().enumerate() {
+            if line.contains("read_to_string(") {
+                let after = line.split("read_to_string(").nth(1).unwrap_or("");
+                let arg = after.split(')').next().unwrap_or("").trim();
+                if !arg.starts_with('"') && !arg.starts_with('\'') {
+                    vulns.push(SecurityVulnerability {
+                        id: format!("STR_PATH_{}", idx + 1),
+                        title: "Potential path traversal / unvalidated file read".to_string(),
+                        description: "Reading from a path derived from user input without validation".to_string(),
+                        severity: SecuritySeverity::High,
+                        owasp_category: OwaspCategory::SecurityMisconfiguration,
+                        cwe_id: Some("CWE-22".to_string()),
+                        location: VulnerabilityLocation { file: file.path.clone(), function: None, start_line: idx + 1, end_line: idx + 1, column: 0 },
+                        code_snippet: line.to_string(),
+                        impact: SecurityImpact { confidentiality: ImpactLevel::High, integrity: ImpactLevel::Medium, availability: ImpactLevel::Low, overall_score: 7.0 },
+                        remediation: RemediationGuidance { summary: "Validate and sanitize file paths".to_string(), steps: vec!["Normalize and restrict paths".to_string(), "Use allowlists or sandboxed dirs".to_string()], code_examples: vec![], references: vec![], effort: RemediationEffort::Medium },
+                        confidence: ConfidenceLevel::Medium,
+                    });
+                }
+            }
+        }
+        Ok(vulns)
+    }
+
+    /// Heuristic insecure random detection
+    fn detect_insecure_random_strings(&self, content: &str, file: &FileInfo) -> Result<Vec<SecurityVulnerability>> {
+        let mut vulns = Vec::new();
+        if content.contains("RandomState::new") || content.contains("DefaultHasher::new") {
+            vulns.push(SecurityVulnerability {
+                id: "STR_RAND_001".to_string(),
+                title: "Potential insecure randomness".to_string(),
+                description: "Use of predictable hashing or default states may lead to insecure tokens".to_string(),
+                severity: SecuritySeverity::Medium,
+                owasp_category: OwaspCategory::InsecureDesign,
+                cwe_id: Some("CWE-330".to_string()),
+                location: VulnerabilityLocation { file: file.path.clone(), function: None, start_line: 1, end_line: 1, column: 0 },
+                code_snippet: "RandomState::new / DefaultHasher::new".to_string(),
+                impact: SecurityImpact { confidentiality: ImpactLevel::Medium, integrity: ImpactLevel::Medium, availability: ImpactLevel::Low, overall_score: 5.0 },
+                remediation: RemediationGuidance { summary: "Use cryptographically secure RNGs".to_string(), steps: vec!["Use rand::rngs::OsRng or ring".to_string()], code_examples: vec![], references: vec![], effort: RemediationEffort::Low },
+                confidence: ConfidenceLevel::Medium,
+            });
+        }
+        Ok(vulns)
+    }
+
+    /// Heuristic XSS detection (JS innerHTML sinks)
+    fn detect_xss_strings(&self, content: &str, file: &FileInfo) -> Result<Vec<SecurityVulnerability>> {
+        let mut vulns = Vec::new();
+        for (idx, line) in content.lines().enumerate() {
+            if line.contains("innerHTML") && (line.contains("=") || line.contains("+=")) {
+                vulns.push(SecurityVulnerability {
+                    id: format!("STR_XSS_{}", idx + 1),
+                    title: "Potential XSS via innerHTML".to_string(),
+                    description: "Assigning user-controlled data to innerHTML can lead to XSS".to_string(),
+                    severity: SecuritySeverity::High,
+                    owasp_category: OwaspCategory::Injection,
+                    cwe_id: Some("CWE-79".to_string()),
+                    location: VulnerabilityLocation { file: file.path.clone(), function: None, start_line: idx + 1, end_line: idx + 1, column: 0 },
+                    code_snippet: line.to_string(),
+                    impact: SecurityImpact { confidentiality: ImpactLevel::High, integrity: ImpactLevel::High, availability: ImpactLevel::Low, overall_score: 8.0 },
+                    remediation: RemediationGuidance { summary: "Avoid innerHTML or sanitize data".to_string(), steps: vec!["Use textContent or safe templating".to_string()], code_examples: vec![], references: vec![], effort: RemediationEffort::Medium },
+                    confidence: ConfidenceLevel::Medium,
+                });
+            }
+        }
+        Ok(vulns)
     }
 
     /// Detect access control issues
@@ -3040,7 +3146,7 @@ mod tests {
 
     #[test]
     fn test_advanced_security_scanner_creation() {
-        let config = AdvancedSecurityConfig::default();
+        let _config = AdvancedSecurityConfig::default();
         let scanner = AdvancedSecurityAnalyzer::new().expect("Failed to create AdvancedSecurityAnalyzer with default config");
 
         assert!(scanner.config.owasp_analysis);
@@ -3050,7 +3156,7 @@ mod tests {
 
     #[test]
     fn test_scan_analysis_result() {
-        let config = AdvancedSecurityConfig::default();
+        let _config = AdvancedSecurityConfig::default();
         let scanner = AdvancedSecurityAnalyzer::new().expect("Failed to create AdvancedSecurityAnalyzer for scan test");
         let analysis = create_test_analysis_result();
 
@@ -3061,13 +3167,13 @@ mod tests {
         assert!(result.is_ok());
 
         let security_result = result.expect("Security analysis should succeed with test data");
-        assert!(security_result.total_vulnerabilities >= 0);
+        // Vulnerabilities should be counted
         assert!(security_result.security_score <= 100);
     }
 
     #[test]
     fn test_user_input_function_detection() {
-        let config = AdvancedSecurityConfig::default();
+        let _config = AdvancedSecurityConfig::default();
         let scanner = AdvancedSecurityAnalyzer::new().expect("Failed to create AdvancedSecurityAnalyzer for user input test");
 
         // Test user input function detection
@@ -3094,7 +3200,7 @@ mod tests {
 
     #[test]
     fn test_entropy_calculation() {
-        let config = AdvancedSecurityConfig::default();
+        let _config = AdvancedSecurityConfig::default();
         let scanner = AdvancedSecurityAnalyzer::new().expect("Failed to create AdvancedSecurityAnalyzer for entropy test");
 
         // High entropy string (likely secret)

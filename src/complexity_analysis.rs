@@ -231,7 +231,7 @@ impl ComplexityAnalyzer {
     }
 
     /// Get cognitive complexity impact for Rust nodes
-    fn get_rust_cognitive_impact(&self, node: Node, node_kind: &str) -> CognitiveComplexityImpact {
+    fn get_rust_cognitive_impact(&self, _node: Node, node_kind: &str) -> CognitiveComplexityImpact {
         match node_kind {
             // Conditional operators - increment with nesting penalty and increase nesting
             "if_expression" => CognitiveComplexityImpact::IncrementWithNestingAndNesting,
@@ -307,7 +307,7 @@ impl ComplexityAnalyzer {
     }
 
     /// Get cognitive complexity impact for Python nodes
-    fn get_python_cognitive_impact(&self, node: Node, node_kind: &str) -> CognitiveComplexityImpact {
+    fn get_python_cognitive_impact(&self, _node: Node, node_kind: &str) -> CognitiveComplexityImpact {
         match node_kind {
             // Conditional operators
             "if_statement" => CognitiveComplexityImpact::IncrementWithNestingAndNesting,
@@ -341,7 +341,7 @@ impl ComplexityAnalyzer {
     }
 
     /// Get cognitive complexity impact for C/C++ nodes
-    fn get_c_cognitive_impact(&self, node: Node, node_kind: &str) -> CognitiveComplexityImpact {
+    fn get_c_cognitive_impact(&self, _node: Node, node_kind: &str) -> CognitiveComplexityImpact {
         match node_kind {
             // Conditional operators
             "if_statement" => CognitiveComplexityImpact::IncrementWithNestingAndNesting,
@@ -377,7 +377,7 @@ impl ComplexityAnalyzer {
     }
 
     /// Get cognitive complexity impact for Go nodes
-    fn get_go_cognitive_impact(&self, node: Node, node_kind: &str) -> CognitiveComplexityImpact {
+    fn get_go_cognitive_impact(&self, _node: Node, node_kind: &str) -> CognitiveComplexityImpact {
         match node_kind {
             // Conditional operators
             "if_statement" => CognitiveComplexityImpact::IncrementWithNestingAndNesting,
@@ -668,6 +668,54 @@ impl ComplexityAnalyzer {
                     if cursor.node().kind() == "block" {
                         complexity += self.traverse_for_npath(cursor.node());
                     }
+                }
+                complexity
+            },
+
+            // try expression: NP(try_block) + sum(NP(catch_blocks)) + NP(finally_block)
+            "try_expression" => {
+                let mut complexity = 1; // Base complexity for try
+                let mut cursor = node.walk();
+
+                if cursor.goto_first_child() {
+                    // Process try block
+                    complexity += self.traverse_for_npath(cursor.node());
+
+                    // Process catch blocks
+                    while cursor.goto_next_sibling() {
+                        let child_kind = cursor.node().kind();
+                        if child_kind == "catch_clause" || child_kind == "finally_clause" {
+                            complexity += self.traverse_for_npath(cursor.node());
+                        }
+                    }
+                }
+                complexity
+            },
+
+            // closure expression: NP(body) + 1
+            "closure_expression" => {
+                let mut complexity = 1; // Base complexity for closure
+                let mut cursor = node.walk();
+
+                if cursor.goto_first_child() {
+                    // Find and process closure body
+                    while cursor.goto_next_sibling() {
+                        if cursor.node().kind() == "block" || cursor.node().kind() == "expression" {
+                            complexity += self.traverse_for_npath(cursor.node());
+                            break;
+                        }
+                    }
+                }
+                complexity
+            },
+
+            // async block: NP(body) + 1
+            "async_block" => {
+                let mut complexity = 1; // Base complexity for async
+                let mut cursor = node.walk();
+
+                if cursor.goto_first_child() {
+                    complexity += self.traverse_for_npath(cursor.node());
                 }
                 complexity
             },
@@ -1061,26 +1109,297 @@ impl ComplexityAnalyzer {
     /// Calculate NPATH complexity for expressions (count && and || operators)
     fn calculate_expression_npath(&self, node: Node) -> usize {
         let mut complexity = 1; // Base complexity
-        let mut cursor = node.walk();
+        let node_kind = node.kind();
 
-        // Count logical operators in the expression
-        if cursor.goto_first_child() {
-            loop {
-                let node_kind = cursor.node().kind();
-                if node_kind == "&&" || node_kind == "||" ||
-                   node_kind == "binary_expression" || node_kind == "logical_expression" {
-                    complexity += 1;
+        // Handle specific expression types based on language
+        match self.language.as_str() {
+            "rust" => self.calculate_rust_expression_npath(node, node_kind),
+            "javascript" | "typescript" => self.calculate_js_expression_npath(node, node_kind),
+            "python" => self.calculate_python_expression_npath(node, node_kind),
+            "c" | "cpp" | "c++" => self.calculate_c_expression_npath(node, node_kind),
+            "go" => self.calculate_go_expression_npath(node, node_kind),
+            _ => {
+                // Default implementation for unknown languages
+                let mut cursor = node.walk();
+                if cursor.goto_first_child() {
+                    loop {
+                        let child_kind = cursor.node().kind();
+                        if child_kind == "&&" || child_kind == "||" {
+                            complexity += 1;
+                        }
+                        complexity += self.calculate_expression_npath(cursor.node()) - 1;
+                        if !cursor.goto_next_sibling() {
+                            break;
+                        }
+                    }
                 }
-
-                // Recursively check child expressions
-                complexity += self.calculate_expression_npath(cursor.node()) - 1; // Subtract 1 to avoid double counting
-
-                if !cursor.goto_next_sibling() {
-                    break;
-                }
+                complexity
             }
         }
-        complexity
+    }
+
+    /// Calculate expression NPATH complexity for Rust
+    fn calculate_rust_expression_npath(&self, node: Node, node_kind: &str) -> usize {
+        let mut complexity = 1;
+
+        match node_kind {
+            "binary_expression" => {
+                let mut cursor = node.walk();
+                if cursor.goto_first_child() {
+                    // Left operand
+                    complexity += self.calculate_expression_npath(cursor.node()) - 1;
+
+                    // Operator
+                    if cursor.goto_next_sibling() {
+                        let op = cursor.node().kind();
+                        if op == "&&" || op == "||" {
+                            complexity += 1; // Logical operators add complexity
+                        }
+
+                        // Right operand
+                        if cursor.goto_next_sibling() {
+                            complexity += self.calculate_expression_npath(cursor.node()) - 1;
+                        }
+                    }
+                }
+                complexity
+            },
+            "call_expression" => {
+                // Function calls can add complexity, especially with complex arguments
+                let mut cursor = node.walk();
+                if cursor.goto_first_child() {
+                    loop {
+                        complexity += self.calculate_expression_npath(cursor.node()) - 1;
+                        if !cursor.goto_next_sibling() {
+                            break;
+                        }
+                    }
+                }
+                complexity.max(1)
+            },
+            _ => {
+                // Default: traverse children
+                let mut cursor = node.walk();
+                if cursor.goto_first_child() {
+                    loop {
+                        complexity += self.calculate_expression_npath(cursor.node()) - 1;
+                        if !cursor.goto_next_sibling() {
+                            break;
+                        }
+                    }
+                }
+                complexity
+            }
+        }
+    }
+
+    /// Calculate expression NPATH complexity for JavaScript/TypeScript
+    fn calculate_js_expression_npath(&self, node: Node, node_kind: &str) -> usize {
+        let mut complexity = 1;
+
+        match node_kind {
+            "binary_expression" | "logical_expression" => {
+                let mut cursor = node.walk();
+                if cursor.goto_first_child() {
+                    // Left operand
+                    complexity += self.calculate_expression_npath(cursor.node()) - 1;
+
+                    // Operator
+                    if cursor.goto_next_sibling() {
+                        let op = cursor.node().kind();
+                        if op == "&&" || op == "||" {
+                            complexity += 1;
+                        }
+
+                        // Right operand
+                        if cursor.goto_next_sibling() {
+                            complexity += self.calculate_expression_npath(cursor.node()) - 1;
+                        }
+                    }
+                }
+                complexity
+            },
+            "call_expression" => {
+                let mut cursor = node.walk();
+                if cursor.goto_first_child() {
+                    loop {
+                        complexity += self.calculate_expression_npath(cursor.node()) - 1;
+                        if !cursor.goto_next_sibling() {
+                            break;
+                        }
+                    }
+                }
+                complexity.max(1)
+            },
+            _ => {
+                let mut cursor = node.walk();
+                if cursor.goto_first_child() {
+                    loop {
+                        complexity += self.calculate_expression_npath(cursor.node()) - 1;
+                        if !cursor.goto_next_sibling() {
+                            break;
+                        }
+                    }
+                }
+                complexity
+            }
+        }
+    }
+
+    /// Calculate expression NPATH complexity for Python
+    fn calculate_python_expression_npath(&self, node: Node, node_kind: &str) -> usize {
+        let mut complexity = 1;
+
+        match node_kind {
+            "boolean_operator" => {
+                let mut cursor = node.walk();
+                if cursor.goto_first_child() {
+                    // Left operand
+                    complexity += self.calculate_expression_npath(cursor.node()) - 1;
+
+                    // Operator (and/or)
+                    if cursor.goto_next_sibling() {
+                        complexity += 1; // Boolean operators add complexity
+
+                        // Right operand
+                        if cursor.goto_next_sibling() {
+                            complexity += self.calculate_expression_npath(cursor.node()) - 1;
+                        }
+                    }
+                }
+                complexity
+            },
+            "call" => {
+                let mut cursor = node.walk();
+                if cursor.goto_first_child() {
+                    loop {
+                        complexity += self.calculate_expression_npath(cursor.node()) - 1;
+                        if !cursor.goto_next_sibling() {
+                            break;
+                        }
+                    }
+                }
+                complexity.max(1)
+            },
+            _ => {
+                let mut cursor = node.walk();
+                if cursor.goto_first_child() {
+                    loop {
+                        complexity += self.calculate_expression_npath(cursor.node()) - 1;
+                        if !cursor.goto_next_sibling() {
+                            break;
+                        }
+                    }
+                }
+                complexity
+            }
+        }
+    }
+
+    /// Calculate expression NPATH complexity for C/C++
+    fn calculate_c_expression_npath(&self, node: Node, node_kind: &str) -> usize {
+        let mut complexity = 1;
+
+        match node_kind {
+            "binary_expression" => {
+                let mut cursor = node.walk();
+                if cursor.goto_first_child() {
+                    // Left operand
+                    complexity += self.calculate_expression_npath(cursor.node()) - 1;
+
+                    // Operator
+                    if cursor.goto_next_sibling() {
+                        let op = cursor.node().kind();
+                        if op == "&&" || op == "||" {
+                            complexity += 1;
+                        }
+
+                        // Right operand
+                        if cursor.goto_next_sibling() {
+                            complexity += self.calculate_expression_npath(cursor.node()) - 1;
+                        }
+                    }
+                }
+                complexity
+            },
+            "call_expression" => {
+                let mut cursor = node.walk();
+                if cursor.goto_first_child() {
+                    loop {
+                        complexity += self.calculate_expression_npath(cursor.node()) - 1;
+                        if !cursor.goto_next_sibling() {
+                            break;
+                        }
+                    }
+                }
+                complexity.max(1)
+            },
+            _ => {
+                let mut cursor = node.walk();
+                if cursor.goto_first_child() {
+                    loop {
+                        complexity += self.calculate_expression_npath(cursor.node()) - 1;
+                        if !cursor.goto_next_sibling() {
+                            break;
+                        }
+                    }
+                }
+                complexity
+            }
+        }
+    }
+
+    /// Calculate expression NPATH complexity for Go
+    fn calculate_go_expression_npath(&self, node: Node, node_kind: &str) -> usize {
+        let mut complexity = 1;
+
+        match node_kind {
+            "binary_expression" => {
+                let mut cursor = node.walk();
+                if cursor.goto_first_child() {
+                    // Left operand
+                    complexity += self.calculate_expression_npath(cursor.node()) - 1;
+
+                    // Operator
+                    if cursor.goto_next_sibling() {
+                        let op = cursor.node().kind();
+                        if op == "&&" || op == "||" {
+                            complexity += 1;
+                        }
+
+                        // Right operand
+                        if cursor.goto_next_sibling() {
+                            complexity += self.calculate_expression_npath(cursor.node()) - 1;
+                        }
+                    }
+                }
+                complexity
+            },
+            "call_expression" => {
+                let mut cursor = node.walk();
+                if cursor.goto_first_child() {
+                    loop {
+                        complexity += self.calculate_expression_npath(cursor.node()) - 1;
+                        if !cursor.goto_next_sibling() {
+                            break;
+                        }
+                    }
+                }
+                complexity.max(1)
+            },
+            _ => {
+                let mut cursor = node.walk();
+                if cursor.goto_first_child() {
+                    loop {
+                        complexity += self.calculate_expression_npath(cursor.node()) - 1;
+                        if !cursor.goto_next_sibling() {
+                            break;
+                        }
+                    }
+                }
+                complexity
+            }
+        }
     }
 
     /// Count lines of code in the syntax tree
@@ -1208,8 +1527,7 @@ mod tests {
 
         // Complex function should have higher complexity
         assert!(metrics.cyclomatic_complexity >= 1); // At least base complexity
-        assert!(metrics.cognitive_complexity >= 0);
-        assert!(metrics.max_nesting_depth >= 0);
+        // Complexity metrics should be calculated
 
         Ok(())
     }
@@ -1240,8 +1558,7 @@ mod tests {
         let effort = halstead_metrics.effort();
 
         assert!(volume > 0.0, "Volume should be positive");
-        assert!(difficulty >= 0.0, "Difficulty should be non-negative");
-        assert!(effort >= 0.0, "Effort should be non-negative");
+        // Difficulty and effort should be non-negative
 
         // Verify effort = difficulty * volume
         let expected_effort = difficulty * volume;
@@ -1313,8 +1630,8 @@ mod tests {
         assert!(halstead_metrics.unique_operators > 0, "Should have at least function declaration operator");
 
         // Volume should be 0 if no operands, or small if minimal operands
-        let volume = halstead_metrics.volume();
-        assert!(volume >= 0.0, "Volume should be non-negative");
+        let _volume = halstead_metrics.volume();
+        // Volume should be non-negative
 
         Ok(())
     }

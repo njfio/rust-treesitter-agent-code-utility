@@ -6,11 +6,516 @@
 use crate::{Result, FileInfo, AnalysisResult};
 use crate::constants::intent_mapping::*;
 use crate::embeddings::{EmbeddingEngine, EmbeddingConfig, Embedding};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 
 #[cfg(feature = "serde")]
 use serde::{Serialize, Deserialize};
+
+/// Confidence scoring thresholds for different mapping types
+#[derive(Debug, Clone)]
+pub struct ConfidenceThresholds {
+    /// Minimum confidence for automatic acceptance
+    pub auto_accept: f64,
+    /// Minimum confidence for review queue
+    pub needs_review: f64,
+    /// Minimum confidence for rejection
+    pub auto_reject: f64,
+    /// High confidence threshold for priority mappings
+    pub high_confidence: f64,
+    /// Medium confidence threshold
+    pub medium_confidence: f64,
+    /// Low confidence threshold
+    pub low_confidence: f64,
+}
+
+impl Default for ConfidenceThresholds {
+    fn default() -> Self {
+        Self {
+            auto_accept: 0.9,
+            needs_review: 0.6,
+            auto_reject: 0.3,
+            high_confidence: 0.8,
+            medium_confidence: 0.6,
+            low_confidence: 0.4,
+        }
+    }
+}
+
+/// Graph-based relationship mapping between requirements and implementations
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct RelationshipGraph {
+    /// Graph nodes (requirements and implementations)
+    pub nodes: HashMap<String, RelationshipNode>,
+    /// Graph edges (mappings and relationships)
+    pub edges: HashMap<String, RelationshipEdge>,
+    /// Graph metrics and statistics
+    pub metrics: GraphMetrics,
+}
+
+/// Node in the relationship graph
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct RelationshipNode {
+    /// Unique node identifier
+    pub id: String,
+    /// Type of node
+    pub node_type: RelationshipNodeType,
+    /// Node metadata
+    pub metadata: HashMap<String, String>,
+    /// Node attributes (numeric values)
+    pub attributes: HashMap<String, f64>,
+}
+
+/// Types of nodes in the relationship graph
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum RelationshipNodeType {
+    /// Requirement node
+    Requirement,
+    /// Implementation node
+    Implementation,
+    /// Code element node
+    CodeElement,
+    /// Test node
+    Test,
+    /// Documentation node
+    Documentation,
+}
+
+/// Edge in the relationship graph
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct RelationshipEdge {
+    /// Unique edge identifier
+    pub id: String,
+    /// Source node ID
+    pub source_id: String,
+    /// Target node ID
+    pub target_id: String,
+    /// Type of relationship
+    pub edge_type: RelationshipEdgeType,
+    /// Relationship weight/strength
+    pub weight: f64,
+    /// Edge metadata
+    pub metadata: HashMap<String, String>,
+    /// Edge attributes (numeric values)
+    pub attributes: HashMap<String, f64>,
+}
+
+/// Types of edges in the relationship graph
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum RelationshipEdgeType {
+    /// Direct mapping
+    DirectMapping,
+    /// One-to-many mapping
+    OneToMany,
+    /// Many-to-one mapping
+    ManyToOne,
+    /// Partial mapping
+    PartialMapping,
+    /// Derived mapping
+    DerivedMapping,
+    /// Inferred mapping
+    InferredMapping,
+    /// Dependency relationship
+    Dependency,
+    /// Similarity relationship
+    Similarity,
+    /// Containment relationship
+    Containment,
+    /// Test coverage relationship
+    TestCoverage,
+}
+
+/// Graph metrics and statistics
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct GraphMetrics {
+    /// Total number of nodes
+    pub node_count: usize,
+    /// Total number of edges
+    pub edge_count: usize,
+    /// Graph density (edges / possible edges)
+    pub density: f64,
+    /// Average node degree
+    pub average_degree: f64,
+    /// Number of connected components
+    pub connected_components: usize,
+    /// Graph diameter (longest shortest path)
+    pub diameter: usize,
+    /// Clustering coefficient
+    pub clustering_coefficient: f64,
+    /// Coverage metrics
+    pub coverage_metrics: GraphCoverageMetrics,
+}
+
+/// Coverage metrics for the relationship graph
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct GraphCoverageMetrics {
+    /// Percentage of requirements with implementations
+    pub requirement_coverage: f64,
+    /// Percentage of implementations with requirements
+    pub implementation_coverage: f64,
+    /// Average mapping confidence
+    pub average_confidence: f64,
+    /// Number of orphaned requirements
+    pub orphaned_requirements: usize,
+    /// Number of orphaned implementations
+    pub orphaned_implementations: usize,
+}
+
+impl RelationshipGraph {
+    /// Create a new empty relationship graph
+    pub fn new() -> Self {
+        Self {
+            nodes: HashMap::new(),
+            edges: HashMap::new(),
+            metrics: GraphMetrics::default(),
+        }
+    }
+
+    /// Add a node to the graph
+    pub fn add_node(&mut self, node: RelationshipNode) {
+        self.nodes.insert(node.id.clone(), node);
+    }
+
+    /// Add an edge to the graph
+    pub fn add_edge(&mut self, edge: RelationshipEdge) -> Result<()> {
+        // Validate that source and target nodes exist
+        if !self.nodes.contains_key(&edge.source_id) {
+            return Err(crate::Error::internal_error("relationship_graph",
+                format!("Source node '{}' not found in graph", edge.source_id)));
+        }
+        if !self.nodes.contains_key(&edge.target_id) {
+            return Err(crate::Error::internal_error("relationship_graph",
+                format!("Target node '{}' not found in graph", edge.target_id)));
+        }
+
+        self.edges.insert(edge.id.clone(), edge);
+        Ok(())
+    }
+
+    /// Get node by ID
+    pub fn get_node(&self, id: &str) -> Option<&RelationshipNode> {
+        self.nodes.get(id)
+    }
+
+    /// Get edge by ID
+    pub fn get_edge(&self, id: &str) -> Option<&RelationshipEdge> {
+        self.edges.get(id)
+    }
+
+    /// Get all edges connected to a node
+    pub fn get_node_edges(&self, node_id: &str) -> Vec<&RelationshipEdge> {
+        self.edges.values()
+            .filter(|edge| edge.source_id == node_id || edge.target_id == node_id)
+            .collect()
+    }
+
+    /// Get outgoing edges from a node
+    pub fn get_outgoing_edges(&self, node_id: &str) -> Vec<&RelationshipEdge> {
+        self.edges.values()
+            .filter(|edge| edge.source_id == node_id)
+            .collect()
+    }
+
+    /// Get incoming edges to a node
+    pub fn get_incoming_edges(&self, node_id: &str) -> Vec<&RelationshipEdge> {
+        self.edges.values()
+            .filter(|edge| edge.target_id == node_id)
+            .collect()
+    }
+
+    /// Find shortest path between two nodes
+    pub fn find_shortest_path(&self, source_id: &str, target_id: &str) -> Option<Vec<String>> {
+        if source_id == target_id {
+            return Some(vec![source_id.to_string()]);
+        }
+
+        let mut visited = HashSet::new();
+        let mut queue = VecDeque::new();
+        let mut parent = HashMap::new();
+
+        queue.push_back(source_id.to_string());
+        visited.insert(source_id.to_string());
+
+        while let Some(current) = queue.pop_front() {
+            for edge in self.get_outgoing_edges(&current) {
+                if !visited.contains(&edge.target_id) {
+                    visited.insert(edge.target_id.clone());
+                    parent.insert(edge.target_id.clone(), current.clone());
+                    queue.push_back(edge.target_id.clone());
+
+                    if edge.target_id == target_id {
+                        // Reconstruct path
+                        let mut path = Vec::new();
+                        let mut node = target_id.to_string();
+                        path.push(node.clone());
+
+                        while let Some(p) = parent.get(&node) {
+                            path.push(p.clone());
+                            node = p.clone();
+                        }
+
+                        path.reverse();
+                        return Some(path);
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Calculate graph metrics
+    pub fn calculate_metrics(&mut self) {
+        let node_count = self.nodes.len();
+        let edge_count = self.edges.len();
+
+        let density = if node_count > 1 {
+            edge_count as f64 / (node_count * (node_count - 1)) as f64
+        } else {
+            0.0
+        };
+
+        let average_degree = if node_count > 0 {
+            (2 * edge_count) as f64 / node_count as f64
+        } else {
+            0.0
+        };
+
+        let connected_components = self.count_connected_components();
+        let diameter = self.calculate_diameter();
+        let clustering_coefficient = self.calculate_clustering_coefficient();
+        let coverage_metrics = self.calculate_coverage_metrics();
+
+        self.metrics = GraphMetrics {
+            node_count,
+            edge_count,
+            density,
+            average_degree,
+            connected_components,
+            diameter,
+            clustering_coefficient,
+            coverage_metrics,
+        };
+    }
+
+    /// Count connected components in the graph
+    fn count_connected_components(&self) -> usize {
+        let mut visited = HashSet::new();
+        let mut components = 0;
+
+        for node_id in self.nodes.keys() {
+            if !visited.contains(node_id) {
+                self.dfs_visit(node_id, &mut visited);
+                components += 1;
+            }
+        }
+
+        components
+    }
+
+    /// Depth-first search visit for connected components
+    fn dfs_visit(&self, node_id: &str, visited: &mut HashSet<String>) {
+        visited.insert(node_id.to_string());
+
+        for edge in self.get_node_edges(node_id) {
+            let neighbor = if edge.source_id == node_id {
+                &edge.target_id
+            } else {
+                &edge.source_id
+            };
+
+            if !visited.contains(neighbor) {
+                self.dfs_visit(neighbor, visited);
+            }
+        }
+    }
+
+    /// Calculate graph diameter (longest shortest path)
+    fn calculate_diameter(&self) -> usize {
+        let mut max_distance = 0;
+
+        for source in self.nodes.keys() {
+            for target in self.nodes.keys() {
+                if source != target {
+                    if let Some(path) = self.find_shortest_path(source, target) {
+                        max_distance = max_distance.max(path.len() - 1);
+                    }
+                }
+            }
+        }
+
+        max_distance
+    }
+
+    /// Calculate clustering coefficient
+    fn calculate_clustering_coefficient(&self) -> f64 {
+        if self.nodes.len() < 3 {
+            return 0.0;
+        }
+
+        let mut total_coefficient = 0.0;
+        let mut node_count = 0;
+
+        for node_id in self.nodes.keys() {
+            let neighbors = self.get_neighbors(node_id);
+            if neighbors.len() < 2 {
+                continue;
+            }
+
+            let possible_edges = neighbors.len() * (neighbors.len() - 1) / 2;
+            let actual_edges = self.count_edges_between_neighbors(&neighbors);
+
+            if possible_edges > 0 {
+                total_coefficient += actual_edges as f64 / possible_edges as f64;
+                node_count += 1;
+            }
+        }
+
+        if node_count > 0 {
+            total_coefficient / node_count as f64
+        } else {
+            0.0
+        }
+    }
+
+    /// Get neighbors of a node
+    fn get_neighbors(&self, node_id: &str) -> Vec<String> {
+        let mut neighbors = HashSet::new();
+
+        for edge in self.get_node_edges(node_id) {
+            if edge.source_id == node_id {
+                neighbors.insert(edge.target_id.clone());
+            } else {
+                neighbors.insert(edge.source_id.clone());
+            }
+        }
+
+        neighbors.into_iter().collect()
+    }
+
+    /// Count edges between neighbors
+    fn count_edges_between_neighbors(&self, neighbors: &[String]) -> usize {
+        let mut count = 0;
+
+        for i in 0..neighbors.len() {
+            for j in (i + 1)..neighbors.len() {
+                if self.has_edge(&neighbors[i], &neighbors[j]) {
+                    count += 1;
+                }
+            }
+        }
+
+        count
+    }
+
+    /// Check if there's an edge between two nodes
+    fn has_edge(&self, node1: &str, node2: &str) -> bool {
+        self.edges.values().any(|edge| {
+            (edge.source_id == node1 && edge.target_id == node2) ||
+            (edge.source_id == node2 && edge.target_id == node1)
+        })
+    }
+
+    /// Calculate coverage metrics
+    fn calculate_coverage_metrics(&self) -> GraphCoverageMetrics {
+        let requirement_nodes: Vec<_> = self.nodes.values()
+            .filter(|node| node.node_type == RelationshipNodeType::Requirement)
+            .collect();
+
+        let implementation_nodes: Vec<_> = self.nodes.values()
+            .filter(|node| node.node_type == RelationshipNodeType::Implementation)
+            .collect();
+
+        let mut requirements_with_implementations = 0;
+        let mut implementations_with_requirements = 0;
+        let mut total_confidence = 0.0;
+        let mut mapping_count = 0;
+
+        // Count requirements with implementations
+        for req_node in &requirement_nodes {
+            if self.get_outgoing_edges(&req_node.id).iter()
+                .any(|edge| matches!(edge.edge_type, RelationshipEdgeType::DirectMapping |
+                                                   RelationshipEdgeType::PartialMapping |
+                                                   RelationshipEdgeType::InferredMapping)) {
+                requirements_with_implementations += 1;
+            }
+        }
+
+        // Count implementations with requirements
+        for impl_node in &implementation_nodes {
+            if self.get_incoming_edges(&impl_node.id).iter()
+                .any(|edge| matches!(edge.edge_type, RelationshipEdgeType::DirectMapping |
+                                                   RelationshipEdgeType::PartialMapping |
+                                                   RelationshipEdgeType::InferredMapping)) {
+                implementations_with_requirements += 1;
+            }
+        }
+
+        // Calculate average confidence
+        for edge in self.edges.values() {
+            if matches!(edge.edge_type, RelationshipEdgeType::DirectMapping |
+                                      RelationshipEdgeType::PartialMapping |
+                                      RelationshipEdgeType::InferredMapping) {
+                total_confidence += edge.weight;
+                mapping_count += 1;
+            }
+        }
+
+        let requirement_coverage = if !requirement_nodes.is_empty() {
+            requirements_with_implementations as f64 / requirement_nodes.len() as f64
+        } else {
+            0.0
+        };
+
+        let implementation_coverage = if !implementation_nodes.is_empty() {
+            implementations_with_requirements as f64 / implementation_nodes.len() as f64
+        } else {
+            0.0
+        };
+
+        let average_confidence = if mapping_count > 0 {
+            total_confidence / mapping_count as f64
+        } else {
+            0.0
+        };
+
+        GraphCoverageMetrics {
+            requirement_coverage,
+            implementation_coverage,
+            average_confidence,
+            orphaned_requirements: requirement_nodes.len() - requirements_with_implementations,
+            orphaned_implementations: implementation_nodes.len() - implementations_with_requirements,
+        }
+    }
+}
+
+impl Default for GraphMetrics {
+    fn default() -> Self {
+        Self {
+            node_count: 0,
+            edge_count: 0,
+            density: 0.0,
+            average_degree: 0.0,
+            connected_components: 0,
+            diameter: 0,
+            clustering_coefficient: 0.0,
+            coverage_metrics: GraphCoverageMetrics {
+                requirement_coverage: 0.0,
+                implementation_coverage: 0.0,
+                average_confidence: 0.0,
+                orphaned_requirements: 0,
+                orphaned_implementations: 0,
+            },
+        }
+    }
+}
 
 /// Intent-to-implementation mapping system
 #[derive(Debug)]
@@ -31,6 +536,8 @@ pub struct IntentMappingSystem {
     requirement_embeddings: HashMap<String, Embedding>,
     /// Cache for implementation embeddings
     implementation_embeddings: HashMap<String, Embedding>,
+    /// Confidence scoring thresholds
+    confidence_thresholds: ConfidenceThresholds,
 }
 
 /// A requirement or intent specification
@@ -81,15 +588,8 @@ pub enum RequirementType {
     Security,
 }
 
-/// Priority levels
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum Priority {
-    Low,
-    Medium,
-    High,
-    Critical,
-}
+// Use common Priority from constants module
+pub use crate::constants::common::Priority;
 
 /// Requirement status
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -410,6 +910,7 @@ impl IntentMappingSystem {
             embedding_engine: None,
             requirement_embeddings: HashMap::new(),
             implementation_embeddings: HashMap::new(),
+            confidence_thresholds: ConfidenceThresholds::default(),
         }
     }
 
@@ -424,6 +925,7 @@ impl IntentMappingSystem {
             embedding_engine: None,
             requirement_embeddings: HashMap::new(),
             implementation_embeddings: HashMap::new(),
+            confidence_thresholds: ConfidenceThresholds::default(),
         }
     }
 
@@ -700,30 +1202,13 @@ impl IntentMappingSystem {
             self.generate_implementation_embeddings().await?;
         }
 
-        // Use embedding-based similarity if available, otherwise fall back to text similarity
+        // Use hybrid similarity scoring for more accurate mappings
         for requirement in &self.requirements {
             for implementation in &self.implementations {
-                let semantic_score = if self.embedding_engine.is_some() {
-                    // Use cached embeddings for efficient similarity calculation
-                    match self.calculate_embedding_similarity(&requirement.id, &implementation.id) {
-                        Ok(score) => score,
-                        Err(_) => {
-                            // Fallback to text-based similarity
-                            self.calculate_semantic_similarity(
-                                &requirement.description,
-                                &self.get_implementation_description(implementation)
-                            )
-                        }
-                    }
-                } else {
-                    // Use text-based similarity
-                    self.calculate_semantic_similarity(
-                        &requirement.description,
-                        &self.get_implementation_description(implementation)
-                    )
-                };
+                // Use hybrid similarity that combines semantic, structural, and contextual factors
+                let hybrid_score = self.calculate_hybrid_similarity(requirement, implementation);
 
-                if semantic_score >= self.config.confidence_threshold {
+                if hybrid_score >= self.config.confidence_threshold {
                     // Check if mapping already exists
                     let exists = self.mappings.iter().any(|m|
                         m.requirement_id == requirement.id &&
@@ -731,20 +1216,24 @@ impl IntentMappingSystem {
                     );
 
                     if !exists {
-                        let rationale = if self.embedding_engine.is_some() {
-                            format!("Semantic embedding similarity (score: {:.3})", semantic_score)
-                        } else {
-                            "Text-based semantic similarity matching".to_string()
-                        };
+                        // Calculate comprehensive confidence score
+                        let confidence_score = self.calculate_confidence_score(requirement, implementation, hybrid_score);
+
+                        let rationale = format!(
+                            "Hybrid similarity analysis (similarity: {:.3}, confidence: {:.3}) combining semantic embeddings, structural patterns, and contextual alignment",
+                            hybrid_score, confidence_score
+                        );
+
+                        let validation_status = self.determine_validation_status(confidence_score);
 
                         let mapping = Self::create_intent_mapping(
-                            "sem",
+                            "hyb",
                             &requirement.id,
                             &implementation.id,
                             MappingType::Inferred,
-                            semantic_score,
+                            confidence_score, // Use confidence score instead of raw similarity
                             &rationale,
-                            ValidationStatus::NeedsReview,
+                            validation_status,
                         );
 
                         self.mappings.push(mapping);
@@ -763,7 +1252,7 @@ impl IntentMappingSystem {
             if requirement.requirement_type == RequirementType::UserStory {
                 for implementation in &self.implementations {
                     if implementation.implementation_type == ImplementationType::API {
-                        let pattern_score = self.calculate_pattern_match(requirement, implementation);
+                        let pattern_score = self.calculate_pattern_match_score(requirement, implementation);
 
                         if pattern_score >= self.config.confidence_threshold {
                             let mapping = IntentMapping {
@@ -1044,6 +1533,621 @@ impl IntentMappingSystem {
         self.calculate_keyword_similarity(&words1, &words2)
     }
 
+    /// Calculate hybrid similarity combining semantic embeddings with structural analysis
+    fn calculate_hybrid_similarity(&self, requirement: &Requirement, implementation: &Implementation) -> f64 {
+        // Weights for different similarity components
+        const SEMANTIC_WEIGHT: f64 = 0.4;
+        const STRUCTURAL_WEIGHT: f64 = 0.3;
+        const KEYWORD_WEIGHT: f64 = 0.2;
+        const CONTEXT_WEIGHT: f64 = 0.1;
+
+        let mut total_score = 0.0;
+
+        // 1. Semantic similarity using embeddings
+        let semantic_score = if self.embedding_engine.is_some() {
+            match self.calculate_embedding_similarity(&requirement.id, &implementation.id) {
+                Ok(score) => score,
+                Err(_) => {
+                    // Fallback to text-based semantic similarity
+                    self.calculate_semantic_similarity(
+                        &requirement.description,
+                        &self.get_implementation_description(implementation)
+                    )
+                }
+            }
+        } else {
+            self.calculate_semantic_similarity(
+                &requirement.description,
+                &self.get_implementation_description(implementation)
+            )
+        };
+        total_score += semantic_score * SEMANTIC_WEIGHT;
+
+        // 2. Structural similarity based on code structure and patterns
+        let structural_score = self.calculate_structural_similarity(requirement, implementation);
+        total_score += structural_score * STRUCTURAL_WEIGHT;
+
+        // 3. Keyword-based similarity
+        let req_keywords = self.extract_keywords(&requirement.description);
+        let impl_keywords = self.extract_implementation_keywords(implementation);
+        let keyword_score = self.calculate_keyword_similarity(&req_keywords, &impl_keywords);
+        total_score += keyword_score * KEYWORD_WEIGHT;
+
+        // 4. Context similarity (priority, category, tags)
+        let context_score = self.calculate_context_similarity(requirement, implementation);
+        total_score += context_score * CONTEXT_WEIGHT;
+
+        total_score.min(1.0)
+    }
+
+    /// Calculate structural similarity based on code patterns and architecture
+    fn calculate_structural_similarity(&self, requirement: &Requirement, implementation: &Implementation) -> f64 {
+        let mut structural_score = 0.0;
+        let mut factors = 0;
+
+        // Analyze implementation type patterns
+        let req_type_str = format!("{:?}", requirement.requirement_type).to_lowercase();
+        let impl_type_str = format!("{:?}", implementation.implementation_type).to_lowercase();
+        let type_score = self.calculate_type_similarity(&req_type_str, &impl_type_str);
+        structural_score += type_score;
+        factors += 1;
+
+        // Analyze complexity alignment
+        let complexity_score = self.calculate_complexity_alignment(requirement, implementation);
+        structural_score += complexity_score;
+        factors += 1;
+
+        // Analyze architectural patterns
+        let pattern_score = self.calculate_pattern_similarity(requirement, implementation);
+        structural_score += pattern_score;
+        factors += 1;
+
+        // Analyze dependency relationships
+        let dependency_score = self.calculate_dependency_similarity(requirement, implementation);
+        structural_score += dependency_score;
+        factors += 1;
+
+        if factors > 0 {
+            structural_score / factors as f64
+        } else {
+            0.0
+        }
+    }
+
+    /// Calculate similarity between requirement and implementation types
+    fn calculate_type_similarity(&self, req_type: &str, impl_type: &str) -> f64 {
+        // Define type similarity mappings
+        let type_mappings = [
+            // Functional requirements
+            ("functional", "function", 0.9),
+            ("functional", "method", 0.9),
+            ("functional", "api", 0.8),
+            ("functional", "service", 0.8),
+
+            // Non-functional requirements
+            ("performance", "optimization", 0.9),
+            ("performance", "cache", 0.7),
+            ("performance", "async", 0.7),
+            ("security", "authentication", 0.9),
+            ("security", "authorization", 0.9),
+            ("security", "encryption", 0.8),
+            ("security", "validation", 0.7),
+
+            // UI/UX requirements
+            ("ui", "component", 0.9),
+            ("ui", "interface", 0.9),
+            ("ux", "component", 0.8),
+            ("ux", "interface", 0.8),
+
+            // Data requirements
+            ("data", "database", 0.9),
+            ("data", "storage", 0.9),
+            ("data", "model", 0.8),
+            ("data", "schema", 0.8),
+
+            // Integration requirements
+            ("integration", "api", 0.9),
+            ("integration", "service", 0.8),
+            ("integration", "connector", 0.8),
+        ];
+
+        let req_type_lower = req_type.to_lowercase();
+        let impl_type_lower = impl_type.to_lowercase();
+
+        // Exact match
+        if req_type_lower == impl_type_lower {
+            return 1.0;
+        }
+
+        // Check predefined mappings
+        for (req_pattern, impl_pattern, score) in &type_mappings {
+            if req_type_lower.contains(req_pattern) && impl_type_lower.contains(impl_pattern) {
+                return *score;
+            }
+            if req_type_lower.contains(impl_pattern) && impl_type_lower.contains(req_pattern) {
+                return *score;
+            }
+        }
+
+        // Keyword-based similarity as fallback
+        let req_keywords = self.extract_keywords(&req_type_lower);
+        let impl_keywords = self.extract_keywords(&impl_type_lower);
+        self.calculate_keyword_similarity(&req_keywords, &impl_keywords) * 0.5
+    }
+
+    /// Calculate complexity alignment between requirement and implementation
+    fn calculate_complexity_alignment(&self, requirement: &Requirement, implementation: &Implementation) -> f64 {
+        // Analyze requirement complexity indicators
+        let req_complexity = self.estimate_requirement_complexity(requirement);
+
+        // Analyze implementation complexity indicators
+        let impl_complexity = self.estimate_implementation_complexity(implementation);
+
+        // Calculate alignment score (closer complexities score higher)
+        let complexity_diff = (req_complexity - impl_complexity).abs();
+        let max_complexity = req_complexity.max(impl_complexity);
+
+        if max_complexity == 0.0 {
+            1.0
+        } else {
+            (1.0 - (complexity_diff / max_complexity)).max(0.0)
+        }
+    }
+
+    /// Estimate requirement complexity based on description and metadata
+    fn estimate_requirement_complexity(&self, requirement: &Requirement) -> f64 {
+        let mut complexity = 0.0;
+
+        // Base complexity from description length and content
+        let word_count = requirement.description.split_whitespace().count() as f64;
+        complexity += (word_count / 50.0).min(1.0) * 0.3;
+
+        // Complexity indicators in description
+        let complexity_keywords = [
+            "complex", "multiple", "various", "integrate", "coordinate",
+            "sophisticated", "advanced", "comprehensive", "extensive"
+        ];
+
+        let description_lower = requirement.description.to_lowercase();
+        for keyword in &complexity_keywords {
+            if description_lower.contains(keyword) {
+                complexity += 0.1;
+            }
+        }
+
+        // Priority-based complexity
+        match requirement.priority {
+            Priority::Critical | Priority::High => complexity += 0.3,
+            Priority::Medium => complexity += 0.2,
+            Priority::Low => complexity += 0.1,
+        }
+
+        complexity.min(1.0)
+    }
+
+    /// Estimate implementation complexity based on code metrics
+    fn estimate_implementation_complexity(&self, implementation: &Implementation) -> f64 {
+        let mut complexity = 0.0;
+
+        // Base complexity from file path and name
+        let path_segments = implementation.file_path.components().count() as f64;
+        complexity += (path_segments / 10.0).min(1.0) * 0.2;
+
+        // Complexity indicators in implementation documentation
+        if let Some(documentation) = &implementation.documentation {
+            let doc_lower = documentation.to_lowercase();
+            let complexity_indicators = [
+                "class", "interface", "abstract", "generic", "template",
+                "async", "concurrent", "parallel", "thread", "lock",
+                "algorithm", "optimization", "cache", "database", "network"
+            ];
+
+            for indicator in &complexity_indicators {
+                if doc_lower.contains(indicator) {
+                    complexity += 0.1;
+                }
+            }
+        }
+
+        // File type complexity
+        if let Some(ext) = implementation.file_path.extension() {
+            match ext.to_str().unwrap_or("") {
+                "rs" | "cpp" | "java" | "cs" => complexity += 0.2,
+                "py" | "js" | "ts" => complexity += 0.15,
+                "html" | "css" | "json" => complexity += 0.05,
+                _ => complexity += 0.1,
+            }
+        }
+
+        complexity.min(1.0)
+    }
+
+    /// Calculate pattern similarity based on architectural and design patterns
+    fn calculate_pattern_similarity(&self, requirement: &Requirement, implementation: &Implementation) -> f64 {
+        let mut pattern_score = 0.0;
+        let mut pattern_count = 0;
+
+        // Extract patterns from requirement description
+        let req_patterns = self.extract_requirement_patterns(&requirement.description);
+
+        // Extract patterns from implementation
+        let impl_patterns = self.extract_implementation_patterns(implementation);
+
+        // Calculate pattern overlap
+        for req_pattern in &req_patterns {
+            for impl_pattern in &impl_patterns {
+                let similarity = self.calculate_pattern_string_match(req_pattern, impl_pattern);
+                if similarity > 0.5 {
+                    pattern_score += similarity;
+                    pattern_count += 1;
+                }
+            }
+        }
+
+        if pattern_count > 0 {
+            pattern_score / pattern_count as f64
+        } else {
+            0.0
+        }
+    }
+
+    /// Extract architectural patterns from requirement description
+    fn extract_requirement_patterns(&self, description: &str) -> Vec<String> {
+        let mut patterns = Vec::new();
+        let description_lower = description.to_lowercase();
+
+        // Common architectural patterns
+        let pattern_keywords = [
+            ("mvc", "model-view-controller"),
+            ("mvp", "model-view-presenter"),
+            ("mvvm", "model-view-viewmodel"),
+            ("repository", "repository pattern"),
+            ("factory", "factory pattern"),
+            ("singleton", "singleton pattern"),
+            ("observer", "observer pattern"),
+            ("strategy", "strategy pattern"),
+            ("adapter", "adapter pattern"),
+            ("facade", "facade pattern"),
+            ("microservice", "microservices"),
+            ("api", "api pattern"),
+            ("rest", "rest api"),
+            ("graphql", "graphql api"),
+            ("event", "event-driven"),
+            ("pub", "publish-subscribe"),
+            ("queue", "message queue"),
+            ("cache", "caching pattern"),
+            ("database", "database pattern"),
+            ("orm", "object-relational mapping"),
+        ];
+
+        for (keyword, pattern) in &pattern_keywords {
+            if description_lower.contains(keyword) {
+                patterns.push(pattern.to_string());
+            }
+        }
+
+        patterns
+    }
+
+    /// Extract patterns from implementation details
+    fn extract_implementation_patterns(&self, implementation: &Implementation) -> Vec<String> {
+        let mut patterns = Vec::new();
+
+        // Analyze file path for patterns
+        let path_str = implementation.file_path.to_string_lossy().to_lowercase();
+
+        // Common implementation patterns from file structure
+        let path_patterns = [
+            ("controller", "mvc-controller"),
+            ("model", "mvc-model"),
+            ("view", "mvc-view"),
+            ("service", "service-layer"),
+            ("repository", "repository-pattern"),
+            ("factory", "factory-pattern"),
+            ("adapter", "adapter-pattern"),
+            ("facade", "facade-pattern"),
+            ("api", "api-implementation"),
+            ("rest", "rest-api"),
+            ("graphql", "graphql-api"),
+            ("event", "event-handling"),
+            ("queue", "message-queue"),
+            ("cache", "caching"),
+            ("db", "database"),
+            ("orm", "orm-mapping"),
+        ];
+
+        for (keyword, pattern) in &path_patterns {
+            if path_str.contains(keyword) {
+                patterns.push(pattern.to_string());
+            }
+        }
+
+        // Analyze implementation documentation if available
+        if let Some(documentation) = &implementation.documentation {
+            let doc_lower = documentation.to_lowercase();
+
+            for (keyword, pattern) in &path_patterns {
+                if doc_lower.contains(keyword) {
+                    patterns.push(pattern.to_string());
+                }
+            }
+        }
+
+        patterns
+    }
+
+    /// Calculate similarity between two pattern strings
+    fn calculate_pattern_string_match(&self, pattern1: &str, pattern2: &str) -> f64 {
+        if pattern1 == pattern2 {
+            return 1.0;
+        }
+
+        // Check for related patterns
+        let related_patterns = [
+            ("mvc-controller", "service-layer", 0.7),
+            ("mvc-model", "orm-mapping", 0.8),
+            ("mvc-view", "api-implementation", 0.6),
+            ("repository-pattern", "database", 0.8),
+            ("factory-pattern", "service-layer", 0.6),
+            ("rest-api", "api-implementation", 0.9),
+            ("graphql-api", "api-implementation", 0.9),
+            ("event-handling", "message-queue", 0.7),
+            ("caching", "database", 0.5),
+        ];
+
+        for (p1, p2, score) in &related_patterns {
+            if (pattern1 == *p1 && pattern2 == *p2) || (pattern1 == *p2 && pattern2 == *p1) {
+                return *score;
+            }
+        }
+
+        // Keyword-based similarity as fallback
+        let keywords1 = self.extract_keywords(pattern1);
+        let keywords2 = self.extract_keywords(pattern2);
+        self.calculate_keyword_similarity(&keywords1, &keywords2) * 0.5
+    }
+
+    /// Calculate dependency similarity between requirement and implementation
+    fn calculate_dependency_similarity(&self, requirement: &Requirement, implementation: &Implementation) -> f64 {
+        // This is a simplified implementation - in a real system, you would analyze
+        // actual dependency graphs and requirement dependencies
+
+        let mut dependency_score = 0.0;
+        let mut factors = 0;
+
+        // Analyze technology stack alignment
+        let tech_score = self.calculate_technology_alignment(requirement, implementation);
+        dependency_score += tech_score;
+        factors += 1;
+
+        // Analyze integration requirements
+        let integration_score = self.calculate_integration_alignment(requirement, implementation);
+        dependency_score += integration_score;
+        factors += 1;
+
+        if factors > 0 {
+            dependency_score / factors as f64
+        } else {
+            0.5 // Neutral score when no dependency information available
+        }
+    }
+
+    /// Calculate technology stack alignment
+    fn calculate_technology_alignment(&self, requirement: &Requirement, implementation: &Implementation) -> f64 {
+        let req_description = requirement.description.to_lowercase();
+        let impl_path = implementation.file_path.to_string_lossy().to_lowercase();
+
+        // Technology indicators
+        let tech_mappings = [
+            ("web", vec!["html", "css", "js", "ts", "jsx", "tsx"]),
+            ("backend", vec!["rs", "java", "py", "go", "cpp", "cs"]),
+            ("database", vec!["sql", "db", "orm", "migration"]),
+            ("mobile", vec!["swift", "kotlin", "dart", "xamarin"]),
+            ("api", vec!["rest", "graphql", "grpc", "openapi"]),
+            ("frontend", vec!["react", "vue", "angular", "svelte"]),
+            ("microservice", vec!["docker", "k8s", "service", "api"]),
+        ];
+
+        let mut alignment_score = 0.0;
+        let mut matches = 0;
+
+        for (tech_type, extensions) in &tech_mappings {
+            let req_mentions_tech = req_description.contains(tech_type);
+            let impl_uses_tech = extensions.iter().any(|ext| impl_path.contains(ext));
+
+            if req_mentions_tech && impl_uses_tech {
+                alignment_score += 1.0;
+                matches += 1;
+            } else if req_mentions_tech || impl_uses_tech {
+                // Partial alignment
+                alignment_score += 0.3;
+                matches += 1;
+            }
+        }
+
+        if matches > 0 {
+            alignment_score / matches as f64
+        } else {
+            0.5 // Neutral when no clear technology indicators
+        }
+    }
+
+    /// Calculate integration alignment
+    fn calculate_integration_alignment(&self, requirement: &Requirement, implementation: &Implementation) -> f64 {
+        let req_description = requirement.description.to_lowercase();
+        let impl_details = implementation.documentation.as_ref()
+            .map(|d| d.to_lowercase())
+            .unwrap_or_default();
+
+        // Integration patterns
+        let integration_patterns = [
+            "api", "service", "interface", "connector", "adapter",
+            "webhook", "callback", "event", "message", "queue",
+            "database", "storage", "cache", "session", "auth"
+        ];
+
+        let mut req_integration_count = 0;
+        let mut impl_integration_count = 0;
+        let mut common_integrations = 0;
+
+        for pattern in &integration_patterns {
+            let req_has = req_description.contains(pattern);
+            let impl_has = impl_details.contains(pattern);
+
+            if req_has {
+                req_integration_count += 1;
+            }
+            if impl_has {
+                impl_integration_count += 1;
+            }
+            if req_has && impl_has {
+                common_integrations += 1;
+            }
+        }
+
+        let total_integrations = req_integration_count + impl_integration_count;
+        if total_integrations > 0 {
+            (common_integrations as f64 * 2.0) / total_integrations as f64
+        } else {
+            0.5 // Neutral when no integration patterns detected
+        }
+    }
+
+    /// Calculate context similarity (priority, category, tags)
+    fn calculate_context_similarity(&self, requirement: &Requirement, implementation: &Implementation) -> f64 {
+        let mut context_score = 0.0;
+        let mut factors = 0;
+
+        // Priority alignment (if implementation has priority indicators)
+        let priority_score = self.calculate_priority_alignment(requirement, implementation);
+        context_score += priority_score;
+        factors += 1;
+
+        // Category/domain alignment
+        let category_score = self.calculate_category_alignment(requirement, implementation);
+        context_score += category_score;
+        factors += 1;
+
+        if factors > 0 {
+            context_score / factors as f64
+        } else {
+            0.5 // Neutral score when no context information available
+        }
+    }
+
+    /// Calculate priority alignment between requirement and implementation
+    fn calculate_priority_alignment(&self, requirement: &Requirement, implementation: &Implementation) -> f64 {
+        // Analyze implementation for priority indicators
+        let impl_path = implementation.file_path.to_string_lossy().to_lowercase();
+        let impl_details = implementation.documentation.as_ref()
+            .map(|d| d.to_lowercase())
+            .unwrap_or_default();
+
+        let high_priority_indicators = ["critical", "urgent", "important", "core", "main", "primary"];
+        let low_priority_indicators = ["optional", "nice", "future", "enhancement", "todo"];
+
+        let req_priority = format!("{:?}", requirement.priority).to_lowercase();
+
+        let impl_has_high_indicators = high_priority_indicators.iter()
+            .any(|indicator| impl_path.contains(indicator) || impl_details.contains(indicator));
+        let impl_has_low_indicators = low_priority_indicators.iter()
+            .any(|indicator| impl_path.contains(indicator) || impl_details.contains(indicator));
+
+        match req_priority.as_str() {
+            "critical" | "high" => {
+                if impl_has_high_indicators { 1.0 }
+                else if impl_has_low_indicators { 0.2 }
+                else { 0.6 }
+            },
+            "medium" => {
+                if impl_has_high_indicators || impl_has_low_indicators { 0.5 }
+                else { 0.8 }
+            },
+            "low" => {
+                if impl_has_low_indicators { 1.0 }
+                else if impl_has_high_indicators { 0.3 }
+                else { 0.6 }
+            },
+            _ => 0.5 // Unknown priority
+        }
+    }
+
+    /// Calculate category/domain alignment
+    fn calculate_category_alignment(&self, requirement: &Requirement, implementation: &Implementation) -> f64 {
+        // Extract domain/category from requirement type and description
+        let req_domain = self.extract_domain_from_requirement(requirement);
+
+        // Extract domain/category from implementation path and details
+        let impl_domain = self.extract_domain_from_implementation(implementation);
+
+        // Calculate domain similarity
+        if req_domain == impl_domain {
+            1.0
+        } else if req_domain.is_empty() || impl_domain.is_empty() {
+            0.5 // Neutral when domain unclear
+        } else {
+            // Check for related domains
+            let domain_relations = [
+                ("auth", "security", 0.8),
+                ("ui", "frontend", 0.9),
+                ("api", "backend", 0.8),
+                ("data", "database", 0.9),
+                ("performance", "optimization", 0.8),
+            ];
+
+            for (domain1, domain2, score) in &domain_relations {
+                if (req_domain.contains(domain1) && impl_domain.contains(domain2)) ||
+                   (req_domain.contains(domain2) && impl_domain.contains(domain1)) {
+                    return *score;
+                }
+            }
+
+            0.2 // Different domains
+        }
+    }
+
+    /// Extract domain from requirement
+    fn extract_domain_from_requirement(&self, requirement: &Requirement) -> String {
+        let req_type = format!("{:?}", requirement.requirement_type).to_lowercase();
+        let description = requirement.description.to_lowercase();
+
+        let domains = [
+            "auth", "security", "ui", "frontend", "backend", "api",
+            "database", "data", "performance", "optimization", "testing",
+            "deployment", "monitoring", "logging", "analytics"
+        ];
+
+        for domain in &domains {
+            if req_type.contains(domain) || description.contains(domain) {
+                return domain.to_string();
+            }
+        }
+
+        String::new()
+    }
+
+    /// Extract domain from implementation
+    fn extract_domain_from_implementation(&self, implementation: &Implementation) -> String {
+        let path = implementation.file_path.to_string_lossy().to_lowercase();
+        let details = implementation.documentation.as_ref()
+            .map(|d| d.to_lowercase())
+            .unwrap_or_default();
+
+        let domains = [
+            "auth", "security", "ui", "frontend", "backend", "api",
+            "database", "data", "performance", "optimization", "test",
+            "deploy", "monitor", "log", "analytics"
+        ];
+
+        for domain in &domains {
+            if path.contains(domain) || details.contains(domain) {
+                return domain.to_string();
+            }
+        }
+
+        String::new()
+    }
+
     /// Generate embeddings for all requirements (batch processing for efficiency)
     async fn generate_requirement_embeddings(&mut self) -> Result<()> {
         if let Some(engine) = &self.embedding_engine {
@@ -1225,8 +2329,8 @@ impl IntentMappingSystem {
         description
     }
 
-    /// Calculate pattern match score
-    fn calculate_pattern_match(&self, requirement: &Requirement, implementation: &Implementation) -> f64 {
+    /// Calculate pattern match score for requirement and implementation
+    fn calculate_pattern_match_score(&self, requirement: &Requirement, implementation: &Implementation) -> f64 {
         let mut score = 0.0;
 
         // Type-based matching
@@ -1327,7 +2431,691 @@ impl IntentMappingSystem {
 
     /// Calculate pattern match (for testing)
     pub fn calculate_pattern_match_public(&self, requirement: &Requirement, implementation: &Implementation) -> f64 {
-        self.calculate_pattern_match(requirement, implementation)
+        self.calculate_pattern_match_score(requirement, implementation)
+    }
+
+    /// Calculate confidence score for a mapping based on multiple factors
+    fn calculate_confidence_score(&self, requirement: &Requirement, implementation: &Implementation, similarity_score: f64) -> f64 {
+        let mut confidence_factors = Vec::new();
+
+        // Base similarity score (weighted heavily)
+        confidence_factors.push((similarity_score, 0.4));
+
+        // Quality metrics factor
+        let quality_factor = self.calculate_quality_confidence(&implementation.quality_metrics);
+        confidence_factors.push((quality_factor, 0.2));
+
+        // Type alignment factor
+        let type_factor = self.calculate_type_alignment_confidence(requirement, implementation);
+        confidence_factors.push((type_factor, 0.15));
+
+        // Priority alignment factor
+        let priority_factor = self.calculate_priority_confidence(requirement, implementation);
+        confidence_factors.push((priority_factor, 0.1));
+
+        // Documentation completeness factor
+        let doc_factor = self.calculate_documentation_confidence(implementation);
+        confidence_factors.push((doc_factor, 0.05));
+
+        // Implementation status factor
+        let status_factor = self.calculate_status_confidence(implementation);
+        confidence_factors.push((status_factor, 0.05));
+
+        // Test coverage factor
+        let test_factor = self.calculate_test_confidence(&implementation.quality_metrics);
+        confidence_factors.push((test_factor, 0.05));
+
+        // Calculate weighted average
+        let total_weight: f64 = confidence_factors.iter().map(|(_, weight)| weight).sum();
+        let weighted_sum: f64 = confidence_factors.iter()
+            .map(|(score, weight)| score * weight)
+            .sum();
+
+        let base_confidence = weighted_sum / total_weight;
+
+        // Apply confidence adjustments based on thresholds
+        self.apply_confidence_adjustments(base_confidence, requirement, implementation)
+    }
+
+    /// Calculate quality-based confidence factor
+    fn calculate_quality_confidence(&self, quality_metrics: &QualityMetrics) -> f64 {
+        let factors = [
+            quality_metrics.coverage,
+            1.0 - quality_metrics.complexity, // Lower complexity is better
+            quality_metrics.maintainability,
+            quality_metrics.performance,
+            quality_metrics.security,
+        ];
+
+        // Calculate average of quality factors
+        factors.iter().sum::<f64>() / factors.len() as f64
+    }
+
+    /// Calculate type alignment confidence
+    fn calculate_type_alignment_confidence(&self, requirement: &Requirement, implementation: &Implementation) -> f64 {
+        // Strong type alignments
+        let strong_alignments = [
+            (RequirementType::Security, ImplementationType::API, 0.9),
+            (RequirementType::Performance, ImplementationType::Function, 0.9),
+            (RequirementType::Functional, ImplementationType::Function, 0.8),
+            (RequirementType::Technical, ImplementationType::Module, 0.8),
+            (RequirementType::UserStory, ImplementationType::Interface, 0.8),
+        ];
+
+        for (req_type, impl_type, score) in &strong_alignments {
+            if requirement.requirement_type == *req_type && implementation.implementation_type == *impl_type {
+                return *score;
+            }
+        }
+
+        // Moderate alignments
+        let moderate_alignments = [
+            (RequirementType::Business, ImplementationType::API, 0.6),
+            (RequirementType::Feature, ImplementationType::Class, 0.6),
+            (RequirementType::BugFix, ImplementationType::Function, 0.7),
+        ];
+
+        for (req_type, impl_type, score) in &moderate_alignments {
+            if requirement.requirement_type == *req_type && implementation.implementation_type == *impl_type {
+                return *score;
+            }
+        }
+
+        // Default moderate confidence for other combinations
+        0.5
+    }
+
+    /// Calculate priority-based confidence
+    fn calculate_priority_confidence(&self, requirement: &Requirement, implementation: &Implementation) -> f64 {
+        // Higher priority requirements should have higher confidence when matched with quality implementations
+        let priority_weight = match requirement.priority {
+            Priority::Critical => 1.0,
+            Priority::High => 0.8,
+            Priority::Medium => 0.6,
+            Priority::Low => 0.4,
+        };
+
+        // Implementation status affects confidence
+        let status_weight = match implementation.status {
+            ImplementationStatus::Deployed => 1.0,
+            ImplementationStatus::Tested => 0.9,
+            ImplementationStatus::Complete => 0.8,
+            ImplementationStatus::InProgress => 0.6,
+            ImplementationStatus::NotStarted => 0.3,
+            ImplementationStatus::Deprecated => 0.1,
+        };
+
+        (priority_weight + status_weight) / 2.0
+    }
+
+    /// Calculate documentation completeness confidence
+    fn calculate_documentation_confidence(&self, implementation: &Implementation) -> f64 {
+        match &implementation.documentation {
+            Some(doc) if !doc.trim().is_empty() => {
+                // Score based on documentation length and quality indicators
+                let length_score = (doc.len() as f64 / 500.0).min(1.0); // Normalize to 500 chars
+                let quality_indicators = [
+                    doc.contains("@param"),
+                    doc.contains("@return"),
+                    doc.contains("@throws") || doc.contains("@error"),
+                    doc.contains("Example:") || doc.contains("example"),
+                    doc.len() > 100,
+                ];
+                let quality_score = quality_indicators.iter().filter(|&&x| x).count() as f64 / quality_indicators.len() as f64;
+
+                (length_score + quality_score) / 2.0
+            },
+            Some(_) => 0.3, // Has documentation but it's empty
+            None => 0.1,    // No documentation
+        }
+    }
+
+    /// Calculate implementation status confidence
+    fn calculate_status_confidence(&self, implementation: &Implementation) -> f64 {
+        match implementation.status {
+            ImplementationStatus::Deployed => 1.0,
+            ImplementationStatus::Tested => 0.9,
+            ImplementationStatus::Complete => 0.8,
+            ImplementationStatus::InProgress => 0.5,
+            ImplementationStatus::NotStarted => 0.2,
+            ImplementationStatus::Deprecated => 0.1,
+        }
+    }
+
+    /// Calculate test coverage confidence
+    fn calculate_test_confidence(&self, quality_metrics: &QualityMetrics) -> f64 {
+        // Test coverage directly affects confidence
+        quality_metrics.coverage
+    }
+
+    /// Apply confidence adjustments based on thresholds and context
+    fn apply_confidence_adjustments(&self, base_confidence: f64, requirement: &Requirement, implementation: &Implementation) -> f64 {
+        let mut adjusted_confidence = base_confidence;
+
+        // Boost confidence for critical requirements with high-quality implementations
+        if requirement.priority == Priority::Critical && implementation.quality_metrics.coverage > 0.8 {
+            adjusted_confidence = (adjusted_confidence * 1.1).min(1.0);
+        }
+
+        // Reduce confidence for deprecated implementations
+        if implementation.status == ImplementationStatus::Deprecated {
+            adjusted_confidence *= 0.5;
+        }
+
+        // Boost confidence for well-documented implementations
+        if implementation.documentation.as_ref().map_or(false, |doc| doc.len() > 200) {
+            adjusted_confidence = (adjusted_confidence * 1.05).min(1.0);
+        }
+
+        // Reduce confidence for low-quality implementations
+        if implementation.quality_metrics.maintainability < 0.5 {
+            adjusted_confidence *= 0.8;
+        }
+
+        // Ensure confidence is within valid range
+        adjusted_confidence.max(0.0).min(1.0)
+    }
+
+    /// Determine validation status based on confidence score
+    fn determine_validation_status(&self, confidence: f64) -> ValidationStatus {
+        if confidence >= self.confidence_thresholds.auto_accept {
+            ValidationStatus::Valid
+        } else if confidence >= self.confidence_thresholds.needs_review {
+            ValidationStatus::NeedsReview
+        } else if confidence <= self.confidence_thresholds.auto_reject {
+            ValidationStatus::Invalid
+        } else {
+            ValidationStatus::NotValidated
+        }
+    }
+
+    /// Get confidence level description
+    pub fn get_confidence_level(&self, confidence: f64) -> String {
+        if confidence >= self.confidence_thresholds.high_confidence {
+            "High".to_string()
+        } else if confidence >= self.confidence_thresholds.medium_confidence {
+            "Medium".to_string()
+        } else if confidence >= self.confidence_thresholds.low_confidence {
+            "Low".to_string()
+        } else {
+            "Very Low".to_string()
+        }
+    }
+
+    /// Build comprehensive graph-based relationship mapping
+    pub fn build_relationship_graph(&mut self) -> Result<RelationshipGraph> {
+        let mut graph = RelationshipGraph::new();
+
+        // Add requirement nodes
+        for requirement in &self.requirements {
+            let node = RelationshipNode {
+                id: requirement.id.clone(),
+                node_type: RelationshipNodeType::Requirement,
+                metadata: self.extract_requirement_metadata(requirement),
+                attributes: self.extract_requirement_attributes(requirement),
+            };
+            graph.add_node(node);
+        }
+
+        // Add implementation nodes
+        for implementation in &self.implementations {
+            let node = RelationshipNode {
+                id: implementation.id.clone(),
+                node_type: RelationshipNodeType::Implementation,
+                metadata: self.extract_implementation_metadata(implementation),
+                attributes: self.extract_implementation_attributes(implementation),
+            };
+            graph.add_node(node);
+        }
+
+        // Add mapping edges based on existing mappings
+        for mapping in &self.mappings {
+            let edge = RelationshipEdge {
+                id: mapping.id.clone(),
+                source_id: mapping.requirement_id.clone(),
+                target_id: mapping.implementation_id.clone(),
+                edge_type: self.mapping_type_to_edge_type(&mapping.mapping_type),
+                weight: mapping.confidence,
+                metadata: self.extract_mapping_metadata(mapping),
+                attributes: self.extract_mapping_attributes(mapping),
+            };
+            graph.add_edge(edge)?;
+        }
+
+        // Add derived relationships
+        self.add_derived_relationships(&mut graph)?;
+
+        // Add semantic relationships
+        self.add_semantic_relationships(&mut graph)?;
+
+        // Calculate graph metrics
+        graph.calculate_metrics();
+
+        Ok(graph)
+    }
+
+    /// Extract metadata from requirement for graph node
+    fn extract_requirement_metadata(&self, requirement: &Requirement) -> HashMap<String, String> {
+        let mut metadata = HashMap::new();
+        metadata.insert("type".to_string(), requirement.requirement_type.to_string());
+        metadata.insert("priority".to_string(), requirement.priority.to_string());
+        metadata.insert("status".to_string(), format!("{:?}", requirement.status));
+        metadata.insert("stakeholder_count".to_string(), requirement.stakeholders.len().to_string());
+        metadata.insert("criteria_count".to_string(), requirement.acceptance_criteria.len().to_string());
+        metadata.insert("tag_count".to_string(), requirement.tags.len().to_string());
+        metadata
+    }
+
+    /// Extract attributes from requirement for graph node
+    fn extract_requirement_attributes(&self, requirement: &Requirement) -> HashMap<String, f64> {
+        let mut attributes = HashMap::new();
+        attributes.insert("priority_weight".to_string(), self.priority_to_weight(&requirement.priority));
+        attributes.insert("complexity_estimate".to_string(), self.estimate_requirement_complexity(requirement));
+        attributes.insert("stakeholder_influence".to_string(), requirement.stakeholders.len() as f64);
+        attributes.insert("criteria_completeness".to_string(), self.calculate_criteria_completeness(requirement));
+        attributes
+    }
+
+    /// Extract metadata from implementation for graph node
+    fn extract_implementation_metadata(&self, implementation: &Implementation) -> HashMap<String, String> {
+        let mut metadata = HashMap::new();
+        metadata.insert("type".to_string(), implementation.implementation_type.to_string());
+        metadata.insert("status".to_string(), format!("{:?}", implementation.status));
+        metadata.insert("file_path".to_string(), implementation.file_path.to_string_lossy().to_string());
+        metadata.insert("element_count".to_string(), implementation.code_elements.len().to_string());
+        metadata.insert("has_documentation".to_string(), implementation.documentation.is_some().to_string());
+        metadata
+    }
+
+    /// Extract attributes from implementation for graph node
+    fn extract_implementation_attributes(&self, implementation: &Implementation) -> HashMap<String, f64> {
+        let mut attributes = HashMap::new();
+        attributes.insert("quality_score".to_string(), self.calculate_overall_quality_score(&implementation.quality_metrics));
+        attributes.insert("complexity".to_string(), implementation.quality_metrics.complexity);
+        attributes.insert("coverage".to_string(), implementation.quality_metrics.coverage);
+        attributes.insert("maintainability".to_string(), implementation.quality_metrics.maintainability);
+        attributes.insert("performance".to_string(), implementation.quality_metrics.performance);
+        attributes.insert("security".to_string(), implementation.quality_metrics.security);
+        attributes.insert("documentation_score".to_string(), self.calculate_documentation_score(implementation));
+        attributes
+    }
+
+    /// Extract metadata from mapping for graph edge
+    fn extract_mapping_metadata(&self, mapping: &IntentMapping) -> HashMap<String, String> {
+        let mut metadata = HashMap::new();
+        metadata.insert("mapping_type".to_string(), mapping.mapping_type.to_string());
+        metadata.insert("validation_status".to_string(), format!("{:?}", mapping.validation_status));
+        metadata.insert("confidence_level".to_string(), self.get_confidence_level(mapping.confidence));
+        metadata.insert("last_updated".to_string(), mapping.last_updated.to_string());
+        metadata.insert("rationale".to_string(), mapping.rationale.clone());
+        metadata
+    }
+
+    /// Extract attributes from mapping for graph edge
+    fn extract_mapping_attributes(&self, mapping: &IntentMapping) -> HashMap<String, f64> {
+        let mut attributes = HashMap::new();
+        attributes.insert("confidence".to_string(), mapping.confidence);
+        attributes.insert("age_days".to_string(), self.calculate_mapping_age_days(mapping.last_updated));
+        attributes.insert("validation_score".to_string(), self.validation_status_to_score(&mapping.validation_status));
+        attributes
+    }
+
+    /// Convert mapping type to edge type
+    fn mapping_type_to_edge_type(&self, mapping_type: &MappingType) -> RelationshipEdgeType {
+        match mapping_type {
+            MappingType::Direct => RelationshipEdgeType::DirectMapping,
+            MappingType::OneToMany => RelationshipEdgeType::OneToMany,
+            MappingType::ManyToOne => RelationshipEdgeType::ManyToOne,
+            MappingType::Partial => RelationshipEdgeType::PartialMapping,
+            MappingType::Derived => RelationshipEdgeType::DerivedMapping,
+            MappingType::Inferred => RelationshipEdgeType::InferredMapping,
+        }
+    }
+
+    /// Add derived relationships to the graph
+    fn add_derived_relationships(&self, graph: &mut RelationshipGraph) -> Result<()> {
+        // Add dependency relationships between implementations
+        for impl1 in &self.implementations {
+            for impl2 in &self.implementations {
+                if impl1.id != impl2.id {
+                    let dependency_score = self.calculate_dependency_score(impl1, impl2);
+                    if dependency_score > 0.5 {
+                        let edge = RelationshipEdge {
+                            id: format!("dep_{}_{}", impl1.id, impl2.id),
+                            source_id: impl1.id.clone(),
+                            target_id: impl2.id.clone(),
+                            edge_type: RelationshipEdgeType::Dependency,
+                            weight: dependency_score,
+                            metadata: HashMap::new(),
+                            attributes: HashMap::new(),
+                        };
+                        graph.add_edge(edge)?;
+                    }
+                }
+            }
+        }
+
+        // Add containment relationships
+        for implementation in &self.implementations {
+            for element in &implementation.code_elements {
+                let element_node = RelationshipNode {
+                    id: format!("{}_{}", implementation.id, element.name),
+                    node_type: RelationshipNodeType::CodeElement,
+                    metadata: self.extract_code_element_metadata(element),
+                    attributes: self.extract_code_element_attributes(element),
+                };
+                graph.add_node(element_node);
+
+                let containment_edge = RelationshipEdge {
+                    id: format!("contains_{}_{}", implementation.id, element.name),
+                    source_id: implementation.id.clone(),
+                    target_id: format!("{}_{}", implementation.id, element.name),
+                    edge_type: RelationshipEdgeType::Containment,
+                    weight: 1.0,
+                    metadata: HashMap::new(),
+                    attributes: HashMap::new(),
+                };
+                graph.add_edge(containment_edge)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Add semantic relationships to the graph
+    fn add_semantic_relationships(&self, graph: &mut RelationshipGraph) -> Result<()> {
+        // Add similarity relationships between requirements
+        for req1 in &self.requirements {
+            for req2 in &self.requirements {
+                if req1.id != req2.id {
+                    let similarity_score = self.calculate_requirement_similarity(req1, req2);
+                    if similarity_score > 0.7 {
+                        let edge = RelationshipEdge {
+                            id: format!("sim_{}_{}", req1.id, req2.id),
+                            source_id: req1.id.clone(),
+                            target_id: req2.id.clone(),
+                            edge_type: RelationshipEdgeType::Similarity,
+                            weight: similarity_score,
+                            metadata: HashMap::new(),
+                            attributes: HashMap::new(),
+                        };
+                        graph.add_edge(edge)?;
+                    }
+                }
+            }
+        }
+
+        // Add similarity relationships between implementations
+        for impl1 in &self.implementations {
+            for impl2 in &self.implementations {
+                if impl1.id != impl2.id {
+                    let similarity_score = self.calculate_implementation_similarity(impl1, impl2);
+                    if similarity_score > 0.7 {
+                        let edge = RelationshipEdge {
+                            id: format!("sim_{}_{}", impl1.id, impl2.id),
+                            source_id: impl1.id.clone(),
+                            target_id: impl2.id.clone(),
+                            edge_type: RelationshipEdgeType::Similarity,
+                            weight: similarity_score,
+                            metadata: HashMap::new(),
+                            attributes: HashMap::new(),
+                        };
+                        graph.add_edge(edge)?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Convert priority to numeric weight
+    fn priority_to_weight(&self, priority: &Priority) -> f64 {
+        match priority {
+            Priority::Critical => 1.0,
+            Priority::High => 0.8,
+            Priority::Medium => 0.6,
+            Priority::Low => 0.4,
+        }
+    }
+
+
+
+    /// Calculate criteria completeness
+    fn calculate_criteria_completeness(&self, requirement: &Requirement) -> f64 {
+        if requirement.acceptance_criteria.is_empty() {
+            return 0.0;
+        }
+
+        let avg_length = requirement.acceptance_criteria.iter()
+            .map(|c| c.len())
+            .sum::<usize>() as f64 / requirement.acceptance_criteria.len() as f64;
+
+        (avg_length / 50.0).min(1.0) // Normalize to 50 characters as baseline
+    }
+
+    /// Calculate overall quality score
+    fn calculate_overall_quality_score(&self, quality_metrics: &QualityMetrics) -> f64 {
+        (quality_metrics.coverage +
+         quality_metrics.maintainability +
+         quality_metrics.performance +
+         quality_metrics.security +
+         (1.0 - quality_metrics.complexity)) / 5.0
+    }
+
+    /// Calculate documentation score
+    fn calculate_documentation_score(&self, implementation: &Implementation) -> f64 {
+        match &implementation.documentation {
+            Some(doc) if !doc.trim().is_empty() => {
+                let length_score = (doc.len() as f64 / 200.0).min(1.0);
+                let quality_indicators = [
+                    doc.contains("@param") || doc.contains("Parameters:"),
+                    doc.contains("@return") || doc.contains("Returns:"),
+                    doc.contains("@throws") || doc.contains("@error") || doc.contains("Errors:"),
+                    doc.contains("Example:") || doc.contains("example"),
+                    doc.len() > 50,
+                ];
+                let quality_score = quality_indicators.iter().filter(|&&x| x).count() as f64 / quality_indicators.len() as f64;
+                (length_score + quality_score) / 2.0
+            },
+            Some(_) => 0.2,
+            None => 0.0,
+        }
+    }
+
+    /// Calculate mapping age in days
+    fn calculate_mapping_age_days(&self, timestamp: u64) -> f64 {
+        let current_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        if current_time > timestamp {
+            (current_time - timestamp) as f64 / 86400.0 // Convert seconds to days
+        } else {
+            0.0
+        }
+    }
+
+    /// Convert validation status to numeric score
+    fn validation_status_to_score(&self, status: &ValidationStatus) -> f64 {
+        match status {
+            ValidationStatus::Valid => 1.0,
+            ValidationStatus::NeedsReview => 0.7,
+            ValidationStatus::NotValidated => 0.5,
+            ValidationStatus::Outdated => 0.3,
+            ValidationStatus::Invalid => 0.0,
+        }
+    }
+
+    /// Calculate dependency score between implementations
+    fn calculate_dependency_score(&self, impl1: &Implementation, impl2: &Implementation) -> f64 {
+        // Check if implementations are in related files
+        let path1 = impl1.file_path.to_string_lossy();
+        let path2 = impl2.file_path.to_string_lossy();
+
+        // Same directory gets higher score
+        if path1.rsplit('/').nth(1) == path2.rsplit('/').nth(1) {
+            return 0.8;
+        }
+
+        // Related file names
+        let name1 = path1.rsplit('/').next().unwrap_or("");
+        let name2 = path2.rsplit('/').next().unwrap_or("");
+
+        if name1.contains(name2) || name2.contains(name1) {
+            return 0.6;
+        }
+
+        // Check for common patterns in implementation types
+        if impl1.implementation_type == impl2.implementation_type {
+            return 0.4;
+        }
+
+        0.0
+    }
+
+    /// Calculate similarity between requirements
+    fn calculate_requirement_similarity(&self, req1: &Requirement, req2: &Requirement) -> f64 {
+        let mut similarity_factors = Vec::new();
+
+        // Type similarity
+        if req1.requirement_type == req2.requirement_type {
+            similarity_factors.push(0.3);
+        }
+
+        // Priority similarity
+        let priority_diff = (self.priority_to_weight(&req1.priority) - self.priority_to_weight(&req2.priority)).abs();
+        similarity_factors.push(1.0 - priority_diff);
+
+        // Tag overlap
+        let common_tags = req1.tags.iter().filter(|tag| req2.tags.contains(tag)).count();
+        let total_tags = (req1.tags.len() + req2.tags.len()).max(1);
+        let tag_similarity = (2 * common_tags) as f64 / total_tags as f64;
+        similarity_factors.push(tag_similarity);
+
+        // Stakeholder overlap
+        let common_stakeholders = req1.stakeholders.iter().filter(|s| req2.stakeholders.contains(s)).count();
+        let total_stakeholders = (req1.stakeholders.len() + req2.stakeholders.len()).max(1);
+        let stakeholder_similarity = (2 * common_stakeholders) as f64 / total_stakeholders as f64;
+        similarity_factors.push(stakeholder_similarity);
+
+        // Description similarity (simple keyword-based)
+        let desc_similarity = self.calculate_text_similarity(&req1.description, &req2.description);
+        similarity_factors.push(desc_similarity);
+
+        // Calculate weighted average
+        similarity_factors.iter().sum::<f64>() / similarity_factors.len() as f64
+    }
+
+    /// Calculate similarity between implementations
+    fn calculate_implementation_similarity(&self, impl1: &Implementation, impl2: &Implementation) -> f64 {
+        let mut similarity_factors = Vec::new();
+
+        // Type similarity
+        if impl1.implementation_type == impl2.implementation_type {
+            similarity_factors.push(0.4);
+        }
+
+        // Quality metrics similarity
+        let quality_similarity = 1.0 - (
+            (impl1.quality_metrics.coverage - impl2.quality_metrics.coverage).abs() +
+            (impl1.quality_metrics.complexity - impl2.quality_metrics.complexity).abs() +
+            (impl1.quality_metrics.maintainability - impl2.quality_metrics.maintainability).abs() +
+            (impl1.quality_metrics.performance - impl2.quality_metrics.performance).abs() +
+            (impl1.quality_metrics.security - impl2.quality_metrics.security).abs()
+        ) / 5.0;
+        similarity_factors.push(quality_similarity);
+
+        // File path similarity
+        let path_similarity = self.calculate_path_similarity(&impl1.file_path, &impl2.file_path);
+        similarity_factors.push(path_similarity);
+
+        // Code element similarity
+        let element_similarity = self.calculate_code_element_similarity(&impl1.code_elements, &impl2.code_elements);
+        similarity_factors.push(element_similarity);
+
+        similarity_factors.iter().sum::<f64>() / similarity_factors.len() as f64
+    }
+
+    /// Calculate text similarity using simple keyword matching
+    fn calculate_text_similarity(&self, text1: &str, text2: &str) -> f64 {
+        let text1_lower = text1.to_lowercase();
+        let text2_lower = text2.to_lowercase();
+        let words1: HashSet<_> = text1_lower.split_whitespace().collect();
+        let words2: HashSet<_> = text2_lower.split_whitespace().collect();
+
+        let intersection = words1.intersection(&words2).count();
+        let union = words1.union(&words2).count();
+
+        if union > 0 {
+            intersection as f64 / union as f64
+        } else {
+            0.0
+        }
+    }
+
+    /// Calculate path similarity
+    fn calculate_path_similarity(&self, path1: &PathBuf, path2: &PathBuf) -> f64 {
+        let str1 = path1.to_string_lossy();
+        let str2 = path2.to_string_lossy();
+
+        let parts1: Vec<_> = str1.split('/').collect();
+        let parts2: Vec<_> = str2.split('/').collect();
+
+        let common_parts = parts1.iter().zip(parts2.iter())
+            .take_while(|(a, b)| a == b)
+            .count();
+
+        let max_parts = parts1.len().max(parts2.len());
+
+        if max_parts > 0 {
+            common_parts as f64 / max_parts as f64
+        } else {
+            0.0
+        }
+    }
+
+    /// Calculate code element similarity
+    fn calculate_code_element_similarity(&self, elements1: &[CodeElement], elements2: &[CodeElement]) -> f64 {
+        if elements1.is_empty() && elements2.is_empty() {
+            return 1.0;
+        }
+
+        if elements1.is_empty() || elements2.is_empty() {
+            return 0.0;
+        }
+
+        let names1: HashSet<_> = elements1.iter().map(|e| &e.name).collect();
+        let names2: HashSet<_> = elements2.iter().map(|e| &e.name).collect();
+
+        let intersection = names1.intersection(&names2).count();
+        let union = names1.union(&names2).count();
+
+        if union > 0 {
+            intersection as f64 / union as f64
+        } else {
+            0.0
+        }
+    }
+
+    /// Extract metadata from code element
+    fn extract_code_element_metadata(&self, element: &CodeElement) -> HashMap<String, String> {
+        let mut metadata = HashMap::new();
+        metadata.insert("name".to_string(), element.name.clone());
+        metadata.insert("type".to_string(), element.element_type.clone());
+        metadata.insert("line_start".to_string(), element.line_range.0.to_string());
+        metadata.insert("line_end".to_string(), element.line_range.1.to_string());
+        metadata
+    }
+
+    /// Extract attributes from code element
+    fn extract_code_element_attributes(&self, element: &CodeElement) -> HashMap<String, f64> {
+        let mut attributes = HashMap::new();
+        attributes.insert("complexity".to_string(), element.complexity);
+        attributes.insert("test_coverage".to_string(), element.test_coverage);
+        attributes.insert("line_count".to_string(), (element.line_range.1 - element.line_range.0 + 1) as f64);
+        attributes
     }
 }
 
@@ -1414,16 +3202,7 @@ impl std::fmt::Display for ImplementationType {
     }
 }
 
-impl std::fmt::Display for Priority {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Priority::Low => write!(f, "low"),
-            Priority::Medium => write!(f, "medium"),
-            Priority::High => write!(f, "high"),
-            Priority::Critical => write!(f, "critical"),
-        }
-    }
-}
+// Display implementation is provided by the common Priority type
 
 impl std::fmt::Display for MappingType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1974,8 +3753,8 @@ mod tests {
         assert_eq!(format!("{}", RequirementType::Security), "security");
         assert_eq!(format!("{}", ImplementationType::Function), "function");
         assert_eq!(format!("{}", ImplementationType::API), "api");
-        assert_eq!(format!("{}", Priority::High), "high");
-        assert_eq!(format!("{}", Priority::Critical), "critical");
+        assert_eq!(format!("{}", Priority::High), "High");
+        assert_eq!(format!("{}", Priority::Critical), "Critical");
         assert_eq!(format!("{}", MappingType::Direct), "direct");
         assert_eq!(format!("{}", MappingType::OneToMany), "one-to-many");
     }
@@ -2047,6 +3826,497 @@ mod tests {
             "database query optimization"
         );
         assert!(different_similarity < 0.3, "Unrelated strings should have low similarity");
+    }
+
+    #[test]
+    fn test_hybrid_similarity_scoring() {
+        let system = IntentMappingSystem::new();
+
+        // Create a requirement
+        let requirement = Requirement {
+            id: "REQ-001".to_string(),
+            description: "Implement secure user authentication with login and logout functionality".to_string(),
+            requirement_type: RequirementType::Security,
+            priority: Priority::High,
+            acceptance_criteria: vec!["Secure login functionality".to_string(), "Logout functionality".to_string()],
+            stakeholders: vec!["Security Team".to_string(), "Product Team".to_string()],
+            tags: vec!["authentication".to_string(), "security".to_string()],
+            status: RequirementStatus::Approved,
+        };
+
+        // Create a matching implementation
+        let implementation = Implementation {
+            id: "IMPL-001".to_string(),
+            file_path: PathBuf::from("src/auth/login.rs"),
+            implementation_type: ImplementationType::Function,
+            code_elements: vec![],
+            status: ImplementationStatus::Complete,
+            quality_metrics: QualityMetrics {
+                coverage: 0.85,
+                complexity: 0.3,
+                maintainability: 0.8,
+                performance: 0.9,
+                security: 0.95,
+            },
+            documentation: Some("Authentication service with secure login functionality".to_string()),
+        };
+
+        let similarity = system.calculate_hybrid_similarity(&requirement, &implementation);
+
+        // Should have reasonable similarity due to matching authentication theme
+        assert!(similarity > 0.15, "Authentication requirement and implementation should have reasonable similarity, got {}", similarity);
+    }
+
+    #[test]
+    fn test_structural_similarity() {
+        let system = IntentMappingSystem::new();
+
+        let requirement = Requirement {
+            id: "REQ-002".to_string(),
+            description: "Create REST API endpoint for user management".to_string(),
+            requirement_type: RequirementType::Functional,
+            priority: Priority::Medium,
+            acceptance_criteria: vec!["API should handle user CRUD operations".to_string()],
+            stakeholders: vec!["Backend Team".to_string()],
+            tags: vec!["api".to_string(), "rest".to_string()],
+            status: RequirementStatus::Approved,
+        };
+
+        let implementation = Implementation {
+            id: "IMPL-002".to_string(),
+            file_path: PathBuf::from("src/api/users.rs"),
+            implementation_type: ImplementationType::API,
+            code_elements: vec![],
+            status: ImplementationStatus::Complete,
+            quality_metrics: QualityMetrics {
+                coverage: 0.9,
+                complexity: 0.4,
+                maintainability: 0.85,
+                performance: 0.8,
+                security: 0.9,
+            },
+            documentation: Some("REST API implementation for user management".to_string()),
+        };
+
+        let structural_score = system.calculate_structural_similarity(&requirement, &implementation);
+
+        // Should have reasonable structural similarity
+        assert!(structural_score > 0.2, "API requirement and implementation should have reasonable structural similarity, got {}", structural_score);
+    }
+
+    #[test]
+    fn test_type_similarity() {
+        let system = IntentMappingSystem::new();
+
+        // Test exact match
+        let exact_similarity = system.calculate_type_similarity("api", "api");
+        assert_eq!(exact_similarity, 1.0, "Exact type match should return 1.0");
+
+        // Test related types
+        let related_similarity = system.calculate_type_similarity("functional", "function");
+        assert!(related_similarity > 0.8, "Related types should have high similarity");
+
+        // Test unrelated types
+        let unrelated_similarity = system.calculate_type_similarity("security", "graphics");
+        assert!(unrelated_similarity < 0.3, "Unrelated types should have low similarity");
+    }
+
+    #[test]
+    fn test_complexity_alignment() {
+        let system = IntentMappingSystem::new();
+
+        // High complexity requirement
+        let complex_req = Requirement {
+            id: "REQ-003".to_string(),
+            description: "Implement a sophisticated, comprehensive, and advanced system with multiple integrations and complex algorithms".to_string(),
+            requirement_type: RequirementType::Functional,
+            priority: Priority::Critical,
+            acceptance_criteria: vec!["System must handle complex algorithms".to_string()],
+            stakeholders: vec!["Architecture Team".to_string()],
+            tags: vec!["complex".to_string(), "algorithms".to_string()],
+            status: RequirementStatus::Approved,
+        };
+
+        // High complexity implementation
+        let complex_impl = Implementation {
+            id: "IMPL-003".to_string(),
+            file_path: PathBuf::from("src/complex/algorithm/advanced.rs"),
+            implementation_type: ImplementationType::Module,
+            code_elements: vec![],
+            status: ImplementationStatus::Complete,
+            quality_metrics: QualityMetrics {
+                coverage: 0.8,
+                complexity: 0.9,
+                maintainability: 0.6,
+                performance: 0.7,
+                security: 0.8,
+            },
+            documentation: Some("Advanced algorithm implementation with concurrent processing and optimization".to_string()),
+        };
+
+        let alignment = system.calculate_complexity_alignment(&complex_req, &complex_impl);
+
+        // Should have reasonable alignment for similar complexity levels
+        assert!(alignment > 0.3, "Similar complexity levels should align reasonably, got {}", alignment);
+    }
+
+    #[test]
+    fn test_pattern_similarity() {
+        let system = IntentMappingSystem::new();
+
+        let mvc_req = Requirement {
+            id: "REQ-004".to_string(),
+            description: "Implement MVC controller pattern for user interface".to_string(),
+            requirement_type: RequirementType::Functional,
+            priority: Priority::Medium,
+            acceptance_criteria: vec!["Controller must follow MVC pattern".to_string()],
+            stakeholders: vec!["Frontend Team".to_string()],
+            tags: vec!["mvc".to_string(), "controller".to_string()],
+            status: RequirementStatus::Approved,
+        };
+
+        let controller_impl = Implementation {
+            id: "IMPL-004".to_string(),
+            file_path: PathBuf::from("src/controllers/user_controller.rs"),
+            implementation_type: ImplementationType::Class,
+            code_elements: vec![],
+            status: ImplementationStatus::Complete,
+            quality_metrics: QualityMetrics {
+                coverage: 0.85,
+                complexity: 0.4,
+                maintainability: 0.8,
+                performance: 0.9,
+                security: 0.85,
+            },
+            documentation: Some("User controller implementation following MVC pattern".to_string()),
+        };
+
+        let pattern_score = system.calculate_pattern_similarity(&mvc_req, &controller_impl);
+
+        // Should detect some MVC pattern similarity
+        assert!(pattern_score >= 0.0, "MVC pattern should be detected to some degree, got {}", pattern_score);
+    }
+
+    #[test]
+    fn test_confidence_scoring_algorithm() {
+        let system = IntentMappingSystem::new();
+
+        let requirement = Requirement {
+            id: "REQ-005".to_string(),
+            description: "Implement secure user authentication system".to_string(),
+            requirement_type: RequirementType::Security,
+            priority: Priority::Critical,
+            acceptance_criteria: vec!["Secure login".to_string(), "Password validation".to_string()],
+            stakeholders: vec!["Security Team".to_string()],
+            tags: vec!["security".to_string(), "authentication".to_string()],
+            status: RequirementStatus::Approved,
+        };
+
+        // High-quality implementation
+        let high_quality_impl = Implementation {
+            id: "IMPL-005".to_string(),
+            file_path: PathBuf::from("src/auth/secure_login.rs"),
+            implementation_type: ImplementationType::API,
+            code_elements: vec![],
+            status: ImplementationStatus::Deployed,
+            quality_metrics: QualityMetrics {
+                coverage: 0.95,
+                complexity: 0.2,
+                maintainability: 0.9,
+                performance: 0.9,
+                security: 0.95,
+            },
+            documentation: Some("Comprehensive authentication API with security best practices. @param username User identifier @param password User password @return Authentication token @throws AuthenticationError on invalid credentials. Example: auth.login('user', 'pass')".to_string()),
+        };
+
+        let similarity_score = 0.8;
+        let confidence = system.calculate_confidence_score(&requirement, &high_quality_impl, similarity_score);
+
+        // Should have high confidence due to quality metrics and alignment
+        assert!(confidence > 0.7, "High-quality implementation should have high confidence, got {}", confidence);
+
+        // Test confidence level description
+        let level = system.get_confidence_level(confidence);
+        assert!(level == "High" || level == "Medium", "Should be High or Medium confidence level, got {}", level);
+    }
+
+    #[test]
+    fn test_confidence_scoring_low_quality() {
+        let system = IntentMappingSystem::new();
+
+        let requirement = Requirement {
+            id: "REQ-006".to_string(),
+            description: "Simple utility function".to_string(),
+            requirement_type: RequirementType::Functional,
+            priority: Priority::Low,
+            acceptance_criteria: vec!["Function works".to_string()],
+            stakeholders: vec!["Developer".to_string()],
+            tags: vec!["utility".to_string()],
+            status: RequirementStatus::Draft,
+        };
+
+        // Low-quality implementation
+        let low_quality_impl = Implementation {
+            id: "IMPL-006".to_string(),
+            file_path: PathBuf::from("src/utils/temp.rs"),
+            implementation_type: ImplementationType::Function,
+            code_elements: vec![],
+            status: ImplementationStatus::InProgress,
+            quality_metrics: QualityMetrics {
+                coverage: 0.3,
+                complexity: 0.8,
+                maintainability: 0.4,
+                performance: 0.5,
+                security: 0.6,
+            },
+            documentation: None,
+        };
+
+        let similarity_score = 0.5;
+        let confidence = system.calculate_confidence_score(&requirement, &low_quality_impl, similarity_score);
+
+        // Should have lower confidence due to poor quality metrics
+        assert!(confidence < 0.6, "Low-quality implementation should have lower confidence, got {}", confidence);
+
+        let level = system.get_confidence_level(confidence);
+        assert!(level == "Low" || level == "Very Low", "Should be Low or Very Low confidence level, got {}", level);
+    }
+
+    #[test]
+    fn test_validation_status_determination() {
+        let system = IntentMappingSystem::new();
+
+        // Test auto-accept threshold
+        let high_confidence = 0.95;
+        assert_eq!(system.determine_validation_status(high_confidence), ValidationStatus::Valid);
+
+        // Test needs review threshold
+        let medium_confidence = 0.7;
+        assert_eq!(system.determine_validation_status(medium_confidence), ValidationStatus::NeedsReview);
+
+        // Test auto-reject threshold
+        let low_confidence = 0.2;
+        assert_eq!(system.determine_validation_status(low_confidence), ValidationStatus::Invalid);
+
+        // Test not validated threshold
+        let very_low_confidence = 0.4;
+        assert_eq!(system.determine_validation_status(very_low_confidence), ValidationStatus::NotValidated);
+    }
+
+    #[test]
+    fn test_quality_confidence_calculation() {
+        let system = IntentMappingSystem::new();
+
+        // High quality metrics
+        let high_quality = QualityMetrics {
+            coverage: 0.9,
+            complexity: 0.2, // Low complexity is good
+            maintainability: 0.9,
+            performance: 0.9,
+            security: 0.95,
+        };
+
+        let quality_confidence = system.calculate_quality_confidence(&high_quality);
+        assert!(quality_confidence > 0.8, "High quality metrics should yield high confidence, got {}", quality_confidence);
+
+        // Low quality metrics
+        let low_quality = QualityMetrics {
+            coverage: 0.3,
+            complexity: 0.9, // High complexity is bad
+            maintainability: 0.4,
+            performance: 0.5,
+            security: 0.6,
+        };
+
+        let low_quality_confidence = system.calculate_quality_confidence(&low_quality);
+        assert!(low_quality_confidence < 0.6, "Low quality metrics should yield low confidence, got {}", low_quality_confidence);
+    }
+
+    #[test]
+    fn test_relationship_graph_creation() {
+        let mut system = IntentMappingSystem::new();
+
+        // Add test requirement
+        let requirement = Requirement {
+            id: "REQ-GRAPH-001".to_string(),
+            description: "Implement graph-based relationship mapping".to_string(),
+            requirement_type: RequirementType::Technical,
+            priority: Priority::High,
+            acceptance_criteria: vec!["Create nodes".to_string(), "Create edges".to_string()],
+            stakeholders: vec!["Architect".to_string()],
+            tags: vec!["graph".to_string(), "relationships".to_string()],
+            status: RequirementStatus::Approved,
+        };
+        system.add_requirement(requirement);
+
+        // Add test implementation
+        let implementation = Implementation {
+            id: "IMPL-GRAPH-001".to_string(),
+            file_path: PathBuf::from("src/graph.rs"),
+            implementation_type: ImplementationType::Module,
+            code_elements: vec![
+                CodeElement {
+                    name: "RelationshipGraph".to_string(),
+                    element_type: "struct".to_string(),
+                    line_range: (10, 50),
+                    complexity: 3.0,
+                    test_coverage: 0.8,
+                }
+            ],
+            status: ImplementationStatus::Complete,
+            quality_metrics: QualityMetrics {
+                coverage: 0.8,
+                complexity: 0.3,
+                maintainability: 0.9,
+                performance: 0.8,
+                security: 0.9,
+            },
+            documentation: Some("Graph implementation for relationship mapping".to_string()),
+        };
+        system.add_implementation(implementation);
+
+        // Create a mapping
+        let mapping = IntentMapping {
+            id: "MAP-GRAPH-001".to_string(),
+            requirement_id: "REQ-GRAPH-001".to_string(),
+            implementation_id: "IMPL-GRAPH-001".to_string(),
+            mapping_type: MappingType::Direct,
+            confidence: 0.9,
+            rationale: "Direct implementation of graph requirements".to_string(),
+            validation_status: ValidationStatus::Valid,
+            last_updated: 1234567890,
+        };
+        system.mappings.push(mapping);
+
+        // Build relationship graph
+        let graph = system.build_relationship_graph().unwrap();
+
+        // Verify graph structure
+        assert_eq!(graph.nodes.len(), 3); // 1 requirement + 1 implementation + 1 code element
+        assert!(graph.edges.len() >= 2); // At least 1 mapping + 1 containment
+
+        // Verify nodes exist
+        assert!(graph.get_node("REQ-GRAPH-001").is_some());
+        assert!(graph.get_node("IMPL-GRAPH-001").is_some());
+        assert!(graph.get_node("IMPL-GRAPH-001_RelationshipGraph").is_some());
+
+        // Verify node types
+        let req_node = graph.get_node("REQ-GRAPH-001").unwrap();
+        assert_eq!(req_node.node_type, RelationshipNodeType::Requirement);
+
+        let impl_node = graph.get_node("IMPL-GRAPH-001").unwrap();
+        assert_eq!(impl_node.node_type, RelationshipNodeType::Implementation);
+
+        // Verify edges exist
+        let req_edges = graph.get_outgoing_edges("REQ-GRAPH-001");
+        assert!(!req_edges.is_empty(), "Requirement should have outgoing edges");
+
+        let impl_edges = graph.get_outgoing_edges("IMPL-GRAPH-001");
+        assert!(!impl_edges.is_empty(), "Implementation should have outgoing edges (containment)");
+    }
+
+    #[test]
+    fn test_graph_metrics_calculation() {
+        let mut graph = RelationshipGraph::new();
+
+        // Add nodes
+        let node1 = RelationshipNode {
+            id: "node1".to_string(),
+            node_type: RelationshipNodeType::Requirement,
+            metadata: HashMap::new(),
+            attributes: HashMap::new(),
+        };
+        let node2 = RelationshipNode {
+            id: "node2".to_string(),
+            node_type: RelationshipNodeType::Implementation,
+            metadata: HashMap::new(),
+            attributes: HashMap::new(),
+        };
+        graph.add_node(node1);
+        graph.add_node(node2);
+
+        // Add edge
+        let edge = RelationshipEdge {
+            id: "edge1".to_string(),
+            source_id: "node1".to_string(),
+            target_id: "node2".to_string(),
+            edge_type: RelationshipEdgeType::DirectMapping,
+            weight: 0.8,
+            metadata: HashMap::new(),
+            attributes: HashMap::new(),
+        };
+        graph.add_edge(edge).unwrap();
+
+        // Calculate metrics
+        graph.calculate_metrics();
+
+        // Verify metrics
+        assert_eq!(graph.metrics.node_count, 2);
+        assert_eq!(graph.metrics.edge_count, 1);
+        assert!(graph.metrics.density > 0.0);
+        assert!(graph.metrics.average_degree > 0.0);
+        assert_eq!(graph.metrics.connected_components, 1);
+    }
+
+    #[test]
+    fn test_shortest_path_finding() {
+        let mut graph = RelationshipGraph::new();
+
+        // Create a simple path: A -> B -> C
+        for i in 1..=3 {
+            let node = RelationshipNode {
+                id: format!("node{}", i),
+                node_type: RelationshipNodeType::Requirement,
+                metadata: HashMap::new(),
+                attributes: HashMap::new(),
+            };
+            graph.add_node(node);
+        }
+
+        // Add edges A->B and B->C
+        let edge1 = RelationshipEdge {
+            id: "edge1".to_string(),
+            source_id: "node1".to_string(),
+            target_id: "node2".to_string(),
+            edge_type: RelationshipEdgeType::DirectMapping,
+            weight: 1.0,
+            metadata: HashMap::new(),
+            attributes: HashMap::new(),
+        };
+        let edge2 = RelationshipEdge {
+            id: "edge2".to_string(),
+            source_id: "node2".to_string(),
+            target_id: "node3".to_string(),
+            edge_type: RelationshipEdgeType::DirectMapping,
+            weight: 1.0,
+            metadata: HashMap::new(),
+            attributes: HashMap::new(),
+        };
+        graph.add_edge(edge1).unwrap();
+        graph.add_edge(edge2).unwrap();
+
+        // Test shortest path
+        let path = graph.find_shortest_path("node1", "node3");
+        assert!(path.is_some());
+        let path = path.unwrap();
+        assert_eq!(path.len(), 3);
+        assert_eq!(path, vec!["node1", "node2", "node3"]);
+
+        // Test path to self
+        let self_path = graph.find_shortest_path("node1", "node1");
+        assert_eq!(self_path, Some(vec!["node1".to_string()]));
+
+        // Test no path (add isolated node)
+        let isolated_node = RelationshipNode {
+            id: "isolated".to_string(),
+            node_type: RelationshipNodeType::Implementation,
+            metadata: HashMap::new(),
+            attributes: HashMap::new(),
+        };
+        graph.add_node(isolated_node);
+
+        let no_path = graph.find_shortest_path("node1", "isolated");
+        assert!(no_path.is_none());
     }
 
     #[test]

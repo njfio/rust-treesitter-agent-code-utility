@@ -660,7 +660,7 @@ mod tests {
             }
         "#;
 
-        let mut parser = Parser::new(crate::Language::JavaScript).unwrap();
+        let parser = Parser::new(crate::Language::JavaScript).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let functions = JavaScriptSyntax::find_functions(&tree, source);
@@ -688,7 +688,7 @@ mod tests {
             };
         "#;
 
-        let mut parser = Parser::new(crate::Language::JavaScript).unwrap();
+        let parser = Parser::new(crate::Language::JavaScript).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let classes = JavaScriptSyntax::find_classes(&tree, source);
@@ -709,7 +709,7 @@ mod tests {
             }
         "#;
 
-        let mut parser = Parser::new(crate::Language::JavaScript).unwrap();
+        let parser = Parser::new(crate::Language::JavaScript).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let features = JavaScriptSyntax::detect_modern_features(&tree);
@@ -741,7 +741,7 @@ mod tests {
             }
         "#;
 
-        let mut parser = Parser::new(crate::Language::JavaScript).unwrap();
+        let parser = Parser::new(crate::Language::JavaScript).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let complexity = JavaScriptSyntax::analyze_complexity(&tree);

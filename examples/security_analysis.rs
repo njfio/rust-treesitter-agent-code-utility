@@ -1,4 +1,4 @@
-use rust_tree_sitter::{CodebaseAnalyzer, AdvancedSecurityAnalyzer, AdvancedSecurityConfig};
+use rust_tree_sitter::{CodebaseAnalyzer, SecurityScanner, SecurityConfig};
 use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Analyzed {} files", analysis_result.total_files);
     
     // Create security scanner with advanced configuration
-    let security_config = AdvancedSecurityConfig {
+    let security_config = SecurityConfig {
         owasp_analysis: true,
         secrets_detection: true,
         input_validation: true,
@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         custom_rules: Vec::new(),
     };
 
-    let security_scanner = AdvancedSecurityAnalyzer::with_config(security_config)?;
+    let security_scanner = SecurityScanner::with_config(security_config)?;
     
     // Run comprehensive security scan
     println!("\n=== Running Security Analysis ===");
@@ -171,7 +171,7 @@ mod tests {
         let analysis_result = analyzer.analyze_directory(temp_dir.path())?;
         
         // Run security scan
-        let security_scanner = AdvancedSecurityAnalyzer::new()?;
+        let security_scanner = SecurityScanner::new()?;
         let security_result = security_scanner.analyze(&analysis_result)?;
 
         // Should find security issues
@@ -225,7 +225,7 @@ mod tests {
         let analysis_result = analyzer.analyze_directory(temp_dir.path())?;
         
         // Run security scan
-        let security_scanner = AdvancedSecurityAnalyzer::new()?;
+        let security_scanner = SecurityScanner::new()?;
         let security_result = security_scanner.analyze(&analysis_result)?;
         
         // Should have fewer or no security issues

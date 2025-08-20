@@ -626,7 +626,7 @@ impl MemoryTracker {
     }
 
     /// Detect Python memory allocations
-    fn detect_python_allocations(&self, tree: &SyntaxTree, content: &str, file: &FileInfo) -> Result<Vec<AllocationHotspot>> {
+    fn detect_python_allocations(&self, _tree: &SyntaxTree, content: &str, file: &FileInfo) -> Result<Vec<AllocationHotspot>> {
         let mut hotspots = Vec::new();
         let lines: Vec<&str> = content.lines().collect();
 
@@ -681,7 +681,7 @@ impl MemoryTracker {
     }
 
     /// Detect JavaScript/TypeScript memory allocations
-    fn detect_js_allocations(&self, tree: &SyntaxTree, content: &str, file: &FileInfo) -> Result<Vec<AllocationHotspot>> {
+    fn detect_js_allocations(&self, _tree: &SyntaxTree, content: &str, file: &FileInfo) -> Result<Vec<AllocationHotspot>> {
         let mut hotspots = Vec::new();
         let lines: Vec<&str> = content.lines().collect();
 
@@ -737,7 +737,7 @@ impl MemoryTracker {
     }
 
     /// Detect Go memory allocations
-    fn detect_go_allocations(&self, tree: &SyntaxTree, content: &str, file: &FileInfo) -> Result<Vec<AllocationHotspot>> {
+    fn detect_go_allocations(&self, _tree: &SyntaxTree, content: &str, file: &FileInfo) -> Result<Vec<AllocationHotspot>> {
         let mut hotspots = Vec::new();
         let lines: Vec<&str> = content.lines().collect();
 
@@ -1156,7 +1156,7 @@ impl MemoryTracker {
     }
 
     /// Update allocation patterns database
-    fn update_allocation_patterns(&mut self, content: &str, file: &FileInfo) -> Result<()> {
+    fn update_allocation_patterns(&mut self, content: &str, _file: &FileInfo) -> Result<()> {
         let lines: Vec<&str> = content.lines().collect();
 
         // Detect common allocation patterns
@@ -1269,6 +1269,7 @@ impl MemoryTracker {
     }
 
     /// Find the containing function for a node (simplified version)
+    #[allow(dead_code)]
     fn find_containing_function_simple(&self, line_num: usize, lines: &[&str]) -> Option<String> {
         // Look backwards for function definition
         let start = line_num.saturating_sub(20);

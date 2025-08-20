@@ -1,6 +1,7 @@
 use rust_tree_sitter::{
-    CodeEvolutionTracker, EvolutionConfig, PatternType, ChangeType, RiskLevel
+    CodeEvolutionTracker, EvolutionConfig, ChangeType
 };
+use rust_tree_sitter::constants::common::RiskLevel;
 use std::path::PathBuf;
 use tempfile::TempDir;
 use std::fs;
@@ -244,11 +245,11 @@ fn main() {{
     };
     
     let mut tracker = CodeEvolutionTracker::with_config(temp_dir.path(), config)?;
-    let result = tracker.analyze_evolution()?;
+    let _result = tracker.analyze_evolution()?;
     
     // Should detect patterns with enough commits
     // Note: Pattern detection depends on git history and thresholds
-    assert!(result.patterns.len() >= 0); // At least no errors
+    // Pattern detection completed without errors
     
     Ok(())
 }
@@ -288,7 +289,7 @@ fn test_recommendations_generation() -> Result<(), Box<dyn std::error::Error>> {
     let result = tracker.analyze_evolution()?;
     
     // Should generate recommendations (may be empty for simple test case)
-    assert!(result.recommendations.len() >= 0);
+    // Recommendations generated successfully
     
     // If recommendations exist, they should have proper structure
     for recommendation in &result.recommendations {

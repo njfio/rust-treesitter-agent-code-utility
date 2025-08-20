@@ -28,41 +28,87 @@
 //! # }
 //! ```
 
+/// Advanced AI-powered code analysis capabilities
 pub mod advanced_ai_analysis;
+/// Advanced security analysis with OWASP compliance
 pub mod advanced_security;
+/// AI-powered code explanation and insights
 pub mod ai_analysis;
+/// Utility functions for code analysis
 pub mod analysis_utils;
+/// Common analysis functionality and helpers
 pub mod analysis_common;
+/// Control flow graph construction and analysis
 pub mod control_flow;
+/// Code complexity metrics and analysis
 pub mod complexity_analysis;
+/// Taint analysis for security vulnerability detection
 pub mod taint_analysis;
+/// SQL injection vulnerability detection
 pub mod sql_injection_detector;
+/// Command injection vulnerability detection
 pub mod command_injection_detector;
+/// Symbol table construction and management
 pub mod symbol_table;
+/// Semantic context analysis and data flow
 pub mod semantic_context;
+/// Main codebase analyzer functionality
 pub mod analyzer;
+/// AST transformation and refactoring engine
+pub mod ast_transformation;
+/// Command-line interface implementation
 pub mod cli;
+/// Code evolution tracking and analysis
 pub mod code_evolution;
+/// Code mapping and visualization utilities
 pub mod code_map;
+/// Configuration constants and defaults
 pub mod constants;
+/// Dependency analysis and vulnerability scanning
 pub mod dependency_analysis;
+/// Enhanced security analysis with compliance checking
+#[cfg(any(feature = "net", feature = "db"))]
 pub mod enhanced_security;
+/// Error types and handling
 pub mod error;
+/// File caching for performance optimization
 pub mod file_cache;
+/// Infrastructure and configuration management
+#[cfg(any(feature = "net", feature = "db"))]
 pub mod infrastructure;
+/// Intent mapping between requirements and implementation
+#[cfg(feature = "ml")]
 pub mod intent_mapping;
+#[cfg(not(feature = "ml"))]
+pub mod intent_mapping_stub;
+#[cfg(not(feature = "ml"))]
+pub use intent_mapping_stub as intent_mapping;
+/// Text embeddings and semantic similarity
+#[cfg(feature = "ml")]
 pub mod embeddings;
+/// Memory allocation tracking and analysis
 pub mod memory_tracker;
+/// Programming language support and parsers
 pub mod languages;
+/// Tree-sitter parser integration
 pub mod parser;
+/// Performance analysis and optimization detection
 pub mod performance_analysis;
+/// Code querying and pattern matching
 pub mod query;
+/// Automated reasoning and inference engine
 pub mod reasoning_engine;
+/// Code refactoring suggestions and analysis
 pub mod refactoring;
+/// Security analysis and vulnerability detection
 pub mod security;
+/// Semantic graph construction and querying
 pub mod semantic_graph;
+/// Smart refactoring with AI assistance
 pub mod smart_refactoring;
+/// Test coverage analysis and gap detection
 pub mod test_coverage;
+/// Syntax tree manipulation and traversal
 pub mod tree;
 
 // Re-export commonly used types
@@ -84,13 +130,22 @@ pub use refactoring::{RefactoringAnalyzer, RefactoringResult, RefactoringSuggest
 pub use test_coverage::{TestCoverageAnalyzer, TestCoverageResult, TestCoverageConfig, MissingTest};
 
 // Security analysis
-pub use security::{VulnerabilityDatabase, SecretsDetector, OwaspDetector};
+pub use security::OwaspDetector;
+#[cfg(any(feature = "net", feature = "db"))]
+pub use security::{VulnerabilityDatabase, SecretsDetector};
+#[cfg(any(feature = "net", feature = "db"))]
 pub use enhanced_security::{EnhancedSecurityScanner, EnhancedSecurityResult, EnhancedSecurityConfig};
 pub use advanced_security::{AdvancedSecurityAnalyzer as SecurityScanner, AdvancedSecurityResult as SecurityScanResult, SecurityVulnerability, AdvancedSecurityConfig as SecurityConfig, SecuritySeverity};
 
 // Advanced features
 pub use advanced_ai_analysis::{AdvancedAIAnalyzer, AdvancedAIResult, AdvancedAIConfig, SemanticAnalysis, ArchitecturePattern};
 pub use smart_refactoring::{SmartRefactoringEngine, SmartRefactoringResult, SmartRefactoringConfig, CodeSmellFix};
+pub use ast_transformation::{
+    AstTransformationEngine, TransformationConfig, Transformation, TransformationType,
+    TransformationResult, SemanticValidator, ValidationResult, ValidationConfig,
+    TransformationLocation, Position, TransformationMetadata, TransformationImpact,
+    ExtractedVariableAnalysis, VariableInfo, ImpactScope
+};
 pub use code_map::{CallGraph, ModuleGraph, build_call_graph, build_module_graph};
 
 // Specialized analysis tools
@@ -103,7 +158,8 @@ pub use semantic_context::{SemanticContextAnalyzer, SemanticContext, DataFlowAna
 pub use semantic_graph::{SemanticGraphQuery, GraphNode, GraphEdge, NodeType, RelationshipType, QueryResult, QueryConfig, GraphStatistics};
 
 // Advanced AI features
-pub use code_evolution::{CodeEvolutionTracker, EvolutionAnalysisResult, EvolutionConfig, ChangePattern, PatternType, EvolutionMetrics, FileInsight, EvolutionRecommendation, ChangeType, RiskLevel};
+pub use code_evolution::{CodeEvolutionTracker, EvolutionAnalysisResult, EvolutionConfig, ChangePattern, PatternType, EvolutionMetrics, FileInsight, EvolutionRecommendation, ChangeType};
+#[cfg(feature = "ml")]
 pub use intent_mapping::{
     IntentMappingSystem, MappingAnalysisResult, MappingConfig, Requirement, Implementation,
     IntentMapping, TraceabilityMatrix, TraceabilityReport, RequirementType, ImplementationType,
@@ -111,6 +167,8 @@ pub use intent_mapping::{
     CodeElement, MappingType, ValidationStatus, GapType, RecommendationType, MappingGap,
     MappingRecommendation
 };
+#[cfg(not(feature = "ml"))]
+pub use intent_mapping::IntentMappingSystem;
 pub use reasoning_engine::{
     AutomatedReasoningEngine, ReasoningResult, ReasoningConfig, Fact, Rule, KnowledgeBase,
     InferenceEngine, ConstraintSolver, TheoremProver, ReasoningInsight, InsightType
@@ -127,6 +185,9 @@ pub use file_cache::{FileCache, CacheStats};
 
 // Re-export tree-sitter types that users might need
 pub use tree_sitter::{InputEdit, Point, Range};
+
+// Re-export common types from constants
+pub use constants::common::RiskLevel;
 
 /// Library version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -166,6 +227,16 @@ pub fn supported_languages() -> Vec<LanguageInfo> {
             name: "C++",
             version: "0.22.0",
             file_extensions: &["cpp", "cxx", "cc", "hpp", "hxx"],
+        },
+        LanguageInfo {
+            name: "TypeScript",
+            version: "0.21.0",
+            file_extensions: &["ts", "tsx", "mts", "cts"],
+        },
+        LanguageInfo {
+            name: "Go",
+            version: "0.21.0",
+            file_extensions: &["go"],
         },
     ]
 }

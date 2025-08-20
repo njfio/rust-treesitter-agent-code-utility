@@ -131,6 +131,14 @@ pub enum Error {
         context: Option<String>,
     },
 
+    /// CLI operation error
+    #[error("CLI error: {message}")]
+    CliError {
+        message: String,
+        operation: Option<String>,
+        suggestion: Option<String>,
+    },
+
     /// Anyhow error (for external libraries)
     #[error("External error: {0}")]
     Anyhow(#[from] anyhow::Error),
@@ -337,6 +345,28 @@ impl Error {
             component: component.into(),
             message: message.into(),
             context: Some(context.into()),
+        }
+    }
+
+    /// Create a CLI error
+    pub fn cli_error(message: impl Into<String>) -> Self {
+        Self::CliError {
+            message: message.into(),
+            operation: None,
+            suggestion: None,
+        }
+    }
+
+    /// Create a CLI error with operation context and suggestion
+    pub fn cli_error_with_suggestion(
+        message: impl Into<String>,
+        operation: impl Into<String>,
+        suggestion: impl Into<String>,
+    ) -> Self {
+        Self::CliError {
+            message: message.into(),
+            operation: Some(operation.into()),
+            suggestion: Some(suggestion.into()),
         }
     }
 

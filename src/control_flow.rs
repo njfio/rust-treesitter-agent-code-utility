@@ -377,6 +377,7 @@ impl CfgBuilder {
     }
 
     /// Build CFG for sequential statements (now simplified since traverse_and_build_cfg handles complexity)
+    #[allow(dead_code)]
     fn build_sequential_cfg(
         &self,
         graph: &mut DiGraph<CfgNodeType, ()>,
@@ -401,6 +402,7 @@ impl CfgBuilder {
     }
 
     /// Check if a node represents a control flow construct
+    #[allow(dead_code)]
     fn is_control_flow_node(&self, kind: &str) -> bool {
         self.is_conditional(kind) || self.is_loop(kind) || self.is_return(kind)
     }

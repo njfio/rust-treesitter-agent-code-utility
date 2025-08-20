@@ -84,7 +84,10 @@ impl FileCache {
     fn insert(&self, path: PathBuf, content: String) {
         let mut cache = match self.cache.write() {
             Ok(cache) => cache,
-            Err(_) => return, // Silently fail on lock error for cache operations
+            Err(e) => {
+                eprintln!("Warning: Failed to acquire cache write lock: {}", e);
+                return;
+            }
         };
         
         // Check if we need to evict entries
