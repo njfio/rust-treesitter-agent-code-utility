@@ -855,7 +855,7 @@ impl CommandInjectionDetector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Parser;
+    // Parser import removed as it's not used in tests
 
     #[test]
     fn test_command_injection_detector_creation() {

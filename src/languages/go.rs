@@ -880,7 +880,7 @@ func init() {
 }
         "#;
 
-        let mut parser = Parser::new(crate::Language::Go).unwrap();
+        let parser = Parser::new(crate::Language::Go).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let functions = GoSyntax::find_functions(&tree, source);
@@ -911,7 +911,7 @@ func (r *Rectangle) Scale(factor float64) {
 }
         "#;
 
-        let mut parser = Parser::new(crate::Language::Go).unwrap();
+        let parser = Parser::new(crate::Language::Go).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let methods = GoSyntax::find_methods(&tree, source);
@@ -937,7 +937,7 @@ type Address struct {
 }
         "#;
 
-        let mut parser = Parser::new(crate::Language::Go).unwrap();
+        let parser = Parser::new(crate::Language::Go).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let structs = GoSyntax::find_structs(&tree, source);
@@ -967,7 +967,7 @@ type ReadWriter interface {
 }
         "#;
 
-        let mut parser = Parser::new(crate::Language::Go).unwrap();
+        let parser = Parser::new(crate::Language::Go).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let interfaces = GoSyntax::find_interfaces(&tree, source);
@@ -1006,7 +1006,7 @@ type privateStruct struct {
 }
         "#;
 
-        let mut parser = Parser::new(crate::Language::Go).unwrap();
+        let parser = Parser::new(crate::Language::Go).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let analysis = GoSyntax::analyze_package(&tree, source);
@@ -1055,7 +1055,7 @@ func main() {
 }
         "#;
 
-        let mut parser = Parser::new(crate::Language::Go).unwrap();
+        let parser = Parser::new(crate::Language::Go).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let features = GoSyntax::detect_go_features(&tree);
@@ -1090,7 +1090,7 @@ func variadic(args ...string) {
 }
         "#;
 
-        let mut parser = Parser::new(crate::Language::Go).unwrap();
+        let parser = Parser::new(crate::Language::Go).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let function_nodes = tree.find_nodes_by_kind("function_declaration");
@@ -1112,7 +1112,7 @@ type Person struct {
 }
         "#;
 
-        let mut parser = Parser::new(crate::Language::Go).unwrap();
+        let parser = Parser::new(crate::Language::Go).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let struct_nodes = tree.find_nodes_by_kind("struct_type");
@@ -1148,7 +1148,7 @@ func regularFunction() {
 }
         "#;
 
-        let mut parser = Parser::new(crate::Language::Go).unwrap();
+        let parser = Parser::new(crate::Language::Go).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let function_nodes = tree.find_nodes_by_kind("function_declaration");

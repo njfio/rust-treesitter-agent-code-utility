@@ -62,8 +62,8 @@ impl UserService {
     pub fn create_admin_user(&self, name: String, email: String) -> User {
         User {
             id: format!("admin_{}", name),
-            name: name.clone(),
-            email: email.clone(),
+            name,
+            email,
             password: "admin123".to_string(), // Hardcoded password (security issue)
         }
     }
@@ -161,7 +161,7 @@ pub fn process_user_data(data: &str) -> String {
 
 // Performance optimization opportunity - vector without capacity
 pub fn collect_user_ids(users: &[User]) -> Vec<String> {
-    let mut ids = Vec::new(); // Should use with_capacity
+    let mut ids = Vec::with_capacity(users.len()); // Optimized capacity
     for user in users {
         ids.push(user.id.clone());
     }

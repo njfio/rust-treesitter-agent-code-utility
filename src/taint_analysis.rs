@@ -984,6 +984,7 @@ impl TaintAnalyzer {
     }
 
     /// Trace taint flows from a source to potential sinks (legacy method for compatibility)
+    #[allow(dead_code)]
     fn trace_taint_flows(&self, _tree: &SyntaxTree, source: &TaintSource, sinks: &[TaintSink]) -> Result<Vec<TaintFlow>> {
         let mut flows = Vec::new();
 

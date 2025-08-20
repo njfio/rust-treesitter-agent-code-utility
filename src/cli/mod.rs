@@ -6,6 +6,8 @@ pub mod commands;
 pub mod error;
 pub mod output;
 pub mod utils;
+pub mod schemas;
+pub mod sarif;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -65,6 +67,18 @@ pub enum Commands {
         /// Show detailed symbol information
         #[arg(long)]
         detailed: bool,
+
+        /// Number of threads to use (analysis)
+        #[arg(long)]
+        threads: Option<usize>,
+
+        /// Print JSON schema and exit
+        #[arg(long, default_value_t = false)]
+        print_schema: bool,
+
+        /// Schema version to print
+        #[arg(long, default_value = "1")]
+        schema_version: String,
     },
     
     /// Query code patterns across the codebase
@@ -80,6 +94,10 @@ pub enum Commands {
         /// Language to query (rust, javascript, python, c, cpp)
         #[arg(short, long)]
         language: String,
+
+        /// Prefilter files by substring before parsing
+        #[arg(long)]
+        prefilter: Option<String>,
         
         /// Show context lines around matches
         #[arg(short, long, default_value = "3")]
@@ -133,6 +151,14 @@ pub enum Commands {
         /// Output format (table or json)
         #[arg(short, long, default_value = "table")]
         format: String,
+
+        /// Print JSON schema and exit
+        #[arg(long, default_value_t = false)]
+        print_schema: bool,
+
+        /// Schema version to print
+        #[arg(long, default_value = "1")]
+        schema_version: String,
     },
     
     /// Show supported languages and their capabilities
@@ -255,6 +281,14 @@ pub enum Commands {
         /// Analysis depth: basic, deep, full
         #[arg(long, default_value = "full")]
         depth: String,
+
+        /// Print JSON schema and exit
+        #[arg(long, default_value_t = false)]
+        print_schema: bool,
+
+        /// Schema version to print
+        #[arg(long, default_value = "1")]
+        schema_version: String,
     },
 
     /// Smart refactoring suggestions

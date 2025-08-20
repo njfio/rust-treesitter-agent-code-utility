@@ -4,6 +4,7 @@ use crate::error::{Error, Result};
 use tree_sitter::{InputEdit, Point, Range};
 
 /// A wrapper around tree-sitter's Tree with additional functionality
+#[derive(Clone)]
 pub struct SyntaxTree {
     inner: tree_sitter::Tree,
     source: String,
@@ -70,10 +71,11 @@ impl SyntaxTree {
         }
     }
 
-    /// Find all nodes of a specific kind
+    /// Find all nodes of a specific kind (optimized with pre-allocation)
     pub fn find_nodes_by_kind(&self, kind: &str) -> Vec<Node> {
-        let mut nodes = Vec::new();
+        let mut nodes = Vec::with_capacity(32); // Pre-allocate for common case
         self.collect_nodes_by_kind(self.root_node(), kind, &mut nodes);
+        nodes.shrink_to_fit(); // Reclaim unused memory
         nodes
     }
 
@@ -264,13 +266,14 @@ impl<'a> Node<'a> {
         None
     }
 
-    /// Find all descendant nodes that match a predicate
+    /// Find all descendant nodes that match a predicate (optimized)
     pub fn find_descendants<F>(&self, predicate: F) -> Vec<Node<'a>>
     where
         F: Fn(&Node<'a>) -> bool,
     {
-        let mut results = Vec::new();
+        let mut results = Vec::with_capacity(16); // Pre-allocate for common case
         self.collect_descendants(&predicate, &mut results);
+        results.shrink_to_fit(); // Reclaim unused memory
         results
     }
 

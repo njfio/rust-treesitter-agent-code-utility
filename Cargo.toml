@@ -31,11 +31,14 @@ sha2 = "0.10"
 rand = "0.8"
 rayon = "1.8"
 petgraph = "0.6"
+ignore = "0.4"
+
+# Security fixes - ring will be updated via dependency resolution
 
 # Phase A: Infrastructure Dependencies
-tokio = { version = "1.0", features = ["full"] }
-reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
+tokio = { version = "1.0", features = ["full"], optional = true }
+reqwest = { version = "0.11", features = ["json", "rustls-tls"], optional = true }
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"], optional = true }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 config = "0.14"
@@ -45,9 +48,17 @@ anyhow = "1.0"
 dashmap = "5.5"
 governor = "0.6"
 tower = { version = "0.4", features = ["timeout", "retry"] }
-backoff = "0.4"
+# backoff = "0.4"  # Replaced with exponential-backoff due to maintenance issues
+exponential-backoff = "2.0"
 dirs = "5.0"
 num_cpus = "1.0"
+
+# Machine Learning Dependencies for Intent Mapping
+candle-core = { version = "0.9.1", optional = true }
+candle-nn = { version = "0.9.1", optional = true }
+candle-transformers = { version = "0.9.1", optional = true }
+hf-hub = { version = "0.3", features = ["tokio"], optional = true }
+tokenizers = { version = "0.19", optional = true }
 
 [build-dependencies]
 cc = "1.0"
@@ -60,10 +71,26 @@ assert_cmd = "2.0"
 predicates = "3.0"
 
 [features]
-default = ["std", "serde"]
+default = ["std", "serde", "ml", "net", "db"]
 std = []
 serde = ["dep:serde"]
 wasm = []
+
+# Optional capability flags
+ml = [
+    "dep:candle-core",
+    "dep:candle-nn",
+    "dep:candle-transformers",
+    "dep:tokenizers",
+    "dep:hf-hub",
+]
+net = [
+    "dep:reqwest",
+    "dep:tokio",
+]
+db = [
+    "dep:sqlx",
+]
 
 [[example]]
 name = "basic_usage"
@@ -84,3 +111,7 @@ path = "src/lib.rs"
 [[bin]]
 name = "tree-sitter-cli"
 path = "src/bin/main.rs"
+
+[[bin]]
+name = "rts-cli"
+path = "src/bin/rts.rs"

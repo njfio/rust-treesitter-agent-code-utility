@@ -68,6 +68,7 @@ pub struct LanguageRow {
 pub enum OutputFormat {
     Table,
     Json,
+    Sarif,
     Markdown,
     Summary,
     Text,
@@ -78,6 +79,7 @@ impl OutputFormat {
         match s.to_lowercase().as_str() {
             "table" => Ok(OutputFormat::Table),
             "json" => Ok(OutputFormat::Json),
+            "sarif" => Ok(OutputFormat::Sarif),
             "markdown" => Ok(OutputFormat::Markdown),
             "summary" => Ok(OutputFormat::Summary),
             "text" => Ok(OutputFormat::Text),
@@ -114,7 +116,9 @@ pub fn print_summary(result: &crate::AnalysisResult) {
     
     if !result.languages.is_empty() {
         println!("\n{}", "🔤 Languages".bright_yellow().bold());
-        for (lang, count) in &result.languages {
+        let mut langs: Vec<_> = result.languages.iter().collect();
+        langs.sort_by(|a, b| a.0.cmp(b.0));
+        for (lang, count) in langs {
             let percentage = (*count as f64 / result.files.len() as f64) * 100.0;
             println!("  {}: {} files ({:.1}%)", 
                 lang.bright_blue(),
@@ -137,7 +141,9 @@ pub fn print_summary(result: &crate::AnalysisResult) {
         }
     }
     
-    for (kind, count) in symbol_counts {
+    let mut symbol_vec: Vec<_> = symbol_counts.into_iter().collect();
+    symbol_vec.sort_by(|a, b| a.0.cmp(b.0));
+    for (kind, count) in symbol_vec {
         println!("  {}: {}", 
             kind.bright_blue(),
             count.to_string().bright_white()
@@ -167,10 +173,7 @@ pub fn print_analysis_table(result: &crate::AnalysisResult, _detailed: bool) {
         let symbol_count = file.symbols.len();
             
         file_rows.push(FileRow {
-            path: file.path.file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string(),
+            path: file.path.to_string_lossy().to_string(),
             language: file.language.to_string(),
             lines: file.lines,
             size: format_size(file.size),

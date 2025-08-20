@@ -4,6 +4,7 @@
 //! and evolution metrics for software development analysis.
 
 use crate::Result;
+use crate::constants::common::RiskLevel;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -208,15 +209,7 @@ pub struct FileInsight {
     pub last_significant_change: Option<FileChange>,
 }
 
-/// Risk level assessment
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum RiskLevel {
-    Low,
-    Medium,
-    High,
-    Critical,
-}
+// RiskLevel is now imported from crate::constants::common
 
 /// Evolution-based recommendation
 #[derive(Debug, Clone)]
@@ -250,25 +243,11 @@ pub enum RecommendationType {
     KnowledgeSharing,
 }
 
-/// Priority levels
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum Priority {
-    Low,
-    Medium,
-    High,
-    Critical,
-}
+// Use common Priority from constants module
+pub use crate::constants::common::Priority;
 
-/// Effort estimation
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum EffortLevel {
-    Small,   // < 1 day
-    Medium,  // 1-3 days
-    Large,   // 1-2 weeks
-    XLarge,  // > 2 weeks
-}
+// Use common EffortLevel from constants module
+pub use crate::constants::common::EffortLevel;
 
 impl CodeEvolutionTracker {
     /// Create a new code evolution tracker
@@ -926,7 +905,7 @@ impl CodeEvolutionTracker {
                         description: format!("Consider refactoring hotspot files to reduce change frequency"),
                         priority: Priority::High,
                         affected_files: pattern.files.clone(),
-                        effort_estimate: EffortLevel::Large,
+                        effort_estimate: EffortLevel::Hard,
                         expected_impact: "Reduced maintenance burden and improved code stability".to_string(),
                     });
                 }
@@ -946,7 +925,7 @@ impl CodeEvolutionTracker {
                         description: format!("Address technical debt in frequently maintained files"),
                         priority: Priority::High,
                         affected_files: pattern.files.clone(),
-                        effort_estimate: EffortLevel::XLarge,
+                        effort_estimate: EffortLevel::VeryHard,
                         expected_impact: "Reduced bug frequency and maintenance costs".to_string(),
                     });
                 }
@@ -970,7 +949,7 @@ impl CodeEvolutionTracker {
                             description: format!("High-risk file {} needs attention", file_path.display()),
                             priority: Priority::High,
                             affected_files: vec![file_path.clone()],
-                            effort_estimate: EffortLevel::Large,
+                            effort_estimate: EffortLevel::Hard,
                             expected_impact: "Reduced risk and improved maintainability".to_string(),
                         });
                     }

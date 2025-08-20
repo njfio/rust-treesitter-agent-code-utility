@@ -63,9 +63,11 @@ pub struct CacheConfig {
 impl Cache {
     /// Create a new cache with the given configuration
     pub fn new(config: CacheConfig) -> Result<Self> {
+        let disk_cache_dir = config.disk_cache_dir.clone();
+
         let cache = Self {
             memory_cache: Arc::new(DashMap::new()),
-            disk_cache_dir: config.disk_cache_dir.clone(),
+            disk_cache_dir: config.disk_cache_dir,
             default_ttl: config.default_ttl,
             max_memory_entries: config.memory_max_entries,
             total_hits: Arc::new(AtomicU64::new(0)),
@@ -73,7 +75,7 @@ impl Cache {
         };
 
         // Create disk cache directory if needed
-        if let Some(disk_dir) = &config.disk_cache_dir {
+        if let Some(disk_dir) = &disk_cache_dir {
             if config.enable_disk {
                 std::fs::create_dir_all(disk_dir)?;
                 debug!("Disk cache directory created: {}", disk_dir.display());

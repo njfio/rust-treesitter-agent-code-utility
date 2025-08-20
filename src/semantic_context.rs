@@ -654,6 +654,7 @@ pub struct CodeIdiom {
 /// Semantic context analyzer
 pub struct SemanticContextAnalyzer {
     /// Language being analyzed
+    #[allow(dead_code)]
     language: Language,
     /// Symbol table analyzer
     symbol_analyzer: SymbolTableAnalyzer,

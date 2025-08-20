@@ -1,7 +1,6 @@
 use rust_tree_sitter::{
-    AutomatedReasoningEngine, ReasoningConfig, CodebaseAnalyzer, AnalysisResult
+    AutomatedReasoningEngine, ReasoningConfig, CodebaseAnalyzer
 };
-use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🧠 Automated Reasoning Engine Demo");

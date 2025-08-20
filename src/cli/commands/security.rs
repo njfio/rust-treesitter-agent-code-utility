@@ -32,7 +32,7 @@ pub fn execute(
     let pb = create_progress_bar("Running security scan...");
     
     // Configure analyzer
-    let config = create_analysis_config(1024, 20, depth, false, None, None)?;
+    let config = create_analysis_config(1024, 20, depth, false, None, None, None)?;
     let mut analyzer = CodebaseAnalyzer::with_config(config)
         .map_err(|e| CliError::Security(e.to_string()))?;
     

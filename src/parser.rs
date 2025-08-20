@@ -4,10 +4,12 @@ use crate::error::{Error, Result};
 use crate::languages::Language;
 use crate::tree::SyntaxTree;
 use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+// Removed unused imports
 use tree_sitter::{InputEdit, Point};
 
 /// Configuration options for parsing
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct ParseOptions {
     /// Maximum number of bytes to parse (None for unlimited)
     pub max_bytes: Option<usize>,
@@ -27,11 +29,15 @@ impl Default for ParseOptions {
     }
 }
 
-/// A thread-safe wrapper around tree-sitter parser
+/// A thread-safe wrapper around tree-sitter parser with caching
 pub struct Parser {
     inner: Arc<Mutex<tree_sitter::Parser>>,
     language: Language,
     options: ParseOptions,
+    /// Cache for parsed trees to avoid re-parsing identical content
+    cache: Arc<Mutex<HashMap<u64, SyntaxTree>>>,
+    /// Maximum cache size
+    max_cache_size: usize,
 }
 
 impl Parser {
@@ -47,6 +53,8 @@ impl Parser {
             inner: Arc::new(Mutex::new(parser)),
             language,
             options: ParseOptions::default(),
+            cache: Arc::new(Mutex::new(HashMap::new())),
+            max_cache_size: 100, // Default cache size
         })
     }
 
@@ -74,6 +82,20 @@ impl Parser {
 
     /// Parse source code into a syntax tree
     pub fn parse(&self, source: &str, old_tree: Option<&SyntaxTree>) -> Result<SyntaxTree> {
+        // Check cache first (only for new parses, not incremental)
+        if old_tree.is_none() {
+            let cache_key = self.calculate_cache_key(source);
+
+            // Try to get from cache
+            {
+                let cache = self.cache.lock()
+                    .map_err(|e| Error::internal_error("parser", format!("Failed to acquire cache lock: {}", e)))?;
+                if let Some(cached_tree) = cache.get(&cache_key) {
+                    return Ok(cached_tree.clone());
+                }
+            }
+        }
+
         let mut parser = self.inner.lock()
             .map_err(|e| Error::internal_error("parser", format!("Failed to acquire parser lock: {}", e)))?;
 
@@ -92,7 +114,43 @@ impl Parser {
         // Note: We allow trees with errors to be returned, as they can still be useful
         // The caller can check tree.has_error() if they need to know about parse errors
 
-        Ok(SyntaxTree::new(tree, source.to_string()))
+        let syntax_tree = SyntaxTree::new(tree, source.to_string());
+
+        // Cache the result (only for new parses, not incremental)
+        if old_tree.is_none() {
+            let cache_key = self.calculate_cache_key(source);
+            self.cache_tree(cache_key, syntax_tree.clone())?;
+        }
+
+        Ok(syntax_tree)
+    }
+
+    /// Calculate a hash key for caching
+    fn calculate_cache_key(&self, source: &str) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = DefaultHasher::new();
+        source.hash(&mut hasher);
+        self.language.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    /// Cache a parsed tree
+    fn cache_tree(&self, key: u64, tree: SyntaxTree) -> Result<()> {
+        let mut cache = self.cache.lock()
+            .map_err(|e| Error::internal_error("parser", format!("Failed to acquire cache lock: {}", e)))?;
+
+        // Evict oldest entries if cache is full
+        if cache.len() >= self.max_cache_size {
+            // Simple eviction: remove first entry
+            if let Some(first_key) = cache.keys().next().cloned() {
+                cache.remove(&first_key);
+            }
+        }
+
+        cache.insert(key, tree);
+        Ok(())
     }
 
     /// Parse source code from bytes
@@ -148,7 +206,29 @@ impl Parser {
 
     /// Clone this parser (creates a new parser with the same configuration)
     pub fn clone_parser(&self) -> Result<Self> {
-        Self::with_options(self.language, self.options.clone())
+        Self::with_options(self.language, self.options)
+    }
+
+    /// Clear the parser cache
+    pub fn clear_cache(&self) -> Result<()> {
+        let mut cache = self.cache.lock()
+            .map_err(|e| Error::internal_error("parser", format!("Failed to acquire cache lock: {}", e)))?;
+        cache.clear();
+        Ok(())
+    }
+
+    /// Get cache statistics
+    pub fn cache_stats(&self) -> Result<(usize, usize)> {
+        let cache = self.cache.lock()
+            .map_err(|e| Error::internal_error("parser", format!("Failed to acquire cache lock: {}", e)))?;
+        Ok((cache.len(), self.max_cache_size))
+    }
+
+    /// Create a parser with custom cache size
+    pub fn with_cache_size(language: Language, cache_size: usize) -> Result<Self> {
+        let mut parser = Self::new(language)?;
+        parser.max_cache_size = cache_size;
+        Ok(parser)
     }
 }
 
@@ -156,8 +236,10 @@ impl Clone for Parser {
     fn clone(&self) -> Self {
         // Note: This creates a new parser instance rather than sharing the inner parser
         // This is safer for concurrent use
-        Self::with_options(self.language, self.options.clone())
-            .expect("Failed to clone parser: parser creation should always succeed with valid language and options")
+        let mut parser = Self::with_options(self.language, self.options)
+            .expect("Failed to clone parser: parser creation should always succeed with valid language and options");
+        parser.max_cache_size = self.max_cache_size;
+        parser
     }
 }
 
@@ -216,7 +298,7 @@ mod tests {
             include_extras: false,
         };
         
-        let parser = Parser::with_options(Language::Rust, options.clone());
+        let parser = Parser::with_options(Language::Rust, options);
         assert!(parser.is_ok());
         
         let parser = parser.unwrap();

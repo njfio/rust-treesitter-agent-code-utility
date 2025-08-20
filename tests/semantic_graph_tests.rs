@@ -1,6 +1,6 @@
 use rust_tree_sitter::{
     SemanticGraphQuery, NodeType, RelationshipType, QueryConfig,
-    CodebaseAnalyzer, AnalysisResult, FileInfo
+    AnalysisResult, FileInfo
 };
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -206,7 +206,7 @@ fn test_semantic_graph_creation() -> Result<(), Box<dyn std::error::Error>> {
     
     let stats = graph.get_statistics();
     assert!(stats.total_nodes > 0, "Graph should have nodes");
-    assert!(stats.total_edges >= 0, "Graph should have edges");
+    // Graph should have edges (non-negative count)
     
     // Check that we have different node types
     assert!(stats.node_type_distribution.contains_key(&NodeType::Struct), "Should have struct nodes");
@@ -292,7 +292,7 @@ fn test_traverse_relationships() -> Result<(), Box<dyn std::error::Error>> {
         );
         
         assert!(traversal_result.metadata.nodes_examined > 0, "Should examine nodes during traversal");
-        assert!(traversal_result.metadata.execution_time_ms >= 0, "Should track execution time");
+        // Execution time should be tracked
     }
     
     Ok(())
@@ -317,7 +317,7 @@ fn test_find_similar() -> Result<(), Box<dyn std::error::Error>> {
         
         // Should find at least some similar nodes (the other get_name function)
         assert!(similar_result.metadata.nodes_examined > 0, "Should examine nodes for similarity");
-        assert!(similar_result.metadata.execution_time_ms >= 0, "Should track execution time");
+        // Execution time should be tracked
         
         // Verify that similar nodes are actually similar
         for node in &similar_result.nodes {
@@ -340,7 +340,7 @@ fn test_query_metadata() -> Result<(), Box<dyn std::error::Error>> {
     
     // Verify metadata is populated
     assert!(result.metadata.nodes_examined > 0, "Should track nodes examined");
-    assert!(result.metadata.execution_time_ms >= 0, "Should track execution time");
+    // Execution time should be tracked
     assert!(!result.metadata.truncated || result.nodes.len() == config.max_results, 
             "Truncated flag should be consistent with results");
     
@@ -474,7 +474,7 @@ fn test_graph_statistics() -> Result<(), Box<dyn std::error::Error>> {
     
     // Verify statistics make sense
     assert!(stats.total_nodes > 0, "Should have nodes");
-    assert!(stats.total_edges >= 0, "Should have non-negative edges");
+    // Edges should have non-negative count
     
     // Verify type distribution
     let total_types: usize = stats.node_type_distribution.values().sum();

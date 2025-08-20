@@ -121,37 +121,10 @@ pub struct RemediationAction {
     pub implementation_steps: Vec<String>,
 }
 
-/// Action priority levels
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ActionPriority {
-    Low,
-    Medium,
-    High,
-    Critical,
-}
+// Use common Priority from constants module
+pub use crate::constants::common::Priority as ActionPriority;
 
-impl PartialOrd for ActionPriority {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for ActionPriority {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        use ActionPriority::*;
-        match (self, other) {
-            (Low, Low) | (Medium, Medium) | (High, High) | (Critical, Critical) => std::cmp::Ordering::Equal,
-            (Low, _) => std::cmp::Ordering::Less,
-            (Medium, Low) => std::cmp::Ordering::Greater,
-            (Medium, _) => std::cmp::Ordering::Less,
-            (High, Low) | (High, Medium) => std::cmp::Ordering::Greater,
-            (High, Critical) => std::cmp::Ordering::Less,
-            (Critical, _) => std::cmp::Ordering::Greater,
-        }
-    }
-}
-
-impl Eq for ActionPriority {}
+// Trait implementations are provided by the common Priority type
 
 impl Default for EnhancedSecurityConfig {
     fn default() -> Self {

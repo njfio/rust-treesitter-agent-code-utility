@@ -430,9 +430,9 @@ mod tests {
             }
         "#;
 
-        let nested_count = PatternDetector::count_nested_loops(content, "rust");
+        let _nested_count = PatternDetector::count_nested_loops(content, "rust");
         // The pattern detector may not detect nested loops perfectly, so just check it doesn't crash
-        assert!(nested_count >= 0);
+        // Pattern detector should not crash
 
         let string_concat_content = r#"
             for item in items {

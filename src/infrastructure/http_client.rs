@@ -5,7 +5,8 @@ use reqwest::{Client, StatusCode};
 use serde::{Serialize, Deserialize};
 use std::time::Duration;
 use tracing::{debug, warn, error};
-use backoff::{ExponentialBackoff, backoff::Backoff};
+// Replaced external Backoff usage with a small local exponential backoff
+use rand::{thread_rng, Rng};
 use anyhow::{Result, anyhow};
 
 /// HTTP client with built-in retry, timeout, and rate limiting
@@ -98,12 +99,9 @@ impl HttpClient {
         let timeout = config.timeout.unwrap_or(self.default_timeout);
         let max_retries = config.retries.unwrap_or(self.max_retries);
 
-        let mut backoff = ExponentialBackoff {
-            initial_interval: Duration::from_millis(100),
-            max_interval: Duration::from_secs(5),
-            max_elapsed_time: Some(Duration::from_secs(60)),
-            ..Default::default()
-        };
+        // Local exponential backoff with jitter: starts at 100ms, caps at 5s
+        let backoff_min = Duration::from_millis(100);
+        let backoff_max = Duration::from_secs(5);
 
         for attempt in 0..=max_retries {
             let start_time = std::time::Instant::now();
@@ -115,15 +113,21 @@ impl HttpClient {
                     return Ok(response);
                 }
                 Err(e) if attempt < max_retries && self.should_retry(&e) => {
-                    if let Some(delay) = backoff.next_backoff() {
-                        warn!("HTTP {} {} failed (attempt {}), retrying in {:?}: {}", method, url, attempt + 1, delay, e);
-                        tokio::time::sleep(delay).await;
-                    } else {
-                        return Err(anyhow!(
-                            "Max backoff time exceeded after {} retries for {} {}: {}",
-                            attempt, method, url, e
-                        ));
-                    }
+                    // Compute exponential delay with jitter
+                    let shift = attempt.min(20) as u32; // cap at 2^20
+                    let factor = 1u32.checked_shl(shift).unwrap_or(u32::MAX);
+                    let min_nanos = backoff_min.as_nanos();
+                    let mut delay_nanos = min_nanos.saturating_mul(factor as u128);
+                    let max_nanos = backoff_max.as_nanos();
+                    if delay_nanos > max_nanos { delay_nanos = max_nanos; }
+                    // jitter in [0.5, 1.5)
+                    let mut rng = thread_rng();
+                    let jitter_factor: f64 = rng.gen_range(0.5..1.5);
+                    let jittered = (delay_nanos as f64 * jitter_factor) as u128;
+                    let jittered = if jittered > max_nanos { max_nanos } else { jittered };
+                    let delay = Duration::from_nanos(jittered as u64);
+                    warn!("HTTP {} {} failed (attempt {}), retrying in {:?}: {}", method, url, attempt + 1, delay, e);
+                    tokio::time::sleep(delay).await;
                 }
                 Err(e) => {
                     error!("HTTP {} {} failed permanently (attempt {}): {}", method, url, attempt + 1, e);

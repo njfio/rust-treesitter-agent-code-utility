@@ -7,16 +7,113 @@
 //! - Concurrency and parallelization opportunities
 //! - Performance bottleneck identification
 
-use crate::{AnalysisResult, FileInfo, Result};
+use crate::{AnalysisResult, FileInfo, Result, MemoryTracker, MemoryTrackingResult};
+use crate::constants::common::RiskLevel;
 use crate::analysis_utils::{
-    LanguageParser, ComplexityCalculator, PatternDetector
+    LanguageParser, ComplexityCalculator
 };
+use crate::analysis_common::{PatternAnalyzer};
 use crate::constants::performance::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[cfg(feature = "serde")]
 use serde::{Serialize, Deserialize};
+
+/// Information about loop nesting structure for semantic analysis
+#[derive(Debug, Clone)]
+struct LoopNestingInfo {
+    depth: usize,
+    #[allow(dead_code)]
+    iteration_variables: Vec<String>,
+    data_dependencies: Vec<DataDependency>,
+    #[allow(dead_code)]
+    loop_types: Vec<LoopType>,
+    access_patterns: Vec<AccessPattern>,
+}
+
+/// Data dependency information for complexity analysis
+#[derive(Debug, Clone)]
+struct DataDependency {
+    #[allow(dead_code)]
+    variable: String,
+    dependency_type: DependencyType,
+    #[allow(dead_code)]
+    scope: String,
+}
+
+/// Type of data dependency
+#[derive(Debug, Clone)]
+enum DependencyType {
+    ReadOnly,
+    WriteOnly,
+    #[allow(dead_code)]
+    ReadWrite,
+    IndexBased,
+    SizeDependent,
+}
+
+/// Type of loop construct
+#[derive(Debug, Clone)]
+enum LoopType {
+    ForLoop,
+    WhileLoop,
+    Iterator,
+    Recursive,
+}
+
+/// Memory access pattern
+#[derive(Debug, Clone)]
+struct AccessPattern {
+    #[allow(dead_code)]
+    pattern_type: AccessPatternType,
+    complexity: AccessComplexity,
+    #[allow(dead_code)]
+    description: String,
+}
+
+/// Type of access pattern
+#[derive(Debug, Clone)]
+enum AccessPatternType {
+    Sequential,
+    Random,
+    Nested,
+    Strided,
+    #[allow(dead_code)]
+    Sparse,
+}
+
+/// Complexity of access pattern
+#[derive(Debug, Clone)]
+enum AccessComplexity {
+    Constant,     // O(1)
+    Linear,       // O(n)
+    Quadratic,    // O(n²)
+    #[allow(dead_code)]
+    Cubic,        // O(n³)
+    #[allow(dead_code)]
+    Exponential,  // O(2^n)
+    #[allow(dead_code)]
+    Unknown,
+}
+
+/// Semantic analysis result for loops
+#[derive(Debug, Clone)]
+struct SemanticLoopAnalysis {
+    description: String,
+    pattern_type: String,
+    function_name: Option<String>,
+    confidence: f64,
+    optimization_suggestions: Vec<String>,
+}
+
+/// Recursion analysis result
+#[derive(Debug, Clone)]
+struct RecursionAnalysis {
+    complexity_risk: f64,
+    pattern_type: String,
+    optimization_suggestion: String,
+}
 
 /// Performance analyzer for detecting hotspots and optimization opportunities
 #[derive(Debug, Clone)]
@@ -66,6 +163,8 @@ pub struct PerformanceAnalysisResult {
     pub complexity_analysis: ComplexityAnalysis,
     /// Memory usage analysis
     pub memory_analysis: MemoryAnalysis,
+    /// Advanced memory allocation tracking
+    pub memory_tracking: Option<MemoryTrackingResult>,
     /// Concurrency analysis
     pub concurrency_analysis: ConcurrencyAnalysis,
     /// Performance recommendations
@@ -462,14 +561,7 @@ pub struct MemoryLeakRisk {
     pub mitigation: Vec<String>,
 }
 
-/// Risk levels
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum RiskLevel {
-    High,
-    Medium,
-    Low,
-}
+// RiskLevel is now imported from crate::constants::common
 
 /// Inefficient data structure usage
 #[derive(Debug, Clone)]
@@ -693,7 +785,18 @@ impl PerformanceAnalyzer {
         } else {
             MemoryAnalysis::default()
         };
-        
+
+        // Advanced memory allocation tracking
+        let memory_tracking = if self.config.memory_analysis {
+            let mut memory_tracker = MemoryTracker::new();
+            match memory_tracker.analyze_memory_allocations(analysis_result) {
+                Ok(tracking_result) => Some(tracking_result),
+                Err(_) => None, // Graceful fallback if memory tracking fails
+            }
+        } else {
+            None
+        };
+
         let concurrency_analysis = if self.config.concurrency_analysis {
             self.analyze_concurrency(analysis_result)?
         } else {
@@ -715,6 +818,7 @@ impl PerformanceAnalyzer {
             file_metrics,
             complexity_analysis,
             memory_analysis,
+            memory_tracking,
             concurrency_analysis,
             recommendations,
         })
@@ -739,7 +843,7 @@ impl PerformanceAnalyzer {
         let cyclomatic_complexity = self.calculate_file_complexity(file);
 
         // Count various performance-related patterns
-        let nested_loops = self.count_nested_loops(file);
+        let nested_loops = self.count_nested_loops_in_file(file);
         let recursive_functions = self.count_recursive_functions(file);
         let memory_allocations = self.count_memory_allocations(file);
         let io_operations = self.count_io_operations(file);
@@ -936,9 +1040,9 @@ impl PerformanceAnalyzer {
         Ok(hotspots)
     }
 
-    /// Detect nested loop hotspots using AST analysis
-    fn detect_nested_loop_hotspots(&self, tree: &crate::SyntaxTree, _content: &str, file: &FileInfo) -> Result<Vec<PerformanceHotspot>> {
-        let mut hotspots = Vec::new();
+    /// Detect nested loop hotspots using semantic AST analysis (optimized)
+    fn detect_nested_loop_hotspots(&self, tree: &crate::SyntaxTree, content: &str, file: &FileInfo) -> Result<Vec<PerformanceHotspot>> {
+        let mut hotspots = Vec::with_capacity(8); // Pre-allocate for common case
 
         let loop_patterns = match file.language.to_lowercase().as_str() {
             "rust" => vec!["for_expression", "while_expression", "while_let_expression", "loop_expression"],
@@ -948,6 +1052,11 @@ impl PerformanceAnalyzer {
             "go" => vec!["for_statement"],
             _ => vec!["for_statement", "while_statement"],
         };
+
+        // Enhanced semantic analysis for algorithmic complexity detection
+        hotspots.extend(self.detect_semantic_complexity_patterns(tree, content, file)?);
+
+        // Original nested loop detection (enhanced)
 
         for pattern in &loop_patterns {
             let loops = tree.find_nodes_by_kind(pattern);
@@ -996,9 +1105,810 @@ impl PerformanceAnalyzer {
         Ok(hotspots)
     }
 
-    /// Detect memory allocation hotspots using AST analysis
-    fn detect_memory_hotspots(&self, tree: &crate::SyntaxTree, _content: &str, file: &FileInfo) -> Result<Vec<PerformanceHotspot>> {
+    /// Detect semantic complexity patterns using advanced AST analysis
+    /// Identifies O(n²), O(n³), and other algorithmic complexity patterns with high accuracy
+    fn detect_semantic_complexity_patterns(&self, tree: &crate::SyntaxTree, content: &str, file: &FileInfo) -> Result<Vec<PerformanceHotspot>> {
         let mut hotspots = Vec::new();
+        let root_node = tree.inner().root_node();
+
+        // Analyze nested iteration patterns
+        let nested_patterns = self.analyze_nested_iteration_patterns(&root_node, content, file)?;
+        hotspots.extend(nested_patterns);
+
+        // Analyze recursive complexity patterns
+        let recursive_patterns = self.analyze_recursive_complexity_patterns(&root_node, content, file)?;
+        hotspots.extend(recursive_patterns);
+
+        // Analyze data structure access patterns
+        let access_patterns = self.analyze_data_structure_access_patterns(&root_node, content, file)?;
+        hotspots.extend(access_patterns);
+
+        // Analyze algorithmic anti-patterns
+        let antipatterns = self.analyze_algorithmic_antipatterns(&root_node, content, file)?;
+        hotspots.extend(antipatterns);
+
+        Ok(hotspots)
+    }
+
+    /// Analyze nested iteration patterns for O(n²) and O(n³) complexity
+    fn analyze_nested_iteration_patterns(&self, node: &tree_sitter::Node, content: &str, file: &FileInfo) -> Result<Vec<PerformanceHotspot>> {
+        let mut hotspots = Vec::new();
+        let _cursor = node.walk();
+
+        // Find all loop constructs and analyze their nesting
+        let loop_nodes = self.find_loop_nodes(node, file);
+
+        for loop_node in &loop_nodes {
+            let nesting_info = self.analyze_loop_nesting(&loop_node, content, file)?;
+
+            if nesting_info.depth >= 2 {
+                let complexity_order = nesting_info.depth + 1;
+                let semantic_analysis = self.perform_semantic_loop_analysis(&nesting_info, content, file)?;
+
+                let severity = match complexity_order {
+                    3 => PerformanceSeverity::High,    // O(n³)
+                    2 => PerformanceSeverity::Medium,  // O(n²)
+                    _ => PerformanceSeverity::Low,
+                };
+
+                let confidence = self.calculate_complexity_confidence(&semantic_analysis);
+
+                hotspots.push(PerformanceHotspot {
+                    id: format!("NESTED_LOOP_O_N{}", complexity_order),
+                    title: format!("O(n^{}) Algorithmic Complexity Detected", complexity_order),
+                    description: format!(
+                        "Nested loop pattern with {} levels detected. {}. Confidence: {:.1}%",
+                        nesting_info.depth,
+                        semantic_analysis.description,
+                        confidence * 100.0
+                    ),
+                    category: HotspotCategory::AlgorithmicComplexity,
+                    severity,
+                    impact: PerformanceImpact {
+                        cpu_impact: (complexity_order * 30).min(100) as u8,
+                        memory_impact: (complexity_order * 15).min(100) as u8,
+                        io_impact: 0,
+                        network_impact: 0,
+                        overall_impact: (complexity_order * 25).min(100) as u8,
+                    },
+                    location: HotspotLocation {
+                        file: file.path.display().to_string(),
+                        function: semantic_analysis.function_name.clone(),
+                        start_line: loop_node.start_position().row + 1,
+                        end_line: loop_node.end_position().row + 1,
+                        scope: "nested_loops".to_string(),
+                    },
+                    code_snippet: self.extract_code_snippet(content, loop_node),
+                    optimization: self.generate_complexity_optimization(&semantic_analysis, complexity_order),
+                    expected_improvement: ExpectedImprovement {
+                        performance_gain: (complexity_order as f64 * 25.0).min(90.0),
+                        memory_reduction: (complexity_order as f64 * 10.0).min(50.0),
+                        time_reduction: (complexity_order as f64 * 30.0).min(95.0),
+                        confidence: if confidence > 0.8 { ConfidenceLevel::High } else { ConfidenceLevel::Medium },
+                    },
+                    difficulty: match complexity_order {
+                        3.. => OptimizationDifficulty::VeryHard,
+                        2 => OptimizationDifficulty::Hard,
+                        _ => OptimizationDifficulty::Medium,
+                    },
+                    patterns: vec![
+                        format!("O(n^{}) Complexity", complexity_order),
+                        "Nested Iteration".to_string(),
+                        semantic_analysis.pattern_type,
+                    ],
+                });
+            }
+        }
+
+        Ok(hotspots)
+    }
+
+    /// Find all loop nodes in the AST
+    fn find_loop_nodes<'a>(&self, node: &tree_sitter::Node<'a>, file: &FileInfo) -> Vec<tree_sitter::Node<'a>> {
+        let mut loop_nodes = Vec::new();
+        let _cursor = node.walk();
+
+        let loop_patterns = match file.language.to_lowercase().as_str() {
+            "rust" => vec!["for_expression", "while_expression", "while_let_expression", "loop_expression"],
+            "python" => vec!["for_statement", "while_statement"],
+            "javascript" | "typescript" => vec!["for_statement", "for_in_statement", "for_of_statement", "while_statement", "do_statement"],
+            "c" | "cpp" | "c++" => vec!["for_statement", "while_statement", "do_statement"],
+            "go" => vec!["for_statement"],
+            _ => vec!["for_statement", "while_statement"],
+        };
+
+        self.traverse_for_loops(node, &loop_patterns, &mut loop_nodes);
+        loop_nodes
+    }
+
+    /// Recursively traverse AST to find loop nodes
+    fn traverse_for_loops<'a>(&self, node: &tree_sitter::Node<'a>, patterns: &[&str], loop_nodes: &mut Vec<tree_sitter::Node<'a>>) {
+        if patterns.contains(&node.kind()) {
+            loop_nodes.push(*node);
+        }
+
+        for i in 0..node.child_count() {
+            if let Some(child) = node.child(i) {
+                self.traverse_for_loops(&child, patterns, loop_nodes);
+            }
+        }
+    }
+
+    /// Analyze the nesting structure of a loop
+    fn analyze_loop_nesting(&self, loop_node: &tree_sitter::Node, content: &str, file: &FileInfo) -> Result<LoopNestingInfo> {
+        let mut depth = 0;
+        let current_node = *loop_node;
+        let iteration_variables;
+        let data_dependencies;
+
+        // Count nested loops within this loop
+        depth += self.count_nested_loops(&current_node, file);
+
+        // Extract iteration variables and analyze dependencies
+        iteration_variables = self.extract_iteration_variables(&current_node, content, file)?;
+        data_dependencies = self.analyze_data_dependencies(&current_node, &iteration_variables, content, file)?;
+
+        Ok(LoopNestingInfo {
+            depth,
+            iteration_variables,
+            data_dependencies,
+            loop_types: self.classify_loop_types(&current_node, file),
+            access_patterns: self.analyze_access_patterns(&current_node, content, file)?,
+        })
+    }
+
+    /// Count the number of nested loops within a given loop
+    fn count_nested_loops(&self, node: &tree_sitter::Node, file: &FileInfo) -> usize {
+        let mut count = 0;
+        let loop_patterns = match file.language.to_lowercase().as_str() {
+            "rust" => vec!["for_expression", "while_expression", "while_let_expression", "loop_expression"],
+            "python" => vec!["for_statement", "while_statement"],
+            "javascript" | "typescript" => vec!["for_statement", "for_in_statement", "for_of_statement", "while_statement", "do_statement"],
+            "c" | "cpp" | "c++" => vec!["for_statement", "while_statement", "do_statement"],
+            "go" => vec!["for_statement"],
+            _ => vec!["for_statement", "while_statement"],
+        };
+
+        for i in 0..node.child_count() {
+            if let Some(child) = node.child(i) {
+                if loop_patterns.contains(&child.kind()) {
+                    count += 1 + self.count_nested_loops(&child, file);
+                } else {
+                    count += self.count_nested_loops(&child, file);
+                }
+            }
+        }
+
+        count
+    }
+
+    /// Extract iteration variables from a loop node
+    fn extract_iteration_variables(&self, node: &tree_sitter::Node, content: &str, file: &FileInfo) -> Result<Vec<String>> {
+        let mut variables = Vec::new();
+
+        // Extract variables based on language-specific patterns
+        match file.language.to_lowercase().as_str() {
+            "rust" => {
+                // For Rust: for var in iterator, while let Some(var) = ..., etc.
+                if let Some(text) = node.utf8_text(content.as_bytes()).ok() {
+                    if text.contains("for ") {
+                        // Extract variable from "for var in ..."
+                        if let Some(start) = text.find("for ") {
+                            if let Some(end) = text[start..].find(" in ") {
+                                let var_part = &text[start + 4..start + end];
+                                variables.push(var_part.trim().to_string());
+                            }
+                        }
+                    }
+                }
+            },
+            "python" => {
+                // For Python: for var in ..., while condition:
+                if let Some(text) = node.utf8_text(content.as_bytes()).ok() {
+                    if text.contains("for ") {
+                        if let Some(start) = text.find("for ") {
+                            if let Some(end) = text[start..].find(" in ") {
+                                let var_part = &text[start + 4..start + end];
+                                variables.push(var_part.trim().to_string());
+                            }
+                        }
+                    }
+                }
+            },
+            _ => {
+                // Generic extraction for other languages
+                if let Some(text) = node.utf8_text(content.as_bytes()).ok() {
+                    // Simple heuristic: look for common iteration variable names
+                    let common_vars = ["i", "j", "k", "index", "idx", "n", "m"];
+                    for var in common_vars {
+                        if text.contains(var) {
+                            variables.push(var.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(variables)
+    }
+
+    /// Analyze data dependencies between iteration variables
+    fn analyze_data_dependencies(&self, node: &tree_sitter::Node, iteration_vars: &[String], content: &str, _file: &FileInfo) -> Result<Vec<DataDependency>> {
+        let mut dependencies = Vec::new();
+
+        if let Some(text) = node.utf8_text(content.as_bytes()).ok() {
+            for var in iteration_vars {
+                // Check for array/collection access patterns
+                if text.contains(&format!("[{}]", var)) || text.contains(&format!("[{} ", var)) {
+                    dependencies.push(DataDependency {
+                        variable: var.clone(),
+                        dependency_type: DependencyType::IndexBased,
+                        scope: "loop_body".to_string(),
+                    });
+                }
+
+                // Check for size-dependent operations
+                if text.contains(&format!("{}.len()", var)) || text.contains(&format!("len({})", var)) {
+                    dependencies.push(DataDependency {
+                        variable: var.clone(),
+                        dependency_type: DependencyType::SizeDependent,
+                        scope: "loop_condition".to_string(),
+                    });
+                }
+
+                // Check for read/write patterns
+                if text.contains(&format!("{} =", var)) {
+                    dependencies.push(DataDependency {
+                        variable: var.clone(),
+                        dependency_type: DependencyType::WriteOnly,
+                        scope: "loop_body".to_string(),
+                    });
+                } else if text.contains(var) {
+                    dependencies.push(DataDependency {
+                        variable: var.clone(),
+                        dependency_type: DependencyType::ReadOnly,
+                        scope: "loop_body".to_string(),
+                    });
+                }
+            }
+        }
+
+        Ok(dependencies)
+    }
+
+    /// Classify the types of loops found
+    fn classify_loop_types(&self, node: &tree_sitter::Node, _file: &FileInfo) -> Vec<LoopType> {
+        let mut types = Vec::new();
+
+        match node.kind() {
+            "for_expression" | "for_statement" | "for_in_statement" | "for_of_statement" => {
+                types.push(LoopType::ForLoop);
+            },
+            "while_expression" | "while_statement" | "while_let_expression" => {
+                types.push(LoopType::WhileLoop);
+            },
+            "loop_expression" => {
+                types.push(LoopType::Iterator);
+            },
+            _ => {
+                // Check if it's a recursive pattern
+                if let Some(parent) = node.parent() {
+                    if parent.kind().contains("function") {
+                        types.push(LoopType::Recursive);
+                    }
+                }
+            }
+        }
+
+        types
+    }
+
+    /// Analyze memory access patterns within loops
+    fn analyze_access_patterns(&self, node: &tree_sitter::Node, content: &str, _file: &FileInfo) -> Result<Vec<AccessPattern>> {
+        let mut patterns = Vec::new();
+
+        if let Some(text) = node.utf8_text(content.as_bytes()).ok() {
+            // Detect sequential access patterns
+            if text.contains("[i]") || text.contains("[index]") {
+                patterns.push(AccessPattern {
+                    pattern_type: AccessPatternType::Sequential,
+                    complexity: AccessComplexity::Linear,
+                    description: "Sequential array access detected".to_string(),
+                });
+            }
+
+            // Detect nested access patterns (O(n²))
+            if text.contains("[i][j]") || text.contains("[i][k]") {
+                patterns.push(AccessPattern {
+                    pattern_type: AccessPatternType::Nested,
+                    complexity: AccessComplexity::Quadratic,
+                    description: "Nested array access pattern detected".to_string(),
+                });
+            }
+
+            // Detect random access patterns
+            if text.contains("random") || text.contains("hash") {
+                patterns.push(AccessPattern {
+                    pattern_type: AccessPatternType::Random,
+                    complexity: AccessComplexity::Constant,
+                    description: "Random access pattern detected".to_string(),
+                });
+            }
+
+            // Detect strided access patterns
+            if text.contains("* 2") || text.contains("+ stride") {
+                patterns.push(AccessPattern {
+                    pattern_type: AccessPatternType::Strided,
+                    complexity: AccessComplexity::Linear,
+                    description: "Strided access pattern detected".to_string(),
+                });
+            }
+        }
+
+        Ok(patterns)
+    }
+
+    /// Perform semantic analysis of loop structure
+    fn perform_semantic_loop_analysis(&self, nesting_info: &LoopNestingInfo, content: &str, file: &FileInfo) -> Result<SemanticLoopAnalysis> {
+        let mut confidence: f64 = 0.5; // Base confidence
+        let description;
+        let pattern_type;
+        let mut optimization_suggestions = Vec::new();
+
+        // Analyze nesting depth
+        match nesting_info.depth {
+            2 => {
+                description = "Quadratic complexity pattern detected with nested loops".to_string();
+                pattern_type = "O(n²) Nested Loops".to_string();
+                confidence += 0.3;
+                optimization_suggestions.push("Consider using hash maps or sets for lookups".to_string());
+                optimization_suggestions.push("Evaluate if inner loop can be eliminated".to_string());
+            },
+            3 => {
+                description = "Cubic complexity pattern detected with triple-nested loops".to_string();
+                pattern_type = "O(n³) Triple Nested Loops".to_string();
+                confidence += 0.4;
+                optimization_suggestions.push("Critical: Consider algorithmic redesign".to_string());
+                optimization_suggestions.push("Look for dynamic programming opportunities".to_string());
+                optimization_suggestions.push("Consider matrix operations or vectorization".to_string());
+            },
+            depth if depth > 3 => {
+                description = format!("Exponential complexity pattern detected with {}-level nesting", depth);
+                pattern_type = format!("O(n^{}) Highly Nested Loops", depth);
+                confidence += 0.5;
+                optimization_suggestions.push("URGENT: Algorithmic redesign required".to_string());
+                optimization_suggestions.push("Consider divide-and-conquer approaches".to_string());
+            },
+            _ => {
+                description = "Linear complexity pattern detected".to_string();
+                pattern_type = "O(n) Single Loop".to_string();
+            }
+        }
+
+        // Analyze access patterns for additional confidence
+        for pattern in &nesting_info.access_patterns {
+            match pattern.complexity {
+                AccessComplexity::Quadratic => confidence += 0.2,
+                AccessComplexity::Cubic => confidence += 0.3,
+                AccessComplexity::Linear => confidence += 0.1,
+                _ => {}
+            }
+        }
+
+        // Analyze data dependencies
+        let has_index_dependencies = nesting_info.data_dependencies.iter()
+            .any(|dep| matches!(dep.dependency_type, DependencyType::IndexBased));
+
+        if has_index_dependencies {
+            confidence += 0.1;
+            optimization_suggestions.push("Index-based dependencies detected - consider iterator patterns".to_string());
+        }
+
+        // Extract function name if possible
+        let function_name = self.extract_function_name_from_content(content, file);
+
+        confidence = confidence.min(1.0); // Cap at 100%
+
+        Ok(SemanticLoopAnalysis {
+            description,
+            pattern_type,
+            function_name,
+            confidence,
+            optimization_suggestions,
+        })
+    }
+
+    /// Calculate confidence level for complexity detection
+    fn calculate_complexity_confidence(&self, analysis: &SemanticLoopAnalysis) -> f64 {
+        analysis.confidence
+    }
+
+    /// Generate optimization suggestions based on complexity analysis
+    fn generate_complexity_optimization(&self, analysis: &SemanticLoopAnalysis, complexity_order: usize) -> String {
+        let base_suggestions = &analysis.optimization_suggestions;
+
+        let mut optimization = match complexity_order {
+            2 => "Consider algorithmic improvements: use hash maps for O(1) lookups, eliminate inner loop if possible, or use more efficient data structures.".to_string(),
+            3 => "CRITICAL: Redesign algorithm to avoid cubic complexity. Consider dynamic programming, memoization, or divide-and-conquer approaches.".to_string(),
+            _ => "URGENT: Exponential complexity detected. Complete algorithmic redesign required.".to_string(),
+        };
+
+        if !base_suggestions.is_empty() {
+            optimization.push_str(" Specific suggestions: ");
+            optimization.push_str(&base_suggestions.join(", "));
+        }
+
+        optimization
+    }
+
+    /// Extract function name from content context
+    fn extract_function_name_from_content(&self, content: &str, file: &FileInfo) -> Option<String> {
+        // Simple heuristic to find function name
+        let lines: Vec<&str> = content.lines().collect();
+
+        for line in lines.iter().rev().take(10) { // Look at previous 10 lines
+            match file.language.to_lowercase().as_str() {
+                "rust" => {
+                    if line.contains("fn ") {
+                        if let Some(start) = line.find("fn ") {
+                            if let Some(end) = line[start..].find('(') {
+                                let func_name = &line[start + 3..start + end];
+                                return Some(func_name.trim().to_string());
+                            }
+                        }
+                    }
+                },
+                "python" => {
+                    if line.contains("def ") {
+                        if let Some(start) = line.find("def ") {
+                            if let Some(end) = line[start..].find('(') {
+                                let func_name = &line[start + 4..start + end];
+                                return Some(func_name.trim().to_string());
+                            }
+                        }
+                    }
+                },
+                "javascript" | "typescript" => {
+                    if line.contains("function ") {
+                        if let Some(start) = line.find("function ") {
+                            if let Some(end) = line[start..].find('(') {
+                                let func_name = &line[start + 9..start + end];
+                                return Some(func_name.trim().to_string());
+                            }
+                        }
+                    }
+                },
+                _ => {}
+            }
+        }
+
+        None
+    }
+
+    /// Extract code snippet from a tree-sitter node
+    fn extract_code_snippet(&self, content: &str, node: &tree_sitter::Node) -> String {
+        node.utf8_text(content.as_bytes())
+            .unwrap_or("Code snippet unavailable")
+            .lines()
+            .take(10) // Limit to 10 lines
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Analyze recursive complexity patterns
+    fn analyze_recursive_complexity_patterns(&self, node: &tree_sitter::Node, content: &str, file: &FileInfo) -> Result<Vec<PerformanceHotspot>> {
+        let mut hotspots = Vec::new();
+
+        // Find function definitions that call themselves
+        let function_nodes = self.find_function_nodes(node, file);
+
+        for func_node in function_nodes {
+            if let Some(func_name) = self.extract_function_name(&func_node, content, file) {
+                if self.is_recursive_function(&func_node, &func_name, content) {
+                    let recursion_analysis = self.analyze_recursion_complexity(&func_node, &func_name, content, file)?;
+
+                    if recursion_analysis.complexity_risk > 0.7 {
+                        hotspots.push(PerformanceHotspot {
+                            id: format!("RECURSIVE_COMPLEXITY_{}", func_name),
+                            title: format!("High Complexity Recursion in {}", func_name),
+                            description: format!(
+                                "Recursive function with potential exponential complexity. Risk level: {:.1}%",
+                                recursion_analysis.complexity_risk * 100.0
+                            ),
+                            category: HotspotCategory::AlgorithmicComplexity,
+                            severity: if recursion_analysis.complexity_risk > 0.9 {
+                                PerformanceSeverity::Critical
+                            } else {
+                                PerformanceSeverity::High
+                            },
+                            impact: PerformanceImpact {
+                                cpu_impact: 90,
+                                memory_impact: 70,
+                                io_impact: 0,
+                                network_impact: 0,
+                                overall_impact: 85,
+                            },
+                            location: HotspotLocation {
+                                file: file.path.display().to_string(),
+                                function: Some(func_name.clone()),
+                                start_line: func_node.start_position().row + 1,
+                                end_line: func_node.end_position().row + 1,
+                                scope: "function".to_string(),
+                            },
+                            code_snippet: self.extract_code_snippet(content, &func_node),
+                            optimization: recursion_analysis.optimization_suggestion,
+                            expected_improvement: ExpectedImprovement {
+                                performance_gain: 80.0,
+                                memory_reduction: 60.0,
+                                time_reduction: 85.0,
+                                confidence: ConfidenceLevel::High,
+                            },
+                            difficulty: OptimizationDifficulty::Hard,
+                            patterns: vec![
+                                "Recursive Function".to_string(),
+                                recursion_analysis.pattern_type,
+                                "Exponential Complexity Risk".to_string(),
+                            ],
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(hotspots)
+    }
+
+    /// Analyze data structure access patterns for complexity issues
+    fn analyze_data_structure_access_patterns(&self, node: &tree_sitter::Node, content: &str, file: &FileInfo) -> Result<Vec<PerformanceHotspot>> {
+        let mut hotspots = Vec::new();
+
+        // Analyze for inefficient data structure usage patterns
+        if let Some(text) = node.utf8_text(content.as_bytes()).ok() {
+            // Detect O(n) operations in loops (leading to O(n²))
+            if self.contains_linear_operations_in_loops(text, file) {
+                hotspots.push(PerformanceHotspot {
+                    id: "LINEAR_OPS_IN_LOOP".to_string(),
+                    title: "Linear Operations in Loop (O(n²) Pattern)".to_string(),
+                    description: "Linear time operations (like vector search) inside loops create quadratic complexity".to_string(),
+                    category: HotspotCategory::AlgorithmicComplexity,
+                    severity: PerformanceSeverity::High,
+                    impact: PerformanceImpact {
+                        cpu_impact: 80,
+                        memory_impact: 20,
+                        io_impact: 0,
+                        network_impact: 0,
+                        overall_impact: 70,
+                    },
+                    location: HotspotLocation {
+                        file: file.path.display().to_string(),
+                        function: None,
+                        start_line: node.start_position().row + 1,
+                        end_line: node.end_position().row + 1,
+                        scope: "data_structure_access".to_string(),
+                    },
+                    code_snippet: text.lines().take(5).collect::<Vec<_>>().join("\n"),
+                    optimization: "Replace linear searches with hash map lookups, or use more efficient data structures".to_string(),
+                    expected_improvement: ExpectedImprovement {
+                        performance_gain: 75.0,
+                        memory_reduction: 10.0,
+                        time_reduction: 80.0,
+                        confidence: ConfidenceLevel::High,
+                    },
+                    difficulty: OptimizationDifficulty::Medium,
+                    patterns: vec![
+                        "O(n²) Data Access".to_string(),
+                        "Inefficient Data Structure".to_string(),
+                    ],
+                });
+            }
+        }
+
+        Ok(hotspots)
+    }
+
+    /// Analyze algorithmic anti-patterns
+    fn analyze_algorithmic_antipatterns(&self, node: &tree_sitter::Node, content: &str, file: &FileInfo) -> Result<Vec<PerformanceHotspot>> {
+        let mut hotspots = Vec::new();
+
+        if let Some(text) = node.utf8_text(content.as_bytes()).ok() {
+            // Detect bubble sort or similar O(n²) sorting
+            if self.contains_inefficient_sorting(text, file) {
+                hotspots.push(PerformanceHotspot {
+                    id: "INEFFICIENT_SORTING".to_string(),
+                    title: "Inefficient Sorting Algorithm Detected".to_string(),
+                    description: "O(n²) sorting algorithm detected - consider using built-in efficient sorting".to_string(),
+                    category: HotspotCategory::AlgorithmicComplexity,
+                    severity: PerformanceSeverity::Medium,
+                    impact: PerformanceImpact {
+                        cpu_impact: 70,
+                        memory_impact: 10,
+                        io_impact: 0,
+                        network_impact: 0,
+                        overall_impact: 60,
+                    },
+                    location: HotspotLocation {
+                        file: file.path.display().to_string(),
+                        function: None,
+                        start_line: node.start_position().row + 1,
+                        end_line: node.end_position().row + 1,
+                        scope: "sorting_algorithm".to_string(),
+                    },
+                    code_snippet: text.lines().take(8).collect::<Vec<_>>().join("\n"),
+                    optimization: "Use built-in sorting functions (O(n log n)) instead of manual sorting loops".to_string(),
+                    expected_improvement: ExpectedImprovement {
+                        performance_gain: 60.0,
+                        memory_reduction: 5.0,
+                        time_reduction: 70.0,
+                        confidence: ConfidenceLevel::High,
+                    },
+                    difficulty: OptimizationDifficulty::Easy,
+                    patterns: vec![
+                        "O(n²) Sorting".to_string(),
+                        "Algorithmic Anti-pattern".to_string(),
+                    ],
+                });
+            }
+        }
+
+        Ok(hotspots)
+    }
+
+    /// Find function nodes in the AST
+    fn find_function_nodes<'a>(&self, node: &tree_sitter::Node<'a>, file: &FileInfo) -> Vec<tree_sitter::Node<'a>> {
+        let mut function_nodes = Vec::new();
+
+        let function_patterns = match file.language.to_lowercase().as_str() {
+            "rust" => vec!["function_item"],
+            "python" => vec!["function_definition"],
+            "javascript" | "typescript" => vec!["function_declaration", "function_expression", "arrow_function"],
+            "c" | "cpp" | "c++" => vec!["function_definition"],
+            "go" => vec!["function_declaration"],
+            _ => vec!["function_definition"],
+        };
+
+        self.traverse_for_functions(node, &function_patterns, &mut function_nodes);
+        function_nodes
+    }
+
+    /// Recursively traverse AST to find function nodes
+    fn traverse_for_functions<'a>(&self, node: &tree_sitter::Node<'a>, patterns: &[&str], function_nodes: &mut Vec<tree_sitter::Node<'a>>) {
+        if patterns.contains(&node.kind()) {
+            function_nodes.push(*node);
+        }
+
+        for i in 0..node.child_count() {
+            if let Some(child) = node.child(i) {
+                self.traverse_for_functions(&child, patterns, function_nodes);
+            }
+        }
+    }
+
+    /// Extract function name from a function node
+    fn extract_function_name(&self, node: &tree_sitter::Node, content: &str, _file: &FileInfo) -> Option<String> {
+        // Look for identifier nodes within the function declaration
+        for i in 0..node.child_count() {
+            if let Some(child) = node.child(i) {
+                if child.kind() == "identifier" {
+                    if let Ok(name) = child.utf8_text(content.as_bytes()) {
+                        return Some(name.to_string());
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Check if a function is recursive
+    fn is_recursive_function(&self, node: &tree_sitter::Node, func_name: &str, content: &str) -> bool {
+        if let Ok(text) = node.utf8_text(content.as_bytes()) {
+            // Simple check: does the function body contain a call to itself?
+            text.contains(&format!("{}(", func_name)) &&
+            text.matches(&format!("{}(", func_name)).count() > 1 // More than just the definition
+        } else {
+            false
+        }
+    }
+
+    /// Analyze recursion complexity
+    fn analyze_recursion_complexity(&self, node: &tree_sitter::Node, func_name: &str, content: &str, _file: &FileInfo) -> Result<RecursionAnalysis> {
+        let mut complexity_risk: f64 = 0.5; // Base risk
+        let mut pattern_type = "Direct Recursion".to_string();
+        let mut optimization_suggestion = "Consider iterative approach or memoization".to_string();
+
+        if let Ok(text) = node.utf8_text(content.as_bytes()) {
+            // Count recursive calls
+            let recursive_calls = text.matches(&format!("{}(", func_name)).count() - 1; // Subtract definition
+
+            if recursive_calls > 2 {
+                complexity_risk += 0.3;
+                pattern_type = "Multiple Recursive Calls".to_string();
+                optimization_suggestion = "CRITICAL: Multiple recursive calls detected - consider dynamic programming".to_string();
+            }
+
+            // Check for base case
+            let has_base_case = text.contains("return") &&
+                               (text.contains("if") || text.contains("match") || text.contains("when"));
+
+            if !has_base_case {
+                complexity_risk += 0.4;
+                optimization_suggestion = "URGENT: No clear base case detected - infinite recursion risk".to_string();
+            }
+
+            // Check for tail recursion
+            let lines: Vec<&str> = text.lines().collect();
+            let last_meaningful_line = lines.iter().rev()
+                .find(|line| !line.trim().is_empty() && !line.trim().starts_with('}'))
+                .unwrap_or(&"");
+
+            if last_meaningful_line.contains(&format!("{}(", func_name)) {
+                pattern_type = "Tail Recursion".to_string();
+                complexity_risk -= 0.2; // Tail recursion is better
+                optimization_suggestion = "Consider converting tail recursion to iteration".to_string();
+            }
+        }
+
+        Ok(RecursionAnalysis {
+            complexity_risk: complexity_risk.min(1.0),
+            pattern_type,
+            optimization_suggestion,
+        })
+    }
+
+    /// Check for linear operations inside loops
+    fn contains_linear_operations_in_loops(&self, text: &str, file: &FileInfo) -> bool {
+        let loop_keywords = match file.language.to_lowercase().as_str() {
+            "rust" => vec!["for ", "while "],
+            "python" => vec!["for ", "while "],
+            "javascript" | "typescript" => vec!["for ", "while "],
+            _ => vec!["for ", "while "],
+        };
+
+        let linear_operations = vec![
+            ".find(", ".contains(", ".indexOf(", ".search(",
+            ".iter().find(", ".iter().any(", ".iter().position(",
+            "in ", // Python 'in' operator for lists
+        ];
+
+        // Simple heuristic: check if linear operations appear after loop keywords
+        for line in text.lines() {
+            let has_loop = loop_keywords.iter().any(|keyword| line.contains(keyword));
+            if has_loop {
+                // Check subsequent lines for linear operations
+                let remaining_text = &text[text.find(line).unwrap_or(0)..];
+                if linear_operations.iter().any(|op| remaining_text.contains(op)) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Check for inefficient sorting algorithms (optimized)
+    fn contains_inefficient_sorting(&self, text: &str, _file: &FileInfo) -> bool {
+        // Use bytes for faster searching
+        let text_bytes = text.as_bytes();
+
+        // Look for nested loops with swapping - typical of bubble sort, selection sort
+        let for_count = text_bytes.windows(4).filter(|w| w == b"for ").count();
+        let while_count = text_bytes.windows(6).filter(|w| w == b"while ").count();
+        let has_nested_loops = for_count >= 2 || while_count >= 2;
+
+        if !has_nested_loops {
+            return false;
+        }
+
+        // Check for swapping patterns
+        let has_swap = text_bytes.windows(4).any(|w| w == b"swap");
+        let has_temp = text_bytes.windows(6).any(|w| w == b"temp =");
+        let has_array_swap = text.contains("[i]") && text.contains("[j]") && text.contains(" = ");
+
+        has_swap || has_temp || has_array_swap
+    }
+
+    /// Detect memory allocation hotspots using AST analysis (optimized)
+    fn detect_memory_hotspots(&self, tree: &crate::SyntaxTree, _content: &str, file: &FileInfo) -> Result<Vec<PerformanceHotspot>> {
+        let mut hotspots = Vec::with_capacity(16); // Pre-allocate for common case
 
         match file.language.to_lowercase().as_str() {
             "rust" => {
@@ -1151,7 +2061,7 @@ impl PerformanceAnalyzer {
                     let end_point = func_node.end_position();
 
                     // Try to extract function name
-                    let function_name = self.extract_function_name(&func_node, content, &file.language);
+                    let function_name = self.extract_function_name_from_node(&func_node, content, &file.language);
 
                     hotspots.push(PerformanceHotspot {
                         id: format!("HIGH_COMPLEXITY_{}_{}_{}", file.path.display(), start_point.row, start_point.column),
@@ -1232,8 +2142,8 @@ impl PerformanceAnalyzer {
         complexity
     }
 
-    /// Extract function name from function node
-    fn extract_function_name(&self, func_node: &crate::Node, _content: &str, language: &str) -> String {
+    /// Extract function name from crate::Node (different from tree_sitter::Node)
+    fn extract_function_name_from_node(&self, func_node: &crate::Node, _content: &str, language: &str) -> String {
         match language.to_lowercase().as_str() {
             "rust" => {
                 if let Some(name_node) = func_node.child_by_field_name("name") {
@@ -1487,7 +2397,15 @@ impl PerformanceAnalyzer {
         ComplexityCalculator::calculate_cyclomatic_complexity(tree, language)
     }
 
-    fn count_nested_loops(&self, file: &FileInfo) -> usize {
+
+
+    /// Detect nested loops using AST analysis (now using shared utility)
+    fn detect_nested_loops(&self, content: &str, language: &str) -> usize {
+        PatternAnalyzer::count_nested_loops(content, language)
+    }
+
+    /// Count nested loops in a file (simplified version for file-level analysis)
+    fn count_nested_loops_in_file(&self, file: &FileInfo) -> usize {
         // Try to read and parse the file for real nested loop detection
         if let Ok(content) = std::fs::read_to_string(&file.path) {
             self.detect_nested_loops(&content, &file.language)
@@ -1498,13 +2416,6 @@ impl PerformanceAnalyzer {
                 .count()
         }
     }
-
-    /// Detect nested loops using AST analysis
-    fn detect_nested_loops(&self, content: &str, language: &str) -> usize {
-        PatternDetector::count_nested_loops(content, language)
-    }
-
-
 
 
 
@@ -1717,7 +2628,7 @@ impl PerformanceAnalyzer {
 
                     if complexity > self.config.min_complexity_threshold as f64 {
                         high_complexity_functions.push(ComplexFunction {
-                            name: func_name.clone(),
+                            name: func_name,
                             file: file.path.display().to_string(),
                             line: 1, // Simplified - would need AST to get exact line
                             complexity,

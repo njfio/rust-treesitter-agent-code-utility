@@ -793,7 +793,7 @@ mod tests {
             }
         "#;
 
-        let mut parser = Parser::new(crate::Language::TypeScript).unwrap();
+        let parser = Parser::new(crate::Language::TypeScript).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let functions = TypeScriptSyntax::find_functions(&tree, source);
@@ -887,7 +887,7 @@ mod tests {
             }
         "#;
 
-        let mut parser = Parser::new(crate::Language::TypeScript).unwrap();
+        let parser = Parser::new(crate::Language::TypeScript).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let enums = TypeScriptSyntax::find_enums(&tree, source);
@@ -923,7 +923,7 @@ mod tests {
             }
         "#;
 
-        let mut parser = Parser::new(crate::Language::TypeScript).unwrap();
+        let parser = Parser::new(crate::Language::TypeScript).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let features = TypeScriptSyntax::detect_typescript_features(&tree);

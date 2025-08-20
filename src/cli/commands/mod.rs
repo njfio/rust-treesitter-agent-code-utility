@@ -26,15 +26,27 @@ impl Execute for Commands {
         match self {
             Commands::Analyze {
                 path, format, max_size, max_depth, depth, include_hidden,
-                exclude_dirs, include_exts, output, detailed
+                exclude_dirs, include_exts, output, detailed, threads, print_schema, schema_version
             } => {
+                if *print_schema {
+                    // Currently only v1 is supported
+                    match schema_version.as_str() {
+                        "1" | "v1" => {
+                            println!("{}", crate::cli::schemas::ANALYZE_SCHEMA_V1);
+                            return Ok(());
+                        }
+                        other => {
+                            return Err(CliError::InvalidArgs(format!("Unsupported schema version: {}", other)));
+                        }
+                    }
+                }
                 analyze::execute(
                     path, format, *max_size, *max_depth, depth, *include_hidden,
-                    exclude_dirs.as_ref(), include_exts.as_ref(), output.as_ref(), *detailed
+                    exclude_dirs.as_ref(), include_exts.as_ref(), output.as_ref(), *detailed, *threads
                 )
             }
-            Commands::Query { path, pattern, language, context, format } => {
-                query::execute(path, pattern, language, *context, format)
+            Commands::Query { path, pattern, language, prefilter, context, format } => {
+                query::execute(path, pattern, language, prefilter.as_ref(), *context, format)
             }
             Commands::Stats { path, top } => {
                 stats::execute(path, *top)
@@ -42,7 +54,16 @@ impl Execute for Commands {
             Commands::Find { path, name, symbol_type, language, public_only } => {
                 find::execute(path, name.as_ref(), symbol_type.as_ref(), language.as_ref(), *public_only)
             }
-            Commands::Symbols { path, format } => {
+            Commands::Symbols { path, format, print_schema, schema_version } => {
+                if *print_schema {
+                    match schema_version.as_str() {
+                        "1" | "v1" => {
+                            println!("{}", crate::cli::schemas::SYMBOLS_SCHEMA_V1);
+                            return Ok(());
+                        }
+                        other => return Err(CliError::InvalidArgs(format!("Unsupported schema version: {}", other))),
+                    }
+                }
                 symbols::execute(path, format)
             }
             Commands::Languages => {
@@ -67,8 +88,17 @@ impl Execute for Commands {
                 explain::execute(path, file.as_ref(), symbol.as_ref(), format, *detailed, *learning)
             }
             Commands::Security {
-                path, format, min_severity, output, summary_only, compliance, depth
+                path, format, min_severity, output, summary_only, compliance, depth, print_schema, schema_version
             } => {
+                if *print_schema {
+                    match schema_version.as_str() {
+                        "1" | "v1" => {
+                            println!("{}", crate::cli::schemas::SECURITY_SCHEMA_V1);
+                            return Ok(());
+                        }
+                        other => return Err(CliError::InvalidArgs(format!("Unsupported schema version: {}", other))),
+                    }
+                }
                 security::execute(
                     path, format, min_severity, output.as_ref(), *summary_only, *compliance, depth
                 )

@@ -907,7 +907,7 @@ def function_with_params(a, b, c=None):
     return a + b
         "#;
 
-        let mut parser = Parser::new(crate::Language::Python).unwrap();
+        let parser = Parser::new(crate::Language::Python).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let functions = PythonSyntax::find_functions(&tree, source);
@@ -934,7 +934,7 @@ class InheritedClass(MyClass):
         pass
         "#;
 
-        let mut parser = Parser::new(crate::Language::Python).unwrap();
+        let parser = Parser::new(crate::Language::Python).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let classes = PythonSyntax::find_classes(&tree, source);
@@ -1045,7 +1045,7 @@ class MultipleInheritance(Parent, object):
     pass
         "#;
 
-        let mut parser = Parser::new(crate::Language::Python).unwrap();
+        let parser = Parser::new(crate::Language::Python).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let class_nodes = tree.find_nodes_by_kind("class_definition");
@@ -1078,7 +1078,7 @@ class bad_class_name:  # Should be PascalCase
     pass
         "#;
 
-        let mut parser = Parser::new(crate::Language::Python).unwrap();
+        let parser = Parser::new(crate::Language::Python).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let violations = PythonSyntax::check_naming_conventions(&tree, source);
@@ -1101,7 +1101,7 @@ class MyClass:
         pass
         "#;
 
-        let mut parser = Parser::new(crate::Language::Python).unwrap();
+        let parser = Parser::new(crate::Language::Python).unwrap();
         let tree = parser.parse(source, None).unwrap();
 
         let class_nodes = tree.find_nodes_by_kind("class_definition");

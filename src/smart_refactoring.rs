@@ -8,9 +8,11 @@
 //! - Architectural improvements with refactoring roadmaps
 
 use crate::{AnalysisResult, Result};
+use crate::constants::common::RiskLevel;
 use crate::analysis_utils::{
-    AnalysisThresholds, SymbolFilter, PatternDetector
+    AnalysisThresholds, SymbolFilter
 };
+use crate::analysis_common::{FileAnalyzer, PatternAnalyzer};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -573,15 +575,7 @@ pub struct RiskAssessment {
     pub mitigation_strategies: Vec<String>,
 }
 
-/// Risk levels
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum RiskLevel {
-    Low,
-    Medium,
-    High,
-    Critical,
-}
+// RiskLevel is now imported from crate::constants::common
 
 /// A refactoring risk
 #[derive(Debug, Clone)]
@@ -841,14 +835,12 @@ impl SmartRefactoringEngine {
     fn detect_duplicate_code(&self, file: &crate::FileInfo, _all_files: &[crate::FileInfo]) -> Result<Vec<CodeSmellFix>> {
         let mut fixes = Vec::new();
 
-        // Simple duplicate detection based on function names and patterns
-        let function_symbols: Vec<_> = file.symbols.iter()
-            .filter(|s| s.kind == "function" || s.kind == "method")
-            .collect();
+        // Use shared utility to get function symbols
+        let function_symbols = FileAnalyzer::get_function_symbols(file);
 
         for (i, symbol1) in function_symbols.iter().enumerate() {
             for symbol2 in function_symbols.iter().skip(i + 1) {
-                let similarity = self.calculate_function_similarity(symbol1, symbol2);
+                let similarity = PatternAnalyzer::calculate_function_similarity(symbol1, symbol2);
 
                 if similarity > 0.5 {  // Lowered threshold for better detection
                     fixes.push(CodeSmellFix {
@@ -953,20 +945,22 @@ impl SmartRefactoringEngine {
 
     /// Get benefits for parameter list refactoring
     fn get_parameter_list_benefits(&self) -> Vec<String> {
-        vec![
-            "Improved readability".to_string(),
-            "Easier to extend".to_string(),
-            "Better encapsulation".to_string(),
-            "Reduced coupling".to_string(),
-        ]
+        const BENEFITS: &[&str] = &[
+            "Improved readability",
+            "Easier to extend",
+            "Better encapsulation",
+            "Reduced coupling",
+        ];
+        BENEFITS.iter().map(|s| s.to_string()).collect()
     }
 
     /// Get risks for parameter list refactoring
     fn get_parameter_list_risks(&self) -> Vec<String> {
-        vec![
-            "May require API changes".to_string(),
-            "Need to update all call sites".to_string(),
-        ]
+        const RISKS: &[&str] = &[
+            "May require API changes",
+            "Need to update all call sites",
+        ];
+        RISKS.iter().map(|s| s.to_string()).collect()
     }
 
     /// Detect complex conditional logic
@@ -1090,9 +1084,10 @@ impl SmartRefactoringEngine {
         )
     }
 
-    /// Calculate function similarity based on name and structure
+    /// Calculate function similarity based on name and structure (now using shared utility)
+    #[allow(dead_code)]
     fn calculate_function_similarity(&self, func1: &crate::Symbol, func2: &crate::Symbol) -> f64 {
-        PatternDetector::calculate_function_similarity(func1, func2)
+        PatternAnalyzer::calculate_function_similarity(func1, func2)
     }
 
 
@@ -1448,7 +1443,7 @@ impl SmartRefactoringEngine {
         let mut optimizations = Vec::new();
 
         // Use shared utility to detect string concatenation in loops
-        if PatternDetector::detect_string_concatenation_in_loops(content) {
+        if PatternAnalyzer::detect_string_concatenation_in_loops(content) {
             optimizations.push(PerformanceOptimization {
                     id: format!("STRING_CONCAT_LOOP_{}", file.path.display()),
                     name: "String Concatenation in Loop".to_string(),
@@ -1532,7 +1527,7 @@ impl SmartRefactoringEngine {
         let mut optimizations = Vec::new();
 
         // Use shared utility to count nested loops
-        let max_depth = PatternDetector::count_nested_loops(content, &file.language);
+        let max_depth = PatternAnalyzer::count_nested_loops(content, &file.language);
         let thresholds = AnalysisThresholds::default();
 
         if max_depth >= thresholds.nested_loop_threshold {
@@ -2176,13 +2171,4 @@ impl std::fmt::Display for Priority {
     }
 }
 
-impl std::fmt::Display for RiskLevel {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RiskLevel::Low => write!(f, "Low"),
-            RiskLevel::Medium => write!(f, "Medium"),
-            RiskLevel::High => write!(f, "High"),
-            RiskLevel::Critical => write!(f, "Critical"),
-        }
-    }
-}
+// Display implementation is provided by the common RiskLevel type

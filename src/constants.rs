@@ -3,6 +3,97 @@
 //! This module contains all magic numbers and configuration constants
 //! used across the codebase, providing clear documentation for their purpose.
 
+use serde::{Serialize, Deserialize};
+
+/// Common enums used across modules for consistency
+pub mod common {
+    use super::*;
+
+    /// Standard priority levels used across all modules
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+    pub enum Priority {
+        Low,
+        Medium,
+        High,
+        Critical,
+    }
+
+    /// Standard severity levels used across all modules
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+    pub enum Severity {
+        Info,
+        Low,
+        Medium,
+        High,
+        Critical,
+    }
+
+    /// Standard effort levels for implementation estimation
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+    pub enum EffortLevel {
+        Trivial,    // < 30 minutes
+        Easy,       // < 2 hours
+        Medium,     // < 1 day
+        Hard,       // < 1 week
+        VeryHard,   // > 1 week
+    }
+
+    /// Standard risk levels for assessment
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+    pub enum RiskLevel {
+        Low,
+        Medium,
+        High,
+        Critical,
+    }
+
+    impl std::fmt::Display for Priority {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Priority::Low => write!(f, "Low"),
+                Priority::Medium => write!(f, "Medium"),
+                Priority::High => write!(f, "High"),
+                Priority::Critical => write!(f, "Critical"),
+            }
+        }
+    }
+
+    impl std::fmt::Display for Severity {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Severity::Info => write!(f, "Info"),
+                Severity::Low => write!(f, "Low"),
+                Severity::Medium => write!(f, "Medium"),
+                Severity::High => write!(f, "High"),
+                Severity::Critical => write!(f, "Critical"),
+            }
+        }
+    }
+
+    impl std::fmt::Display for EffortLevel {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                EffortLevel::Trivial => write!(f, "Trivial"),
+                EffortLevel::Easy => write!(f, "Easy"),
+                EffortLevel::Medium => write!(f, "Medium"),
+                EffortLevel::Hard => write!(f, "Hard"),
+                EffortLevel::VeryHard => write!(f, "Very Hard"),
+            }
+        }
+    }
+
+    impl std::fmt::Display for RiskLevel {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                RiskLevel::Low => write!(f, "Low"),
+                RiskLevel::Medium => write!(f, "Medium"),
+                RiskLevel::High => write!(f, "High"),
+                RiskLevel::Critical => write!(f, "Critical"),
+            }
+        }
+    }
+}
+
 /// Security analysis constants
 pub mod security {
     /// Default minimum confidence threshold for security findings (0.0-1.0)
