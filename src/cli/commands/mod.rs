@@ -15,6 +15,7 @@ pub mod interactive;
 pub mod insights;
 pub mod map;
 pub mod explain;
+pub mod watch;
 
 use super::{Commands, Execute};
 use super::error::{CliError, CliResult};
@@ -116,6 +117,9 @@ impl Execute for Commands {
                 dependencies::execute(
                     path, format, *include_dev, *vulnerabilities, *licenses, *outdated, *graph, output.as_ref()
                 )
+            }
+            Commands::Watch { path, interval, max_iterations, depth } => {
+                watch::execute(path, *interval, *max_iterations, depth)
             }
         }
     }
