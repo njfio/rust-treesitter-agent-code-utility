@@ -87,6 +87,17 @@ pub fn execute(
             }
         }
     }
+
+    // Optional SBOM emission if path ends with .sbom.json
+    if let Some(output_path) = output {
+        if let Some(file) = output_path.file_name().and_then(|n| n.to_str()) {
+            if file.ends_with(".sbom.json") {
+                let sbom = crate::cli::sbom::to_cyclonedx(&dependency_result);
+                std::fs::write(output_path, sbom)?;
+                print_success(&format!("SBOM saved to {}", output_path.display()));
+            }
+        }
+    }
     
     Ok(())
 }

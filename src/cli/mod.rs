@@ -8,6 +8,7 @@ pub mod output;
 pub mod utils;
 pub mod schemas;
 pub mod sarif;
+pub mod sbom;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
