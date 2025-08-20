@@ -72,6 +72,10 @@ pub enum Commands {
         #[arg(long)]
         threads: Option<usize>,
 
+        /// Enable heavy security scanning during analysis
+        #[arg(long, default_value_t = false)]
+        enable_security: bool,
+
         /// Print JSON schema and exit
         #[arg(long, default_value_t = false)]
         print_schema: bool,
@@ -289,6 +293,10 @@ pub enum Commands {
         /// Schema version to print
         #[arg(long, default_value = "1")]
         schema_version: String,
+        
+        /// Enable heavy security scanning during initial analysis (rarely needed)
+        #[arg(long, default_value_t = false)]
+        enable_security: bool,
     },
 
     /// Smart refactoring suggestions

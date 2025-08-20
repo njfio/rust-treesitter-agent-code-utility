@@ -29,6 +29,7 @@ pub fn create_analysis_config(
     exclude_dirs: Option<String>,
     include_exts: Option<String>,
     threads: Option<usize>,
+    enable_security: bool,
 ) -> CliResult<AnalysisConfig> {
     let mut config = AnalysisConfig::default();
     
@@ -63,6 +64,8 @@ pub fn create_analysis_config(
 
     // Apply thread count if provided
     config.thread_count = threads;
+    // Enable or disable heavy security scanning
+    config.enable_security = enable_security;
     
     Ok(config)
 }

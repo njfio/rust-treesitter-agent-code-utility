@@ -32,7 +32,7 @@ pub fn execute(
     let pb = create_progress_bar("Analyzing dependencies...");
     
     // Configure analyzer
-    let config = create_analysis_config(1024, 20, "full", false, None, None, None)?;
+    let config = create_analysis_config(1024, 20, "full", false, None, None, None, false)?;
     let mut analyzer = CodebaseAnalyzer::with_config(config)
         .map_err(|e| CliError::Dependencies(e.to_string()))?;
     
