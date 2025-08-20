@@ -26,7 +26,7 @@ impl Execute for Commands {
         match self {
             Commands::Analyze {
                 path, format, max_size, max_depth, depth, include_hidden,
-                exclude_dirs, include_exts, output, detailed, threads, print_schema, schema_version
+                exclude_dirs, include_exts, output, detailed, threads, enable_security, print_schema, schema_version
             } => {
                 if *print_schema {
                     // Currently only v1 is supported
@@ -42,7 +42,7 @@ impl Execute for Commands {
                 }
                 analyze::execute(
                     path, format, *max_size, *max_depth, depth, *include_hidden,
-                    exclude_dirs.as_ref(), include_exts.as_ref(), output.as_ref(), *detailed, *threads
+                    exclude_dirs.as_ref(), include_exts.as_ref(), output.as_ref(), *detailed, *threads, *enable_security
                 )
             }
             Commands::Query { path, pattern, language, prefilter, context, format } => {
@@ -88,7 +88,7 @@ impl Execute for Commands {
                 explain::execute(path, file.as_ref(), symbol.as_ref(), format, *detailed, *learning)
             }
             Commands::Security {
-                path, format, min_severity, output, summary_only, compliance, depth, print_schema, schema_version
+                path, format, min_severity, output, summary_only, compliance, depth, print_schema, schema_version, enable_security
             } => {
                 if *print_schema {
                     match schema_version.as_str() {
@@ -100,7 +100,7 @@ impl Execute for Commands {
                     }
                 }
                 security::execute(
-                    path, format, min_severity, output.as_ref(), *summary_only, *compliance, depth
+                    path, format, min_severity, output.as_ref(), *summary_only, *compliance, depth, *enable_security
                 )
             }
             Commands::Refactor {

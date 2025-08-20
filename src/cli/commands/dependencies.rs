@@ -32,7 +32,7 @@ pub fn execute(
     let pb = create_progress_bar("Analyzing dependencies...");
     
     // Configure analyzer
-    let config = create_analysis_config(1024, 20, "full", false, None, None, None)?;
+    let config = create_analysis_config(1024, 20, "full", false, None, None, None, false)?;
     let mut analyzer = CodebaseAnalyzer::with_config(config)
         .map_err(|e| CliError::Dependencies(e.to_string()))?;
     
@@ -84,6 +84,17 @@ pub fn execute(
                 let json = serde_json::to_string_pretty(&dependency_result)?;
                 std::fs::write(output_path, json)?;
                 print_success(&format!("Dependency report saved to {}", output_path.display()));
+            }
+        }
+    }
+
+    // Optional SBOM emission if path ends with .sbom.json
+    if let Some(output_path) = output {
+        if let Some(file) = output_path.file_name().and_then(|n| n.to_str()) {
+            if file.ends_with(".sbom.json") {
+                let sbom = crate::cli::sbom::to_cyclonedx(&dependency_result);
+                std::fs::write(output_path, sbom)?;
+                print_success(&format!("SBOM saved to {}", output_path.display()));
             }
         }
     }

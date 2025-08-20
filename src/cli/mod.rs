@@ -8,6 +8,7 @@ pub mod output;
 pub mod utils;
 pub mod schemas;
 pub mod sarif;
+pub mod sbom;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -71,6 +72,10 @@ pub enum Commands {
         /// Number of threads to use (analysis)
         #[arg(long)]
         threads: Option<usize>,
+
+        /// Enable heavy security scanning during analysis
+        #[arg(long, default_value_t = false)]
+        enable_security: bool,
 
         /// Print JSON schema and exit
         #[arg(long, default_value_t = false)]
@@ -289,6 +294,10 @@ pub enum Commands {
         /// Schema version to print
         #[arg(long, default_value = "1")]
         schema_version: String,
+        
+        /// Enable heavy security scanning during initial analysis (rarely needed)
+        #[arg(long, default_value_t = false)]
+        enable_security: bool,
     },
 
     /// Smart refactoring suggestions

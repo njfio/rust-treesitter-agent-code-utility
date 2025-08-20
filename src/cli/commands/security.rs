@@ -18,6 +18,8 @@ pub fn execute(
     summary_only: bool,
     compliance: bool,
     depth: &str,
+    // Whether to enable heavy security scanning during initial parsing
+    enable_security: bool,
 ) -> CliResult<()> {
     // Validate inputs
     validate_path(path)?;
@@ -32,7 +34,7 @@ pub fn execute(
     let pb = create_progress_bar("Running security scan...");
     
     // Configure analyzer
-    let config = create_analysis_config(1024, 20, depth, false, None, None, None)?;
+    let config = create_analysis_config(1024, 20, depth, false, None, None, None, enable_security)?;
     let mut analyzer = CodebaseAnalyzer::with_config(config)
         .map_err(|e| CliError::Security(e.to_string()))?;
     

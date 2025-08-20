@@ -22,6 +22,9 @@ use serde::{Serialize, Deserialize};
 pub struct DependencyAnalyzer {
     /// Configuration for dependency analysis
     pub config: DependencyConfig,
+    /// Optional external vulnerability provider (e.g., OSV/CVE). Scaffold only.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    provider: Option<Box<dyn VulnerabilityProvider + Send + Sync>>,
 }
 
 /// Configuration for dependency analysis
@@ -412,17 +415,38 @@ impl Default for DependencyConfig {
     }
 }
 
+// --- Vulnerability Provider Scaffold ---
+
+/// A pluggable vulnerability provider interface (e.g., OSV/CVE). Stub only.
+pub trait VulnerabilityProvider {
+    fn enrich(&self, deps: &[Dependency]) -> Vec<DependencyVulnerability>;
+}
+
+/// A no-op stub provider for testing/scaffolding.
+pub struct NoopVulnProvider;
+
+impl VulnerabilityProvider for NoopVulnProvider {
+    fn enrich(&self, _deps: &[Dependency]) -> Vec<DependencyVulnerability> { Vec::new() }
+}
+
 impl DependencyAnalyzer {
     /// Create a new dependency analyzer with default configuration
     pub fn new() -> Self {
         Self {
             config: DependencyConfig::default(),
+            provider: None,
         }
     }
 
     /// Create a new dependency analyzer with custom configuration
     pub fn with_config(config: DependencyConfig) -> Self {
-        Self { config }
+        Self { config, provider: None }
+    }
+
+    /// Attach an external vulnerability provider (scaffold; may be a stub)
+    pub fn with_provider(mut self, provider: Box<dyn VulnerabilityProvider + Send + Sync>) -> Self {
+        self.provider = Some(provider);
+        self
     }
 
     /// Helper function to create dependency without excessive cloning
@@ -472,7 +496,11 @@ impl DependencyAnalyzer {
         
         // Analyze vulnerabilities
         let vulnerabilities = if self.config.vulnerability_scanning {
-            self.analyze_vulnerabilities(&all_dependencies)?
+            if let Some(ref p) = self.provider {
+                p.enrich(&all_dependencies)
+            } else {
+                self.analyze_vulnerabilities(&all_dependencies)?
+            }
         } else {
             Vec::new()
         };

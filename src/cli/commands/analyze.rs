@@ -21,6 +21,7 @@ pub fn execute(
     output: Option<&PathBuf>,
     detailed: bool,
     threads: Option<usize>,
+    enable_security: bool,
 ) -> CliResult<()> {
     // Validate inputs
     validate_path(path)?;
@@ -43,6 +44,7 @@ pub fn execute(
         exclude_dirs.cloned(),
         include_exts.cloned(),
         threads,
+        enable_security,
     )?;
     
     let mut analyzer = CodebaseAnalyzer::with_config(config)
