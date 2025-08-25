@@ -2,28 +2,142 @@
 //!
 //! A comprehensive Rust library for processing source code using tree-sitter.
 //! This library provides high-level abstractions for parsing, navigating, and
-//! querying syntax trees across multiple programming languages.
+//! querying syntax trees across multiple programming languages, with advanced
+//! features for code analysis, security scanning, and AI-powered insights.
 //!
 //! ## Features
 //!
-//! - Multi-language parsing support (Rust, JavaScript, Python, C, C++)
-//! - Incremental parsing for efficient updates
-//! - Syntax tree navigation utilities
-//! - Query system for pattern matching
-//! - Thread-safe parser management
-//! - Memory-efficient tree handling
+//! ### Core Parsing
+//! - **Multi-language support**: Parse Rust, Python, JavaScript, TypeScript, Go, C, C++, and more
+//! - **Incremental parsing**: Efficient re-parsing of modified code sections
+//! - **Query system**: Powerful pattern matching with Tree-sitter queries
+//! - **Error recovery**: Robust parsing with detailed error reporting and recovery
+//! - **Thread-safe**: Safe concurrent access to parsers and trees
+//! - **Memory-efficient**: Optimized memory usage for large codebases
+//!
+//! ### Code Analysis
+//! - **Symbol extraction**: Functions, classes, variables, imports, and exports
+//! - **Dependency analysis**: Import/export relationships and dependency graphs
+//! - **Structural analysis**: Code complexity, nesting levels, and architectural patterns
+//! - **Performance analysis**: Identify potential bottlenecks and optimization opportunities
+//! - **Code metrics**: Lines of code, cyclomatic complexity, maintainability index
+//!
+//! ### Security & Quality
+//! - **Security scanning**: Detect potential vulnerabilities and code smells
+//! - **OWASP compliance**: Check against common security patterns and best practices
+//! - **Code quality metrics**: Maintainability, complexity, and adherence to best practices
+//! - **Vulnerability database**: Integration with security advisory databases
+//! - **Secrets detection**: Find hardcoded credentials and sensitive information
+//!
+//! ### AI Integration
+//! - **GPT-5/GPT-4o support**: Latest OpenAI models for advanced code analysis
+//! - **Real codebase analysis**: Analyze actual project files with actionable insights
+//! - **Security vulnerability detection**: AI-powered security analysis and recommendations
+//! - **Code quality assessment**: Automated code review with improvement suggestions
+//! - **Architectural insights**: Design pattern analysis and architectural improvements
+//! - **Cost tracking**: Monitor API usage and costs for AI services
+//!
+//! ### Infrastructure & Configuration
+//! - **Configuration management**: Flexible YAML-based configuration system
+//! - **Caching**: Efficient result caching for repeated operations
+//! - **Parallel processing**: Multi-threaded analysis using `rayon` for large codebases
+//! - **CLI interface**: Command-line tools for batch processing and automation
+//! - **Extensible**: Plugin architecture for custom analyzers and processors
 //!
 //! ## Quick Start
+//!
+//! ### Basic Parsing
 //!
 //! ```rust
 //! use rust_tree_sitter::{Parser, Language};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // Create a parser for Rust code
 //! let parser = Parser::new(Language::Rust)?;
+//!
+//! // Parse source code
 //! let source = "fn main() { println!(\"Hello, world!\"); }";
 //! let tree = parser.parse(source, None)?;
 //!
+//! // Navigate the syntax tree
 //! println!("Root node: {}", tree.root_node().kind());
+//! println!("Tree structure: {}", tree.root_node().to_sexp());
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ### Code Analysis
+//!
+//! ```rust
+//! use rust_tree_sitter::{CodeAnalyzer, AnalysisConfig};
+//!
+//! # fn main() -> Result<(), rust_tree_sitter::Error> {
+//! // Create analyzer with custom configuration
+//! let config = AnalysisConfig {
+//!     max_depth: 10,
+//!     include_tests: true,
+//!     parallel_processing: true,
+//!     ..Default::default()
+//! };
+//! let analyzer = CodeAnalyzer::new(config);
+//!
+//! // Analyze a Rust file
+//! let result = analyzer.analyze_file("src/main.rs")?;
+//!
+//! // Access analysis results
+//! println!("Functions found: {}", result.symbols.functions.len());
+//! println!("Dependencies: {}", result.dependencies.len());
+//! println!("Security issues: {}", result.security_issues.len());
+//! println!("Code quality score: {:.2}", result.quality_metrics.overall_score);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ### AI-Powered Analysis
+//!
+//! ```rust,no_run
+//! use rust_tree_sitter::ai::{AIServiceBuilder, AIFeature, AIRequest};
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! // Initialize AI service with OpenAI
+//! let ai_service = AIServiceBuilder::new()
+//!     .with_config_file("ai_config.yaml")?
+//!     .build()
+//!     .await?;
+//!
+//! // Analyze code with AI for security vulnerabilities
+//! let request = AIRequest::new(
+//!     AIFeature::SecurityAnalysis,
+//!     "Please analyze this Rust code for security vulnerabilities: \
+//!      fn unsafe_function() { let password = \"admin123\"; }"
+//! );
+//!
+//! let response = ai_service.process_request(request).await?;
+//! println!("AI Security Analysis: {}", response.content);
+//! println!("Cost: ${:.6}", response.token_usage.estimated_cost.unwrap_or(0.0));
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ### Security Scanning
+//!
+//! ```rust
+//! use rust_tree_sitter::security::OwaspDetector;
+//!
+//! # fn main() -> Result<(), rust_tree_sitter::Error> {
+//! // Create security scanner with OWASP rules
+//! let detector = OwaspDetector::new();
+//!
+//! // Scan file for vulnerabilities
+//! let vulnerabilities = detector.scan_file("src/main.rs")?;
+//!
+//! // Report findings
+//! for vuln in vulnerabilities {
+//!     println!("🚨 Security Issue: {} (Severity: {})",
+//!              vuln.description, vuln.severity);
+//!     println!("   Location: {}:{}", vuln.file_path.display(), vuln.line);
+//!     println!("   Recommendation: {}", vuln.recommendation);
+//! }
 //! # Ok(())
 //! # }
 //! ```
@@ -69,15 +183,15 @@ pub mod constants;
 /// Dependency analysis and vulnerability scanning
 pub mod dependency_analysis;
 /// Enhanced security analysis with compliance checking
-// #[cfg(any(feature = "net", feature = "db"))]
-// pub mod enhanced_security; // TODO: Fix infrastructure dependency
+#[cfg(any(feature = "net", feature = "db"))]
+pub mod enhanced_security;
 /// Error types and handling
 pub mod error;
 /// File caching for performance optimization
 pub mod file_cache;
 /// Infrastructure and configuration management
-// #[cfg(any(feature = "net", feature = "db"))]
-// pub mod infrastructure; // TODO: Fix sqlx dependency issues
+#[cfg(any(feature = "net", feature = "db"))]
+pub mod infrastructure;
 /// Intent mapping between requirements and implementation
 #[cfg(feature = "ml")]
 pub mod intent_mapping;
@@ -103,7 +217,7 @@ pub mod reasoning_engine;
 /// Code refactoring suggestions and analysis
 pub mod refactoring;
 /// Security analysis and vulnerability detection
-// pub mod security; // TODO: Fix infrastructure dependency
+pub mod security;
 /// Semantic graph construction and querying
 pub mod semantic_graph;
 /// Smart refactoring with AI assistance
@@ -132,11 +246,11 @@ pub use refactoring::{RefactoringAnalyzer, RefactoringResult, RefactoringSuggest
 pub use test_coverage::{TestCoverageAnalyzer, TestCoverageResult, TestCoverageConfig, MissingTest};
 
 // Security analysis
-// pub use security::OwaspDetector; // TODO: Fix infrastructure dependency
-// #[cfg(any(feature = "net", feature = "db"))]
-// pub use security::{VulnerabilityDatabase, SecretsDetector}; // TODO: Fix infrastructure dependency
-// #[cfg(any(feature = "net", feature = "db"))]
-// pub use enhanced_security::{EnhancedSecurityScanner, EnhancedSecurityResult, EnhancedSecurityConfig}; // TODO: Fix infrastructure dependency
+pub use security::OwaspDetector;
+#[cfg(any(feature = "net", feature = "db"))]
+pub use security::{VulnerabilityDatabase, SecretsDetector};
+#[cfg(any(feature = "net", feature = "db"))]
+pub use enhanced_security::{EnhancedSecurityScanner, EnhancedSecurityResult, EnhancedSecurityConfig};
 pub use advanced_security::{AdvancedSecurityAnalyzer as SecurityScanner, AdvancedSecurityResult as SecurityScanResult, SecurityVulnerability, AdvancedSecurityConfig as SecurityConfig, SecuritySeverity};
 
 // AI service layer

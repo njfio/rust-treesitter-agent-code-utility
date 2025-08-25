@@ -139,6 +139,89 @@ pub enum Error {
         suggestion: Option<String>,
     },
 
+    /// Configuration error
+    #[error("Configuration error: {message}")]
+    ConfigError {
+        message: String,
+        config_path: Option<PathBuf>,
+        field: Option<String>,
+    },
+
+    /// Network error for AI services
+    #[error("Network error: {message}")]
+    NetworkError {
+        message: String,
+        url: Option<String>,
+        status_code: Option<u16>,
+    },
+
+    /// Authentication error for AI services
+    #[error("Authentication error: {message}")]
+    AuthenticationError {
+        message: String,
+        provider: Option<String>,
+    },
+
+    /// Rate limiting error
+    #[error("Rate limit exceeded: {message}")]
+    RateLimitError {
+        message: String,
+        retry_after: Option<u64>,
+    },
+
+    /// Timeout error
+    #[error("Operation timed out: {operation} after {duration_ms}ms")]
+    TimeoutError {
+        operation: String,
+        duration_ms: u64,
+    },
+
+    /// Resource exhaustion error
+    #[error("Resource exhausted: {resource} - {message}")]
+    ResourceExhausted {
+        resource: String,
+        message: String,
+        current_usage: Option<String>,
+        limit: Option<String>,
+    },
+
+    /// Validation error with detailed context
+    #[error("Validation failed: {message}")]
+    ValidationError {
+        message: String,
+        field: Option<String>,
+        expected_format: Option<String>,
+        actual_value: Option<String>,
+    },
+
+    /// Dependency error
+    #[error("Dependency error: {dependency} - {message}")]
+    DependencyError {
+        dependency: String,
+        message: String,
+        version_required: Option<String>,
+        version_found: Option<String>,
+    },
+
+    /// Security error
+    #[error("Security error: {message}")]
+    SecurityError {
+        message: String,
+        vulnerability_type: Option<String>,
+        severity: Option<String>,
+        file_path: Option<PathBuf>,
+        line_number: Option<usize>,
+    },
+
+    /// Analysis error
+    #[error("Analysis error in {component}: {message}")]
+    AnalysisError {
+        component: String,
+        message: String,
+        file_path: Option<PathBuf>,
+        context: Option<String>,
+    },
+
     /// Anyhow error (for external libraries)
     #[error("External error: {0}")]
     Anyhow(#[from] anyhow::Error),
@@ -404,6 +487,224 @@ impl Error {
     #[deprecated(note = "Use internal_error instead")]
     pub fn internal<S: Into<String>>(msg: S) -> Self {
         Self::internal_error("unknown", msg)
+    }
+
+    /// Create a configuration error
+    pub fn config_error(message: impl Into<String>) -> Self {
+        Self::ConfigError {
+            message: message.into(),
+            config_path: None,
+            field: None,
+        }
+    }
+
+    /// Create a configuration error with file path and field context
+    pub fn config_error_with_context(
+        message: impl Into<String>,
+        config_path: Option<PathBuf>,
+        field: Option<String>,
+    ) -> Self {
+        Self::ConfigError {
+            message: message.into(),
+            config_path,
+            field,
+        }
+    }
+
+    /// Create a network error
+    pub fn network_error(message: impl Into<String>) -> Self {
+        Self::NetworkError {
+            message: message.into(),
+            url: None,
+            status_code: None,
+        }
+    }
+
+    /// Create a network error with URL and status code
+    pub fn network_error_with_details(
+        message: impl Into<String>,
+        url: Option<String>,
+        status_code: Option<u16>,
+    ) -> Self {
+        Self::NetworkError {
+            message: message.into(),
+            url,
+            status_code,
+        }
+    }
+
+    /// Create an authentication error
+    pub fn auth_error(message: impl Into<String>) -> Self {
+        Self::AuthenticationError {
+            message: message.into(),
+            provider: None,
+        }
+    }
+
+    /// Create an authentication error with provider context
+    pub fn auth_error_with_provider(
+        message: impl Into<String>,
+        provider: impl Into<String>,
+    ) -> Self {
+        Self::AuthenticationError {
+            message: message.into(),
+            provider: Some(provider.into()),
+        }
+    }
+
+    /// Create a rate limit error
+    pub fn rate_limit_error(message: impl Into<String>) -> Self {
+        Self::RateLimitError {
+            message: message.into(),
+            retry_after: None,
+        }
+    }
+
+    /// Create a rate limit error with retry information
+    pub fn rate_limit_error_with_retry(
+        message: impl Into<String>,
+        retry_after_seconds: u64,
+    ) -> Self {
+        Self::RateLimitError {
+            message: message.into(),
+            retry_after: Some(retry_after_seconds),
+        }
+    }
+
+    /// Create a timeout error
+    pub fn timeout_error(operation: impl Into<String>, duration_ms: u64) -> Self {
+        Self::TimeoutError {
+            operation: operation.into(),
+            duration_ms,
+        }
+    }
+
+    /// Create a resource exhaustion error
+    pub fn resource_exhausted(resource: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::ResourceExhausted {
+            resource: resource.into(),
+            message: message.into(),
+            current_usage: None,
+            limit: None,
+        }
+    }
+
+    /// Create a resource exhaustion error with usage details
+    pub fn resource_exhausted_with_details(
+        resource: impl Into<String>,
+        message: impl Into<String>,
+        current_usage: Option<String>,
+        limit: Option<String>,
+    ) -> Self {
+        Self::ResourceExhausted {
+            resource: resource.into(),
+            message: message.into(),
+            current_usage,
+            limit,
+        }
+    }
+
+    /// Create a validation error
+    pub fn validation_error(message: impl Into<String>) -> Self {
+        Self::ValidationError {
+            message: message.into(),
+            field: None,
+            expected_format: None,
+            actual_value: None,
+        }
+    }
+
+    /// Create a validation error with field context
+    pub fn validation_error_with_context(
+        message: impl Into<String>,
+        field: Option<String>,
+        expected_format: Option<String>,
+        actual_value: Option<String>,
+    ) -> Self {
+        Self::ValidationError {
+            message: message.into(),
+            field,
+            expected_format,
+            actual_value,
+        }
+    }
+
+    /// Create a dependency error
+    pub fn dependency_error(dependency: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::DependencyError {
+            dependency: dependency.into(),
+            message: message.into(),
+            version_required: None,
+            version_found: None,
+        }
+    }
+
+    /// Create a dependency error with version information
+    pub fn dependency_error_with_versions(
+        dependency: impl Into<String>,
+        message: impl Into<String>,
+        version_required: Option<String>,
+        version_found: Option<String>,
+    ) -> Self {
+        Self::DependencyError {
+            dependency: dependency.into(),
+            message: message.into(),
+            version_required,
+            version_found,
+        }
+    }
+
+    /// Create a security error
+    pub fn security_error(message: impl Into<String>) -> Self {
+        Self::SecurityError {
+            message: message.into(),
+            vulnerability_type: None,
+            severity: None,
+            file_path: None,
+            line_number: None,
+        }
+    }
+
+    /// Create a security error with vulnerability details
+    pub fn security_error_with_details(
+        message: impl Into<String>,
+        vulnerability_type: Option<String>,
+        severity: Option<String>,
+        file_path: Option<PathBuf>,
+        line_number: Option<usize>,
+    ) -> Self {
+        Self::SecurityError {
+            message: message.into(),
+            vulnerability_type,
+            severity,
+            file_path,
+            line_number,
+        }
+    }
+
+    /// Create an analysis error
+    pub fn analysis_error(component: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::AnalysisError {
+            component: component.into(),
+            message: message.into(),
+            file_path: None,
+            context: None,
+        }
+    }
+
+    /// Create an analysis error with file and context information
+    pub fn analysis_error_with_context(
+        component: impl Into<String>,
+        message: impl Into<String>,
+        file_path: Option<PathBuf>,
+        context: Option<String>,
+    ) -> Self {
+        Self::AnalysisError {
+            component: component.into(),
+            message: message.into(),
+            file_path,
+            context,
+        }
     }
 }
 

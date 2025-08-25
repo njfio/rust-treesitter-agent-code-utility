@@ -1,7 +1,92 @@
-//! Code analysis functionality for processing entire codebases
-//! 
-//! This module provides high-level functionality for AI code agents to analyze
-//! entire folders and codebases, extracting structured information about the code.
+//! # Code Analysis Module
+//!
+//! This module provides comprehensive code analysis functionality for processing
+//! entire codebases, extracting structured information, and generating insights
+//! for AI code agents and development tools.
+//!
+//! ## Features
+//!
+//! - **Multi-file analysis**: Process entire directories and codebases
+//! - **Symbol extraction**: Functions, classes, variables, imports, and exports
+//! - **Dependency analysis**: Import/export relationships and dependency graphs
+//! - **Security scanning**: Vulnerability detection and security analysis
+//! - **Performance analysis**: Identify bottlenecks and optimization opportunities
+//! - **Parallel processing**: Multi-threaded analysis for large codebases
+//! - **Caching**: Efficient caching to avoid redundant processing
+//! - **Configurable depth**: Control analysis granularity from basic to full
+//!
+//! ## Usage Examples
+//!
+//! ### Basic File Analysis
+//!
+//! ```rust
+//! use rust_tree_sitter::{CodeAnalyzer, AnalysisConfig, AnalysisDepth};
+//!
+//! # fn main() -> Result<(), rust_tree_sitter::Error> {
+//! // Create analyzer with custom configuration
+//! let config = AnalysisConfig {
+//!     depth: AnalysisDepth::Full,
+//!     max_depth: 10,
+//!     include_tests: true,
+//!     parallel_processing: true,
+//!     ..Default::default()
+//! };
+//!
+//! let analyzer = CodeAnalyzer::new(config);
+//!
+//! // Analyze a single file
+//! let result = analyzer.analyze_file("src/main.rs")?;
+//! println!("Found {} functions", result.symbols.functions.len());
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ### Directory Analysis
+//!
+//! ```rust
+//! use rust_tree_sitter::{CodeAnalyzer, AnalysisConfig};
+//!
+//! # fn main() -> Result<(), rust_tree_sitter::Error> {
+//! let analyzer = CodeAnalyzer::new(AnalysisConfig::default());
+//!
+//! // Analyze entire directory
+//! let results = analyzer.analyze_directory("src/")?;
+//!
+//! for (file_path, result) in results {
+//!     println!("File: {}", file_path.display());
+//!     println!("  Functions: {}", result.symbols.functions.len());
+//!     println!("  Security issues: {}", result.security_issues.len());
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ### Advanced Analysis with Filtering
+//!
+//! ```rust
+//! use rust_tree_sitter::{CodeAnalyzer, AnalysisConfig, AnalysisDepth};
+//!
+//! # fn main() -> Result<(), rust_tree_sitter::Error> {
+//! let config = AnalysisConfig {
+//!     depth: AnalysisDepth::Full,
+//!     include_tests: false,
+//!     file_extensions: vec!["rs".to_string(), "py".to_string()],
+//!     exclude_patterns: vec!["target/".to_string(), "node_modules/".to_string()],
+//!     max_file_size: Some(1024 * 1024), // 1MB limit
+//!     ..Default::default()
+//! };
+//!
+//! let analyzer = CodeAnalyzer::new(config);
+//! let results = analyzer.analyze_directory(".")?;
+//!
+//! // Generate summary report
+//! let summary = analyzer.generate_summary(&results)?;
+//! println!("Total files analyzed: {}", summary.total_files);
+//! println!("Total functions: {}", summary.total_functions);
+//! println!("Security issues found: {}", summary.security_issues);
+//! # Ok(())
+//! # }
+//! ```
 
 use crate::error::{Error, Result};
 use crate::languages::Language;
