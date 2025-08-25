@@ -263,6 +263,7 @@ mod tests {
             false,
             false,
             "full",
+            false, // enable_security
         );
         assert!(result.is_ok());
     }
@@ -280,6 +281,7 @@ mod tests {
             false,
             false,
             "full",
+            false, // enable_security
         );
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), CliError::InvalidArgs(_)));

@@ -17,7 +17,6 @@ use std::collections::HashSet;
 use serde::{Serialize, Deserialize};
 
 /// Dependency analyzer for comprehensive dependency insights
-#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct DependencyAnalyzer {
     /// Configuration for dependency analysis
@@ -25,6 +24,24 @@ pub struct DependencyAnalyzer {
     /// Optional external vulnerability provider (e.g., OSV/CVE). Scaffold only.
     #[cfg_attr(feature = "serde", serde(skip))]
     provider: Option<Box<dyn VulnerabilityProvider + Send + Sync>>,
+}
+
+impl std::fmt::Debug for DependencyAnalyzer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DependencyAnalyzer")
+            .field("config", &self.config)
+            .field("provider", &self.provider.as_ref().map(|_| "VulnerabilityProvider"))
+            .finish()
+    }
+}
+
+impl Clone for DependencyAnalyzer {
+    fn clone(&self) -> Self {
+        Self {
+            config: self.config.clone(),
+            provider: None, // Cannot clone trait objects, so we set to None
+        }
+    }
 }
 
 /// Configuration for dependency analysis

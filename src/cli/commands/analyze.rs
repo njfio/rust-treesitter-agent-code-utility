@@ -122,6 +122,7 @@ mod tests {
             None,
             false,
             None,
+            false, // enable_security
         );
         assert!(result.is_ok());
     }
@@ -142,6 +143,7 @@ mod tests {
             None,
             false,
             None,
+            false, // enable_security
         );
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), CliError::InvalidPath(_)));
@@ -164,6 +166,7 @@ mod tests {
             None,
             false,
             None,
+            false, // enable_security
         );
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), CliError::UnsupportedFormat(_)));
