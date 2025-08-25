@@ -6,7 +6,7 @@ use crate::ai::error::{AIError, AIResult};
 use crate::ai::cache::{AICache, MemoryCache, CacheConfig};
 use crate::ai::providers::{AIProviderImpl, create_provider};
 use std::collections::HashMap;
-use std::sync::Arc;
+// use std::sync::Arc; // Not currently used
 use std::time::Duration;
 
 /// Main AI service

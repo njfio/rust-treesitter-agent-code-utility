@@ -14,14 +14,14 @@ pub fn execute(path: &PathBuf, interval_secs: u64, max_iterations: usize, depth:
 
     let cfg = create_analysis_config(1024, 20, depth, false, None, None, None, false)?;
     let mut analyzer = CodebaseAnalyzer::with_config(cfg)
-        .map_err(|e| CliError::Analyze(e.to_string()))?;
+        .map_err(|e| CliError::Analysis(e.to_string()))?;
 
     let mut iter = 0usize;
     loop {
         pb.set_message(format!("Analyzing (iteration #{})...", iter + 1));
         let start = std::time::Instant::now();
         let result = analyzer.analyze_directory(path)
-            .map_err(|e| CliError::Analyze(e.to_string()))?;
+            .map_err(|e| CliError::Analysis(e.to_string()))?;
         let dur = start.elapsed();
 
         println!("[watch] files={} parsed={} errors={} time={:.2?}",

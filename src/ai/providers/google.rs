@@ -2,7 +2,7 @@
 
 use crate::ai::types::{AIProvider, AIRequest, AIResponse, AICapability, AIFeature};
 use crate::ai::config::ProviderConfig;
-use crate::ai::error::{AIError, AIResult};
+use crate::ai::error::AIResult;
 use crate::ai::providers::{AIProviderImpl, RateLimitInfo};
 use async_trait::async_trait;
 

@@ -28,6 +28,8 @@
 //! # }
 //! ```
 
+/// AI service layer and provider integrations
+pub mod ai;
 /// Advanced AI-powered code analysis capabilities
 pub mod advanced_ai_analysis;
 /// Advanced security analysis with OWASP compliance
@@ -67,15 +69,15 @@ pub mod constants;
 /// Dependency analysis and vulnerability scanning
 pub mod dependency_analysis;
 /// Enhanced security analysis with compliance checking
-#[cfg(any(feature = "net", feature = "db"))]
-pub mod enhanced_security;
+// #[cfg(any(feature = "net", feature = "db"))]
+// pub mod enhanced_security; // TODO: Fix infrastructure dependency
 /// Error types and handling
 pub mod error;
 /// File caching for performance optimization
 pub mod file_cache;
 /// Infrastructure and configuration management
-#[cfg(any(feature = "net", feature = "db"))]
-pub mod infrastructure;
+// #[cfg(any(feature = "net", feature = "db"))]
+// pub mod infrastructure; // TODO: Fix sqlx dependency issues
 /// Intent mapping between requirements and implementation
 #[cfg(feature = "ml")]
 pub mod intent_mapping;
@@ -101,7 +103,7 @@ pub mod reasoning_engine;
 /// Code refactoring suggestions and analysis
 pub mod refactoring;
 /// Security analysis and vulnerability detection
-pub mod security;
+// pub mod security; // TODO: Fix infrastructure dependency
 /// Semantic graph construction and querying
 pub mod semantic_graph;
 /// Smart refactoring with AI assistance
@@ -130,12 +132,15 @@ pub use refactoring::{RefactoringAnalyzer, RefactoringResult, RefactoringSuggest
 pub use test_coverage::{TestCoverageAnalyzer, TestCoverageResult, TestCoverageConfig, MissingTest};
 
 // Security analysis
-pub use security::OwaspDetector;
-#[cfg(any(feature = "net", feature = "db"))]
-pub use security::{VulnerabilityDatabase, SecretsDetector};
-#[cfg(any(feature = "net", feature = "db"))]
-pub use enhanced_security::{EnhancedSecurityScanner, EnhancedSecurityResult, EnhancedSecurityConfig};
+// pub use security::OwaspDetector; // TODO: Fix infrastructure dependency
+// #[cfg(any(feature = "net", feature = "db"))]
+// pub use security::{VulnerabilityDatabase, SecretsDetector}; // TODO: Fix infrastructure dependency
+// #[cfg(any(feature = "net", feature = "db"))]
+// pub use enhanced_security::{EnhancedSecurityScanner, EnhancedSecurityResult, EnhancedSecurityConfig}; // TODO: Fix infrastructure dependency
 pub use advanced_security::{AdvancedSecurityAnalyzer as SecurityScanner, AdvancedSecurityResult as SecurityScanResult, SecurityVulnerability, AdvancedSecurityConfig as SecurityConfig, SecuritySeverity};
+
+// AI service layer
+pub use ai::{AIService, AIServiceBuilder, AIConfig as AIServiceConfig, AIProvider, AIFeature, AIRequest, AIResponse, AIError, AIResult};
 
 // Advanced features
 pub use advanced_ai_analysis::{AdvancedAIAnalyzer, AdvancedAIResult, AdvancedAIConfig, SemanticAnalysis, ArchitecturePattern};

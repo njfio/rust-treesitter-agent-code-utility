@@ -2,20 +2,48 @@
 //!
 //! Tests for the AI service layer functionality
 
-use rust_tree_sitter::{
-    AIService, AIServiceBuilder, AIServiceConfig, AIProvider, AIFeature, AIRequest,
-    ProviderConfig, ModelConfig, RateLimitConfig, RetryConfig
+use rust_tree_sitter::ai::{
+    AIService, AIServiceBuilder, AIConfig as AIServiceConfig, AIProvider, AIFeature, AIRequest,
+    ProviderConfig, ModelConfig
 };
-use std::collections::HashMap;
+use rust_tree_sitter::ai::config::{RateLimitConfig, RetryConfig};
 use std::time::Duration;
 
 #[tokio::test]
 async fn test_ai_service_creation() {
+    // Create a basic configuration with at least one provider
+    let mut config = AIServiceConfig::default();
+    config.default_provider = AIProvider::OpenAI;
+
+    let openai_config = ProviderConfig {
+        enabled: true,
+        api_key: Some("test-key".to_string()),
+        base_url: Some("https://api.openai.com/v1".to_string()),
+        organization: None,
+        models: vec![
+            ModelConfig {
+                name: "gpt-4".to_string(),
+                context_length: 8192,
+                max_tokens: 4096,
+                supports_streaming: true,
+                cost_per_token: Some(0.00003),
+                supported_features: vec![AIFeature::CodeExplanation],
+            }
+        ],
+        default_model: "gpt-4".to_string(),
+        timeout: Duration::from_secs(30),
+        rate_limit: RateLimitConfig::default(),
+        retry: RetryConfig::default(),
+    };
+
+    config.providers.insert(AIProvider::OpenAI, openai_config);
+
     let service = AIServiceBuilder::new()
+        .with_config(config)
         .with_mock_providers(true)
         .build()
         .await;
-    
+
     assert!(service.is_ok());
 }
 
@@ -76,7 +104,35 @@ async fn test_ai_service_with_config() {
 
 #[tokio::test]
 async fn test_ai_request_processing() {
+    // Create a basic configuration with at least one provider
+    let mut config = AIServiceConfig::default();
+    config.default_provider = AIProvider::OpenAI;
+
+    let openai_config = ProviderConfig {
+        enabled: true,
+        api_key: Some("test-key".to_string()),
+        base_url: Some("https://api.openai.com/v1".to_string()),
+        organization: None,
+        models: vec![
+            ModelConfig {
+                name: "gpt-4".to_string(),
+                context_length: 8192,
+                max_tokens: 4096,
+                supports_streaming: true,
+                cost_per_token: Some(0.00003),
+                supported_features: vec![AIFeature::CodeExplanation],
+            }
+        ],
+        default_model: "gpt-4".to_string(),
+        timeout: Duration::from_secs(30),
+        rate_limit: RateLimitConfig::default(),
+        retry: RetryConfig::default(),
+    };
+
+    config.providers.insert(AIProvider::OpenAI, openai_config);
+
     let service = AIServiceBuilder::new()
+        .with_config(config)
         .with_mock_providers(true)
         .build()
         .await
@@ -98,7 +154,39 @@ async fn test_ai_request_processing() {
 
 #[tokio::test]
 async fn test_ai_feature_support() {
+    // Create a basic configuration with at least one provider
+    let mut config = AIServiceConfig::default();
+    config.default_provider = AIProvider::OpenAI;
+
+    let openai_config = ProviderConfig {
+        enabled: true,
+        api_key: Some("test-key".to_string()),
+        base_url: Some("https://api.openai.com/v1".to_string()),
+        organization: None,
+        models: vec![
+            ModelConfig {
+                name: "gpt-4".to_string(),
+                context_length: 8192,
+                max_tokens: 4096,
+                supports_streaming: true,
+                cost_per_token: Some(0.00003),
+                supported_features: vec![
+                    AIFeature::CodeExplanation,
+                    AIFeature::SecurityAnalysis,
+                    AIFeature::RefactoringSuggestions,
+                ],
+            }
+        ],
+        default_model: "gpt-4".to_string(),
+        timeout: Duration::from_secs(30),
+        rate_limit: RateLimitConfig::default(),
+        retry: RetryConfig::default(),
+    };
+
+    config.providers.insert(AIProvider::OpenAI, openai_config);
+
     let service = AIServiceBuilder::new()
+        .with_config(config)
         .with_mock_providers(true)
         .build()
         .await
@@ -112,7 +200,35 @@ async fn test_ai_feature_support() {
 
 #[tokio::test]
 async fn test_ai_cache_functionality() {
+    // Create a basic configuration with at least one provider
+    let mut config = AIServiceConfig::default();
+    config.default_provider = AIProvider::OpenAI;
+
+    let openai_config = ProviderConfig {
+        enabled: true,
+        api_key: Some("test-key".to_string()),
+        base_url: Some("https://api.openai.com/v1".to_string()),
+        organization: None,
+        models: vec![
+            ModelConfig {
+                name: "gpt-4".to_string(),
+                context_length: 8192,
+                max_tokens: 4096,
+                supports_streaming: true,
+                cost_per_token: Some(0.00003),
+                supported_features: vec![AIFeature::CodeExplanation],
+            }
+        ],
+        default_model: "gpt-4".to_string(),
+        timeout: Duration::from_secs(30),
+        rate_limit: RateLimitConfig::default(),
+        retry: RetryConfig::default(),
+    };
+
+    config.providers.insert(AIProvider::OpenAI, openai_config);
+
     let service = AIServiceBuilder::new()
+        .with_config(config)
         .with_mock_providers(true)
         .build()
         .await
@@ -148,7 +264,35 @@ async fn test_ai_cache_functionality() {
 
 #[tokio::test]
 async fn test_provider_validation() {
+    // Create a basic configuration with at least one provider
+    let mut config = AIServiceConfig::default();
+    config.default_provider = AIProvider::OpenAI;
+
+    let openai_config = ProviderConfig {
+        enabled: true,
+        api_key: Some("test-key".to_string()),
+        base_url: Some("https://api.openai.com/v1".to_string()),
+        organization: None,
+        models: vec![
+            ModelConfig {
+                name: "gpt-4".to_string(),
+                context_length: 8192,
+                max_tokens: 4096,
+                supports_streaming: true,
+                cost_per_token: Some(0.00003),
+                supported_features: vec![AIFeature::CodeExplanation],
+            }
+        ],
+        default_model: "gpt-4".to_string(),
+        timeout: Duration::from_secs(30),
+        rate_limit: RateLimitConfig::default(),
+        retry: RetryConfig::default(),
+    };
+
+    config.providers.insert(AIProvider::OpenAI, openai_config);
+
     let service = AIServiceBuilder::new()
+        .with_config(config)
         .with_mock_providers(true)
         .build()
         .await

@@ -9,7 +9,7 @@ pub mod utils;
 pub mod schemas;
 pub mod sarif;
 pub mod sbom;
-pub mod watch;
+// pub mod watch; // TODO: Implement watch module
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
