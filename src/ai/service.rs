@@ -76,23 +76,39 @@ impl Default for AIServiceBuilder {
 impl AIService {
     /// Create a new AI service with the given configuration
     pub async fn new(config: AIConfig, use_mock_providers: bool) -> AIResult<Self> {
-        // Validate configuration
-        config.validate()?;
+        // Validate configuration (skip for mock providers)
+        if !use_mock_providers {
+            config.validate()?;
+        }
         
         // Apply environment variable overrides
         let config = config.with_env_overrides();
         
         // Initialize providers
         let mut providers = HashMap::new();
-        for (provider_type, provider_config) in &config.providers {
-            if provider_config.enabled {
-                let provider = if use_mock_providers {
-                    Box::new(crate::ai::providers::MockProvider::new(*provider_type, provider_config.clone()))
-                        as Box<dyn AIProviderImpl>
-                } else {
-                    create_provider(*provider_type, provider_config.clone()).await?
-                };
-                providers.insert(*provider_type, provider);
+
+        if use_mock_providers {
+            // For mock providers, create a default mock provider if none are configured
+            if config.providers.is_empty() {
+                let mock_config = ProviderConfig::default();
+                let provider = Box::new(crate::ai::providers::MockProvider::new(config.default_provider, mock_config))
+                    as Box<dyn AIProviderImpl>;
+                providers.insert(config.default_provider, provider);
+            } else {
+                for (provider_type, provider_config) in &config.providers {
+                    if provider_config.enabled {
+                        let provider = Box::new(crate::ai::providers::MockProvider::new(*provider_type, provider_config.clone()))
+                            as Box<dyn AIProviderImpl>;
+                        providers.insert(*provider_type, provider);
+                    }
+                }
+            }
+        } else {
+            for (provider_type, provider_config) in &config.providers {
+                if provider_config.enabled {
+                    let provider = create_provider(*provider_type, provider_config.clone()).await?;
+                    providers.insert(*provider_type, provider);
+                }
             }
         }
         
