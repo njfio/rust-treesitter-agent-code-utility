@@ -1,4 +1,4 @@
-default_provider: OpenAI
+default_provider: Anthropic
 
 providers:
   OpenAI:
@@ -7,11 +7,11 @@ providers:
     base_url: "https://api.openai.com/v1"
     organization: null
     models:
-      - name: "gpt-4"
-        context_length: 8192
-        max_tokens: 4096
+      - name: "gpt-5"
+        context_length: 400000
+        max_tokens: 8192
         supports_streaming: true
-        cost_per_token: 0.00003
+        cost_per_token: 0.00125
         supported_features:
           - CodeExplanation
           - SecurityAnalysis
@@ -30,20 +30,26 @@ providers:
           - CodeExplanation
           - DocumentationGeneration
           - TestGeneration
-    default_model: "gpt-4"
-    timeout: "30s"
+    default_model: "gpt-5"
+    timeout:
+      secs: 30
+      nanos: 0
     rate_limit:
       requests_per_minute: 60
       tokens_per_minute: 100000
       burst_size: 10
     retry:
       max_retries: 3
-      initial_delay: "1s"
-      max_delay: "30s"
+      initial_delay:
+        secs: 1
+        nanos: 0
+      max_delay:
+        secs: 30
+        nanos: 0
       backoff_multiplier: 2.0
 
   Anthropic:
-    enabled: false
+    enabled: true
     api_key: "${ANTHROPIC_API_KEY}"
     base_url: "https://api.anthropic.com/v1"
     models:
@@ -58,15 +64,21 @@ providers:
           - RefactoringSuggestions
           - ArchitecturalInsights
     default_model: "claude-3-sonnet-20240229"
-    timeout: "30s"
+    timeout:
+      secs: 30
+      nanos: 0
     rate_limit:
       requests_per_minute: 50
       tokens_per_minute: 80000
       burst_size: 5
     retry:
       max_retries: 3
-      initial_delay: "1s"
-      max_delay: "30s"
+      initial_delay:
+        secs: 1
+        nanos: 0
+      max_delay:
+        secs: 30
+        nanos: 0
       backoff_multiplier: 2.0
 
   Local:
@@ -82,15 +94,21 @@ providers:
         supported_features:
           - CodeExplanation
     default_model: "local-model"
-    timeout: "60s"
+    timeout:
+      secs: 60
+      nanos: 0
     rate_limit:
       requests_per_minute: 1000
       tokens_per_minute: 1000000
       burst_size: 100
     retry:
       max_retries: 2
-      initial_delay: "500ms"
-      max_delay: "10s"
+      initial_delay:
+        secs: 0
+        nanos: 500000000
+      max_delay:
+        secs: 10
+        nanos: 0
       backoff_multiplier: 1.5
 
 features:

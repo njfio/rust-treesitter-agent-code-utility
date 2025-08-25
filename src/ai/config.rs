@@ -246,6 +246,35 @@ impl Default for RetryConfig {
     }
 }
 
+impl Default for ProviderConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            api_key: Some("mock-key".to_string()),
+            base_url: Some("https://api.mock.com/v1".to_string()),
+            organization: None,
+            models: vec![
+                ModelConfig {
+                    name: "mock-model".to_string(),
+                    context_length: 4096,
+                    max_tokens: 2048,
+                    supports_streaming: false,
+                    cost_per_token: Some(0.0),
+                    supported_features: vec![
+                        crate::ai::types::AIFeature::CodeExplanation,
+                        crate::ai::types::AIFeature::SecurityAnalysis,
+                        crate::ai::types::AIFeature::RefactoringSuggestions,
+                    ],
+                }
+            ],
+            default_model: "mock-model".to_string(),
+            timeout: Duration::from_secs(30),
+            rate_limit: RateLimitConfig::default(),
+            retry: RetryConfig::default(),
+        }
+    }
+}
+
 impl AIConfig {
     /// Load configuration from a file
     pub fn from_file<P: AsRef<Path>>(path: P) -> AIResult<Self> {
