@@ -9,6 +9,7 @@ pub mod utils;
 pub mod schemas;
 pub mod sarif;
 pub mod sbom;
+pub mod watch;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -364,6 +365,25 @@ pub enum Commands {
         /// Save detailed report to file
         #[arg(short, long)]
         output: Option<PathBuf>,
+    },
+
+    /// Watch mode: re-run analysis at intervals (scaffold)
+    Watch {
+        /// Directory to analyze repeatedly
+        #[arg(value_name = "PATH")]
+        path: PathBuf,
+
+        /// Interval in seconds between runs
+        #[arg(long, default_value_t = 2u64)]
+        interval: u64,
+
+        /// Maximum iterations before exit (0 = run once)
+        #[arg(long, default_value_t = 0usize)]
+        max_iterations: usize,
+
+        /// Analysis depth: basic, deep, full
+        #[arg(long, default_value = "basic")]
+        depth: String,
     },
 }
 
