@@ -9,8 +9,9 @@ use std::time::Duration;
 // Import only the AI types we need
 use rust_tree_sitter::ai::{
     AIService, AIServiceBuilder, AIConfig, AIProvider, AIFeature, AIRequest,
-    ProviderConfig, ModelConfig, RateLimitConfig, RetryConfig
+    ProviderConfig, ModelConfig
 };
+use rust_tree_sitter::ai::config::{RateLimitConfig, RetryConfig};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
